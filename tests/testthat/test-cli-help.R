@@ -20,20 +20,13 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics without
     )
 
     for (topic in topics) {
-        res <- epwshiftr_cli(c("--quiet", "--store", missing_dir, topic$args))
+        res <- cli_run(missing_dir, topic$args)
         expect_equal(res$status, 0L)
         expect_match(res$result[[1L]], topic$pattern)
         expect_false(dir.exists(missing_dir))
     }
 
-    morph_run <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        missing_dir,
-        "help",
-        "morph",
-        "run"
-    ))
+    morph_run <- cli_run(missing_dir, "help", "morph", "run")
     expect_equal(morph_run$status, 0L)
     expect_match(
         morph_run$result[[1L]],
@@ -42,13 +35,7 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics without
     )
     expect_match(morph_run$result[[1L]], "--method NAME", fixed = TRUE)
 
-    bad_help <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        missing_dir,
-        "help",
-        "missing"
-    ))
+    bad_help <- cli_run(missing_dir, "help", "missing")
     expect_equal(bad_help$status, 2L)
     expect_match(bad_help$error, "Unknown help topic")
     expect_false(dir.exists(missing_dir))

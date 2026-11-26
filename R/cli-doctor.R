@@ -7,22 +7,22 @@ epwshiftr_cli_doctor <- function(
     parsed <- epwshiftr_cli_parse_command(
         args,
         flags = c("--network", "--no-progress"),
-        options = c("--index-node", "--timeout", "--config")
+        options = c("--index-node", "--timeout", "--config"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     if (isTRUE(parsed$flags[["--no-progress"]])) {
         ui <- shift_ui("none")
     }
 
-    timeout <- if (is.null(parsed$options[["--timeout"]])) {
+    timeout <- epwshiftr_cli_count_or_default(
+        parsed$options[["--timeout"]],
+        "--timeout",
         10L
-    } else {
-        epwshiftr_cli_count(parsed$options[["--timeout"]], "--timeout")
-    }
-    index_node <- parsed$options[["--index-node"]]
-    if (is.null(index_node)) {
-        index_node <- "https://esgf-node.ornl.gov"
-    }
+    )
+    index_node <- shift_stage__coalesce(
+        parsed$options[["--index-node"]],
+        "https://esgf-node.ornl.gov"
+    )
 
     checks <- list()
     add <- function(check, status, message, detail = NA_character_) {
@@ -34,29 +34,62 @@ epwshiftr_cli_doctor <- function(
             stringsAsFactors = FALSE
         )
     }
+    add_dir_writable <- function(
+        name,
+        path,
+        label,
+        missing_status = "skipped",
+        missing_message = sprintf("%s is missing.", label)
+    ) {
+        if (dir.exists(path)) {
+            writable <- unname(file.access(path, 2L)) == 0L
+            add(
+                name,
+                if (writable) "ok" else "error",
+                sprintf(
+                    if (writable) "%s is writable." else "%s is not writable.",
+                    label
+                ),
+                path
+            )
+        } else {
+            add(name, missing_status, missing_message, path)
+        }
+    }
+    add_manifest_checks <- function(prefix, manifest, table, label) {
+        meta <- epwshiftr_cli_doctor_manifest_meta(manifest, table)
+        add(paste0(prefix, "_manifest"), meta$status, meta$message, manifest)
+        schema_version <- epwshiftr_cli_doctor_meta_value(
+            meta$data,
+            "schema_version"
+        )
+        ok <- identical(meta$status, "ok")
+        add(
+            paste0(prefix, "_schema"),
+            if (ok) "ok" else "skipped",
+            if (!is.na(schema_version)) {
+                sprintf("%s schema version is %s.", label, schema_version)
+            } else if (ok) {
+                sprintf("%s schema version is missing.", label)
+            } else {
+                sprintf("%s manifest is not readable.", label)
+            },
+            if (!is.na(schema_version)) schema_version else NA_character_
+        )
+    }
 
-    add(
-        "r_version",
-        "ok",
-        paste("R", getRversion()),
-        R.home()
-    )
+    add("r_version", "ok", paste("R", getRversion()), R.home())
+    rscript <- file.path(R.home("bin"), "Rscript")
+    has_rscript <- nzchar(rscript) && file.exists(rscript)
     add(
         "rscript",
-        if (
-            nzchar(file.path(R.home("bin"), "Rscript")) &&
-                file.exists(file.path(R.home("bin"), "Rscript"))
-        ) {
-            "ok"
-        } else {
-            "warning"
-        },
-        if (file.exists(file.path(R.home("bin"), "Rscript"))) {
+        if (has_rscript) "ok" else "warning",
+        if (has_rscript) {
             "Rscript is available."
         } else {
             "Rscript was not found under R.home()."
         },
-        file.path(R.home("bin"), "Rscript")
+        rscript
     )
     version <- tryCatch(
         as.character(utils::packageVersion("epwshiftr")),
@@ -85,64 +118,31 @@ epwshiftr_cli_doctor <- function(
     )
 
     resolved_store <- epwshiftr_cli_doctor_store_path(store_path)
+    store_exists <- dir.exists(resolved_store)
     add(
         "store_path",
-        if (dir.exists(resolved_store)) "ok" else "warning",
-        if (dir.exists(resolved_store)) {
+        if (store_exists) "ok" else "warning",
+        if (store_exists) {
             "Store directory exists."
         } else {
             "Store directory does not exist."
         },
         resolved_store
     )
-    if (dir.exists(resolved_store)) {
-        writable <- unname(file.access(resolved_store, 2L)) == 0L
-        add(
-            "store_writable",
-            if (writable) "ok" else "error",
-            if (writable) {
-                "Store directory is writable."
-            } else {
-                "Store directory is not writable."
-            },
-            resolved_store
-        )
-    } else {
-        add(
-            "store_writable",
-            "skipped",
-            "Store directory is missing.",
-            resolved_store
-        )
-    }
-
-    manifest <- file.path(resolved_store, "manifest.duckdb")
-    store_meta <- epwshiftr_cli_doctor_manifest_meta(manifest, "store_meta")
-    add(
-        "store_manifest",
-        store_meta$status,
-        store_meta$message,
-        manifest
-    )
-    schema_version <- epwshiftr_cli_doctor_meta_value(
-        store_meta$data,
-        "schema_version"
-    )
-    add(
-        "store_schema",
-        if (identical(store_meta$status, "ok")) "ok" else "skipped",
-        if (!is.na(schema_version)) {
-            sprintf("Store schema version is %s.", schema_version)
-        } else if (identical(store_meta$status, "ok")) {
-            "Store schema version is missing."
-        } else {
-            "Store manifest is not readable."
-        },
-        if (!is.na(schema_version)) schema_version else NA_character_
+    add_dir_writable("store_writable", resolved_store, "Store directory")
+    add_manifest_checks(
+        "store",
+        file.path(resolved_store, "manifest.duckdb"),
+        "store_meta",
+        "Store"
     )
 
-    downloader_dir <- file.path(resolved_store, "downloads", "_downloader")
-    downloader_manifest <- file.path(downloader_dir, "manifest.duckdb")
+    downloader_manifest <- file.path(
+        resolved_store,
+        "downloads",
+        "_downloader",
+        "manifest.duckdb"
+    )
     config_check <- epwshiftr_cli_doctor_downloader_config(downloader_manifest)
     add(
         "downloader_config",
@@ -150,54 +150,20 @@ epwshiftr_cli_doctor <- function(
         config_check$message,
         downloader_manifest
     )
-    download_meta <- epwshiftr_cli_doctor_manifest_meta(
+    add_manifest_checks(
+        "downloader",
         downloader_manifest,
-        "download_meta"
-    )
-    add(
-        "downloader_manifest",
-        download_meta$status,
-        download_meta$message,
-        downloader_manifest
-    )
-    downloader_schema <- epwshiftr_cli_doctor_meta_value(
-        download_meta$data,
-        "schema_version"
-    )
-    add(
-        "downloader_schema",
-        if (identical(download_meta$status, "ok")) "ok" else "skipped",
-        if (!is.na(downloader_schema)) {
-            sprintf("Downloader schema version is %s.", downloader_schema)
-        } else if (identical(download_meta$status, "ok")) {
-            "Downloader schema version is missing."
-        } else {
-            "Downloader manifest is not readable."
-        },
-        if (!is.na(downloader_schema)) downloader_schema else NA_character_
+        "download_meta",
+        "Downloader"
     )
 
-    tmp_downloads <- file.path(resolved_store, "tmp", "downloads")
-    if (dir.exists(tmp_downloads)) {
-        writable <- unname(file.access(tmp_downloads, 2L)) == 0L
-        add(
-            "tmp_downloads",
-            if (writable) "ok" else "error",
-            if (writable) {
-                "Temporary download directory is writable."
-            } else {
-                "Temporary download directory is not writable."
-            },
-            tmp_downloads
-        )
-    } else {
-        add(
-            "tmp_downloads",
-            "warning",
-            "Temporary download directory does not exist.",
-            tmp_downloads
-        )
-    }
+    add_dir_writable(
+        "tmp_downloads",
+        file.path(resolved_store, "tmp", "downloads"),
+        "Temporary download directory",
+        missing_status = "warning",
+        missing_message = "Temporary download directory does not exist."
+    )
 
     if (isTRUE(parsed$flags[["--network"]])) {
         network <- shift_reporter__ui_check(
@@ -433,25 +399,11 @@ epwshiftr_cli_doctor_network <- function(index_node, timeout = 10L) {
             )
             response <- curl::curl_fetch_memory(query$url(), handle = handle)
             code <- response$status_code
-            if (code >= 200L && code < 400L) {
-                list(
-                    status = "ok",
-                    message = sprintf(
-                        "Index node responded with HTTP %s.",
-                        code
-                    ),
-                    detail = query$url()
-                )
-            } else {
-                list(
-                    status = "error",
-                    message = sprintf(
-                        "Index node responded with HTTP %s.",
-                        code
-                    ),
-                    detail = query$url()
-                )
-            }
+            list(
+                status = if (code >= 200L && code < 400L) "ok" else "error",
+                message = sprintf("Index node responded with HTTP %s.", code),
+                detail = query$url()
+            )
         },
         error = function(e) {
             list(

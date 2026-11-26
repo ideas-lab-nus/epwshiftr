@@ -7,23 +7,17 @@ epwshiftr_cli_extract <- function(
     jsonl = FALSE,
     quiet = FALSE
 ) {
+    if (command %in% c("run", "retry")) {
+        fn <- if (identical(command, "run")) {
+            epwshiftr_cli_extract_run
+        } else {
+            epwshiftr_cli_extract_retry
+        }
+        return(fn(store, args, json = json, jsonl = jsonl, quiet = quiet))
+    }
     switch(
         command,
         plan = epwshiftr_cli_extract_plan(store, args),
-        run = epwshiftr_cli_extract_run(
-            store,
-            args,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        ),
-        retry = epwshiftr_cli_extract_retry(
-            store,
-            args,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        ),
         coverage = epwshiftr_cli_extract_coverage(store, args),
         artifacts = epwshiftr_cli_extract_artifacts(store, args),
         epwshiftr_cli_usage_abort(sprintf(
@@ -31,6 +25,33 @@ epwshiftr_cli_extract <- function(
             command
         ))
     )
+}
+# }}}
+
+# cli_extract__run_plans {{{
+cli_extract__run_plans <- function(
+    store,
+    plan_id,
+    fallback,
+    parsed,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    climate <- shift_run__extract_plans_task(
+        store,
+        plan_id = plan_id,
+        fallback = fallback,
+        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(
+            parsed,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        )
+    )
+    cli_morph__attach_ids(climate@meta$processed, climate)
 }
 # }}}
 
@@ -47,9 +68,9 @@ epwshiftr_cli_extract_plan <- function(store, args) {
             "--variable",
             "--method"
         ),
-        multi_options = c("--filter")
+        multi_options = c("--filter"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     query_id <- epwshiftr_cli_required_single_id(parsed, "--query")
     site_id <- epwshiftr_cli_required_option(parsed, "--site-id")
     lon <- epwshiftr_cli_number(
@@ -92,42 +113,25 @@ epwshiftr_cli_extract_run <- function(
 ) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c(
-            "--overwrite",
-            "--no-resume",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c("--plan", "--fallback")
+        flags = CLI_RUN_FLAGS,
+        options = c("--plan", "--fallback"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     fallback <- epwshiftr_cli_choice(
         parsed$options[["--fallback"]],
         c("auto", "error"),
         "--fallback",
         default = "auto"
     )
-    climate <- shift_run__extract_plans_task(
+    cli_extract__run_plans(
         store,
         plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
         fallback = fallback,
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]]),
-        ui = epwshiftr_cli_task_ui(
-            parsed,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        )
+        parsed = parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
     )
-    result <- data.table::as.data.table(climate@meta$processed)
-    result[, `:=`(
-        run_id = shift_ids(climate)$run_id,
-        step_id = shift_ids(climate)$step_id
-    )]
-    result[]
 }
 # }}}
 
@@ -141,22 +145,13 @@ epwshiftr_cli_extract_retry <- function(
 ) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c(
-            "--run",
-            "--overwrite",
-            "--no-resume",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c("--plan", "--status", "--fallback")
+        flags = c("--run", CLI_RUN_FLAGS),
+        options = c("--plan", "--status", "--fallback"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    status_choices <- c("pending", "failed", "empty", "done")
     statuses <- cli_retry__resolve_statuses(
         parsed$options[["--status"]],
-        status_choices
+        c("pending", "failed", "empty", "done")
     )
     fallback <- epwshiftr_cli_choice(
         parsed$options[["--fallback"]],
@@ -179,33 +174,25 @@ epwshiftr_cli_extract_retry <- function(
     if (!retry$execute) {
         return(retry$candidates)
     }
-    candidates <- retry$candidates
-    climate <- shift_run__extract_plans_task(
+    cli_extract__run_plans(
         store,
-        plan_id = unique(candidates$plan_id),
+        plan_id = unique(retry$candidates$plan_id),
         fallback = fallback,
-        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
-        resume = !isTRUE(parsed$flags[["--no-resume"]]),
-        ui = epwshiftr_cli_task_ui(
-            parsed,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        )
+        parsed = parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
     )
-    result <- data.table::as.data.table(climate@meta$processed)
-    result[, `:=`(
-        run_id = shift_ids(climate)$run_id,
-        step_id = shift_ids(climate)$step_id
-    )]
-    result[]
 }
 # }}}
 
 # epwshiftr_cli_extract_coverage {{{
 epwshiftr_cli_extract_coverage <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
-    epwshiftr_cli_assert_no_positionals(parsed)
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--plan",
+        no_positionals = TRUE
+    )
     store$coverage(
         plan_id = epwshiftr_cli_ids(
             parsed$options[["--plan"]],
@@ -218,8 +205,11 @@ epwshiftr_cli_extract_coverage <- function(store, args) {
 
 # epwshiftr_cli_extract_artifacts {{{
 epwshiftr_cli_extract_artifacts <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
-    epwshiftr_cli_assert_no_positionals(parsed)
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--plan",
+        no_positionals = TRUE
+    )
     results <- shift_inspect__extraction_result_rows(
         store,
         epwshiftr_cli_required_ids(parsed, "--plan")

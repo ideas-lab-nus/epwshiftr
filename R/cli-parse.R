@@ -1,9 +1,13 @@
+CLI_UI_FLAGS <- c("--no-progress", "--reduced-motion", "--verbose", "--debug")
+CLI_RUN_FLAGS <- c("--overwrite", "--no-resume", CLI_UI_FLAGS)
+
 # epwshiftr_cli_parse_command {{{
 epwshiftr_cli_parse_command <- function(
     args,
     flags = character(),
     options = character(),
-    multi_options = character()
+    multi_options = character(),
+    no_positionals = FALSE
 ) {
     flag_values <- stats::setNames(rep(FALSE, length(flags)), flags)
     option_values <- stats::setNames(rep(list(NULL), length(options)), options)
@@ -63,11 +67,15 @@ epwshiftr_cli_parse_command <- function(
         positionals <- c(positionals, arg)
         i <- i + 1L
     }
-    list(
+    out <- list(
         positionals = positionals,
         flags = flag_values,
         options = c(option_values, multi_option_values)
     )
+    if (isTRUE(no_positionals)) {
+        epwshiftr_cli_assert_no_positionals(out)
+    }
+    out
 }
 # }}}
 
@@ -184,6 +192,7 @@ epwshiftr_cli_string_or_null <- function(value) {
     value
 }
 # }}}
+
 # epwshiftr_cli_count_or_null {{{
 epwshiftr_cli_count_or_null <- function(value, name, positive = TRUE) {
     if (is.null(epwshiftr_cli_string_or_null(value))) {
@@ -199,6 +208,40 @@ epwshiftr_cli_empty_to_null <- function(value) {
         return(NULL)
     }
     value
+}
+# }}}
+
+# Resolve and validate statuses selected for a retry command.
+# cli_retry__resolve_statuses {{{
+cli_retry__resolve_statuses <- function(value, choices) {
+    statuses <- shift_stage__coalesce(epwshiftr_cli_csv(value), "failed")
+    if (any(!statuses %in% choices)) {
+        epwshiftr_cli_usage_abort(sprintf(
+            "--status must be one of: %s.",
+            paste(choices, collapse = ", ")
+        ))
+    }
+    statuses
+}
+# }}}
+
+# Filter retry candidates and decide whether execution should proceed.
+# cli_retry__prepare_candidates {{{
+cli_retry__prepare_candidates <- function(candidates, statuses, run) {
+    if (nrow(candidates)) {
+        # The plural selector avoids data.table resolving it as the candidate
+        # table's singular status column.
+        candidates <- candidates[candidates[["status"]] %in% statuses]
+    }
+
+    execute <- isTRUE(run) && nrow(candidates) > 0L
+    # Preview rows are explicitly marked, while empty results retain their
+    # command-specific schema.
+    if (!execute && nrow(candidates)) {
+        data.table::set(candidates, j = "dry_run", value = TRUE)
+    }
+
+    list(candidates = candidates, execute = execute)
 }
 # }}}
 

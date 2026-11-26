@@ -7,36 +7,43 @@ epwshiftr_cli_morph <- function(
     jsonl = FALSE,
     quiet = FALSE
 ) {
+    ui_cmds <- list(
+        run = epwshiftr_cli_morph_run,
+        epw = epwshiftr_cli_morph_epw,
+        retry = epwshiftr_cli_morph_retry
+    )
+    if (command %in% names(ui_cmds)) {
+        return(ui_cmds[[command]](
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ))
+    }
     switch(
         command,
         variables = epwshiftr_cli_morph_variables(args),
         transforms = cli_morph__transforms(args),
         describe = cli_morph__describe(args),
-        run = epwshiftr_cli_morph_run(
-            store,
-            args,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        ),
-        epw = epwshiftr_cli_morph_epw(
-            store,
-            args,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        ),
-        retry = epwshiftr_cli_morph_retry(
-            store,
-            args,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        ),
         status = epwshiftr_cli_morph_status(store, args),
         outputs = epwshiftr_cli_morph_outputs(store, args),
         epwshiftr_cli_usage_abort(sprintf("Unknown morph command: %s", command))
     )
+}
+# }}}
+
+# cli_morph__attach_ids {{{
+cli_morph__attach_ids <- function(x, stage) {
+    result <- data.table::as.data.table(data.table::copy(x))
+    ids <- shift_ids(stage)
+    n <- nrow(result)
+    for (col in c("run_id", "step_id")) {
+        if (!is.null(ids[[col]])) {
+            data.table::set(result, j = col, value = rep_len(ids[[col]], n))
+        }
+    }
+    result[]
 }
 # }}}
 
@@ -45,9 +52,9 @@ epwshiftr_cli_morph_variables <- function(args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         options = c("--scale", "--method", "--reconstruction"),
-        multi_options = "--option"
+        multi_options = "--option",
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     transform <- cli_morph__transform(parsed)
     requirements <- morpher__variable_requirements(
         transform__recipe(transform)
@@ -70,9 +77,9 @@ epwshiftr_cli_morph_variables <- function(args) {
 cli_morph__transforms <- function(args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--scale", "--method", "--status")
+        options = c("--scale", "--method", "--status"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     catalog <- weather_transforms()
     for (field in c("scale", "method", "status")) {
         value <- parsed$options[[paste0("--", field)]]
@@ -136,9 +143,9 @@ cli_morph__describe <- function(args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         options = c("--scale", "--method", "--reconstruction"),
-        multi_options = "--option"
+        multi_options = "--option",
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     transform <- cli_morph__transform(parsed)
     record <- transform__record(transform@scale, transform@method)
     defaults <- transform__new(
@@ -321,47 +328,8 @@ cli_morph__transform <- function(parsed) {
 }
 # }}}
 
-# epwshiftr_cli_morph_run {{{
-epwshiftr_cli_morph_run <- function(
-    store,
-    args,
-    json = FALSE,
-    jsonl = FALSE,
-    quiet = FALSE
-) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        flags = c(
-            "--overwrite",
-            "--no-resume",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c(
-            "--plan",
-            "--reference",
-            "--reference-plan",
-            "--epw",
-            "--scale",
-            "--method",
-            "--reconstruction",
-            "--strict",
-            "--by",
-            "--observed-plan"
-        ),
-        multi_options = c(
-            "--period",
-            "--reference-period",
-            "--reference-filter",
-            "--reference-option",
-            "--observed-period",
-            "--option"
-        )
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
+# cli_morph__parse_references {{{
+cli_morph__parse_references <- function(parsed) {
     reference_mode <- epwshiftr_cli_choice(
         parsed$options[["--reference"]],
         c("historical", "plan"),
@@ -393,11 +361,98 @@ epwshiftr_cli_morph_run <- function(
             "--reference-filter and --reference-option require --reference historical."
         )
     }
-    reference_periods <- if (!is.null(reference_mode)) {
-        epwshiftr_cli_periods_from_cli(parsed$options[["--reference-period"]])
-    } else {
-        NULL
+    reference <- NULL
+    if (!is.null(reference_mode)) {
+        reference_periods <- epwshiftr_cli_periods_from_cli(
+            parsed$options[["--reference-period"]]
+        )
+        if (identical(reference_mode, "historical")) {
+            if (length(reference_plan_id)) {
+                epwshiftr_cli_usage_abort(
+                    "--reference-plan cannot be used with --reference historical."
+                )
+            }
+            reference <- shift_reference_historical(
+                reference_periods,
+                filters = epwshiftr_cli_key_value_list(
+                    parsed$options[["--reference-filter"]],
+                    "--reference-filter"
+                ),
+                options = epwshiftr_cli_key_value_list(
+                    parsed$options[["--reference-option"]],
+                    "--reference-option"
+                )
+            )
+        } else {
+            if (!length(reference_plan_id)) {
+                epwshiftr_cli_usage_abort(
+                    "--reference-plan is required when --reference is plan."
+                )
+            }
+            reference <- shift_reference_from_plan(
+                reference_plan_id,
+                reference_periods
+            )
+        }
     }
+    observed_reference <- NULL
+    observed_plan_id <- epwshiftr_cli_ids(
+        parsed$options[["--observed-plan"]],
+        "--observed-plan",
+        required = FALSE
+    )
+    if (length(observed_plan_id)) {
+        observed_reference <- shift_reference_from_plan(
+            observed_plan_id,
+            epwshiftr_cli_periods_from_cli(
+                parsed$options[["--observed-period"]]
+            ),
+            role = "observed_reference"
+        )
+    } else if (length(parsed$options[["--observed-period"]])) {
+        epwshiftr_cli_usage_abort(
+            "--observed-period requires --observed-plan."
+        )
+    }
+    list(reference = reference, observed_reference = observed_reference)
+}
+# }}}
+
+# epwshiftr_cli_morph_run {{{
+epwshiftr_cli_morph_run <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        flags = CLI_RUN_FLAGS,
+        options = c(
+            "--plan",
+            "--reference",
+            "--reference-plan",
+            "--epw",
+            "--scale",
+            "--method",
+            "--reconstruction",
+            "--strict",
+            "--by",
+            "--observed-plan"
+        ),
+        multi_options = c(
+            "--period",
+            "--reference-period",
+            "--reference-filter",
+            "--reference-option",
+            "--observed-period",
+            "--option"
+        ),
+        no_positionals = TRUE
+    )
+    periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
+    refs <- cli_morph__parse_references(parsed)
     strict <- epwshiftr_cli_bool(
         parsed$options[["--strict"]],
         "--strict",
@@ -410,58 +465,6 @@ epwshiftr_cli_morph_run <- function(
         parsed$options[["--by"]],
         default = c("source_id", "experiment_id", "variant_label", "period")
     )
-
-    reference <- NULL
-    if (identical(reference_mode, "historical")) {
-        if (length(reference_plan_id)) {
-            epwshiftr_cli_usage_abort(
-                "--reference-plan cannot be used with --reference historical."
-            )
-        }
-        reference <- shift_reference_historical(
-            reference_periods,
-            filters = epwshiftr_cli_key_value_list(
-                parsed$options[["--reference-filter"]],
-                "--reference-filter"
-            ),
-            options = epwshiftr_cli_key_value_list(
-                parsed$options[["--reference-option"]],
-                "--reference-option"
-            )
-        )
-    }
-
-    if (identical(reference_mode, "plan") && !length(reference_plan_id)) {
-        epwshiftr_cli_usage_abort(
-            "--reference-plan is required when --reference is plan."
-        )
-    }
-    if (identical(reference_mode, "plan")) {
-        reference <- shift_reference_from_plan(
-            reference_plan_id,
-            reference_periods
-        )
-    }
-    observed_reference <- NULL
-    observed_plan_id <- epwshiftr_cli_ids(
-        parsed$options[["--observed-plan"]],
-        "--observed-plan",
-        required = FALSE
-    )
-    if (length(observed_plan_id)) {
-        observed_periods <- epwshiftr_cli_periods_from_cli(
-            parsed$options[["--observed-period"]]
-        )
-        observed_reference <- shift_reference_from_plan(
-            observed_plan_id,
-            observed_periods,
-            role = "observed_reference"
-        )
-    } else if (length(parsed$options[["--observed-period"]])) {
-        epwshiftr_cli_usage_abort(
-            "--observed-period requires --observed-plan."
-        )
-    }
     climate <- epwshiftr_cli_climate_stage_from_plan(
         store,
         plan_id,
@@ -472,8 +475,8 @@ epwshiftr_cli_morph_run <- function(
         climate,
         baseline = epw,
         transform = transform,
-        reference = reference,
-        observed_reference = observed_reference,
+        reference = refs$reference,
+        observed_reference = refs$observed_reference,
         by = by,
         strict = strict,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
@@ -486,8 +489,9 @@ epwshiftr_cli_morph_run <- function(
         )
     )
     result <- epwshiftr_cli_morph_workflow_result(morphed@meta$workflow)
-    result$run_id <- shift_ids(morphed)$run_id
-    result$step_id <- shift_ids(morphed)$step_id
+    ids <- shift_ids(morphed)
+    result$run_id <- ids$run_id
+    result$step_id <- ids$step_id
     result
 }
 # }}}
@@ -502,17 +506,10 @@ epwshiftr_cli_morph_epw <- function(
 ) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c(
-            "--overwrite",
-            "--no-resume",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c("--morph", "--dir", "--separate")
+        flags = CLI_RUN_FLAGS,
+        options = c("--morph", "--dir", "--separate"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     morph_id <- epwshiftr_cli_required_ids(parsed, "--morph")
     morphed <- epwshiftr_cli_morphed_stage_from_morph_id(store, morph_id)
     outputs <- shift_epw_write(
@@ -535,12 +532,7 @@ epwshiftr_cli_morph_epw <- function(
             quiet = quiet
         )
     )
-    result <- shift_outputs(outputs)
-    result[, `:=`(
-        run_id = shift_ids(outputs)$run_id,
-        step_id = shift_ids(outputs)$step_id
-    )]
-    result[]
+    cli_morph__attach_ids(shift_outputs(outputs), outputs)
 }
 # }}}
 
@@ -554,31 +546,22 @@ epwshiftr_cli_morph_retry <- function(
 ) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c(
-            "--run",
-            "--overwrite",
-            "--no-resume",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c("--morph", "--status")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    status_choices <- c(
-        "planned",
-        "running",
-        "blocked",
-        "failed",
-        "result_partial",
-        "result_done",
-        "epw_partial",
-        "epw_written"
+        flags = c("--run", CLI_RUN_FLAGS),
+        options = c("--morph", "--status"),
+        no_positionals = TRUE
     )
     statuses <- cli_retry__resolve_statuses(
         parsed$options[["--status"]],
-        status_choices
+        c(
+            "planned",
+            "running",
+            "blocked",
+            "failed",
+            "result_partial",
+            "result_done",
+            "epw_partial",
+            "epw_written"
+        )
     )
     candidates <- epwshiftr_cli_morph_status_rows(
         store,
@@ -597,10 +580,18 @@ epwshiftr_cli_morph_retry <- function(
         return(retry$candidates)
     }
     candidates <- retry$candidates
+    ui <- epwshiftr_cli_task_ui(
+        parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
     results <- vector("list", nrow(candidates))
     for (i in seq_len(nrow(candidates))) {
-        morph_id <- candidates$morph_id[[i]]
-        previous <- epwshiftr_cli_morphed_stage_from_morph_id(store, morph_id)
+        previous <- epwshiftr_cli_morphed_stage_from_morph_id(
+            store,
+            candidates$morph_id[[i]]
+        )
         morphed <- shift_morph(
             previous@meta$climate,
             baseline = previous@meta$baseline,
@@ -611,19 +602,9 @@ epwshiftr_cli_morph_retry <- function(
             strict = previous@meta$strict,
             overwrite = isTRUE(parsed$flags[["--overwrite"]]),
             resume = !isTRUE(parsed$flags[["--no-resume"]]),
-            ui = epwshiftr_cli_task_ui(
-                parsed,
-                json = json,
-                jsonl = jsonl,
-                quiet = quiet
-            )
+            ui = ui
         )
-        row <- data.table::as.data.table(morphed@meta$results)
-        row[, `:=`(
-            run_id = shift_ids(morphed)$run_id,
-            step_id = shift_ids(morphed)$step_id
-        )]
-        results[[i]] <- row
+        results[[i]] <- cli_morph__attach_ids(morphed@meta$results, morphed)
     }
     data.table::rbindlist(results, use.names = TRUE, fill = TRUE)
 }
@@ -631,8 +612,11 @@ epwshiftr_cli_morph_retry <- function(
 
 # epwshiftr_cli_morph_status {{{
 epwshiftr_cli_morph_status <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--morph"))
-    epwshiftr_cli_assert_no_positionals(parsed)
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--morph",
+        no_positionals = TRUE
+    )
     epwshiftr_cli_morph_status_rows(
         store,
         epwshiftr_cli_ids(
@@ -646,8 +630,11 @@ epwshiftr_cli_morph_status <- function(store, args) {
 
 # epwshiftr_cli_morph_outputs {{{
 epwshiftr_cli_morph_outputs <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--morph"))
-    epwshiftr_cli_assert_no_positionals(parsed)
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--morph",
+        no_positionals = TRUE
+    )
     epwshiftr_cli_morph_output_rows(
         store,
         epwshiftr_cli_ids(
@@ -656,6 +643,24 @@ epwshiftr_cli_morph_outputs <- function(store, args) {
             required = FALSE
         )
     )
+}
+# }}}
+
+# epwshiftr_cli_morph_output_rows {{{
+epwshiftr_cli_morph_output_rows <- function(store, morph_id = NULL) {
+    if (is.null(morph_id)) {
+        return(store$query("SELECT * FROM epw_output"))
+    }
+    shift_inspect__epw_output_rows(store, morph_id)
+}
+# }}}
+
+# epwshiftr_cli_morph_status_rows {{{
+epwshiftr_cli_morph_status_rows <- function(store, morph_id = NULL) {
+    if (is.null(morph_id)) {
+        return(store$query("SELECT * FROM epw_morph_plan"))
+    }
+    shift_inspect__morph_plan(store, morph_id)
 }
 # }}}
 

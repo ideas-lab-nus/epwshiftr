@@ -1,13 +1,3 @@
-# Write through JSON so tests exercise the actual command-line configuration
-# boundary, including nulls and arrays of transform objects.
-# cli_batch__write_config {{{
-cli_batch__write_config <- function(config) {
-    path <- tempfile(fileext = ".json")
-    jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
-    path
-}
-# }}}
-
 # Resolve deterministic local model coverage while preserving real planning,
 # receipt persistence, and inspection code.
 # cli_batch__local_catalog {{{
@@ -24,7 +14,7 @@ test_that("every catalog configuration can be described and generated offline", 
         EsgStore = list(new = function(...) stop("Unexpected store access")),
         .package = "epwshiftr"
     )
-    catalog <- epwshiftr_cli(c("--quiet", "morph", "transforms"))$result
+    catalog <- cli_run(NULL, "morph", "transforms")$result
     expect_equal(nrow(catalog), nrow(weather_transforms()))
     expect_true(all(
         c("required_inputs", "status", "output_type") %in% names(catalog)
@@ -35,25 +25,25 @@ test_that("every catalog configuration can be described and generated offline", 
         if (!is.na(row$reconstruction)) {
             args <- c(args, "--reconstruction", row$reconstruction)
         }
-        described <- epwshiftr_cli(c("--quiet", "morph", "describe", args))
+        described <- cli_run(NULL, "morph", "describe", args)
         expect_equal(described$status, 0L, info = paste(args, collapse = " "))
         expect_identical(described$result$status, row$status)
         expect_identical(described$result$output_type, row$output_type)
         expect_silent(jsonlite::toJSON(described$result, auto_unbox = TRUE))
         example <- epwshiftr_cli_shift_config_example(args)$config
-        expect_silent(epwshiftr_cli_read_shift_config(cli_batch__write_config(
-            example
-        )))
+        expect_silent(epwshiftr_cli_read_shift_config(
+            cli_shift_test_write_config(example)
+        ))
     }
-    filtered <- epwshiftr_cli(c(
-        "--quiet",
+    filtered <- cli_run(
+        NULL,
         "morph",
         "transforms",
         "--scale",
         "hourly",
         "--status",
         "experimental"
-    ))$result
+    )$result
     expect_identical(filtered$method, "kernel_qdm")
 })
 
@@ -99,21 +89,24 @@ test_that("CLI options preserve JSON vectors and enforce constructor constraints
 test_that("human method details retain input alternatives and full option names", {
     withr::local_options(list(cli.width = 60L))
     output <- capture.output(
-        result <- epwshiftr_cli(c(
+        result <- cli_run(
+            NULL,
             "morph",
             "describe",
             "--scale",
             "monthly",
             "--method",
-            "epwshiftr"
-        )),
+            "epwshiftr",
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(result$status, 0L)
     text <- paste(cli::ansi_strip(output), collapse = " ")
     expect_match(text, "Variables:.*tas.*OR.*tas")
     output <- capture.output(
-        result <- epwshiftr_cli(c(
+        result <- cli_run(
+            NULL,
             "morph",
             "describe",
             "--scale",
@@ -121,8 +114,9 @@ test_that("human method details retain input alternatives and full option names"
             "--method",
             "qdm",
             "--option",
-            "tas.bounds=[-40,60]"
-        )),
+            "tas.bounds=[-40,60]",
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(result$status, 0L)
@@ -141,7 +135,9 @@ test_that("config supports method matrices, typed models, ERA5, and explicit tra
     expect_identical(config$climate$model, 2L)
     expect_identical(config$calibration$dataset, "era5")
     config$control$refresh <- TRUE
-    parsed <- epwshiftr_cli_read_shift_config(cli_batch__write_config(config))
+    parsed <- epwshiftr_cli_read_shift_config(
+        cli_shift_test_write_config(config)
+    )
     climate <- epwshiftr_cli_config_climate(parsed$climate)
     expect_identical(climate@n_models, 2L)
     expect_null(climate@frequency)
@@ -156,7 +152,9 @@ test_that("config supports method matrices, typed models, ERA5, and explicit tra
         list(scale = "daily", method = "epwshiftr", reconstruction = "btws")
     )
     config$climate["model"] <- list(NULL)
-    parsed <- epwshiftr_cli_read_shift_config(cli_batch__write_config(config))
+    parsed <- epwshiftr_cli_read_shift_config(
+        cli_shift_test_write_config(config)
+    )
     transforms <- cli_shift__config_transform(parsed$transform)
     expect_length(transforms, 2L)
     expect_identical(
@@ -167,19 +165,19 @@ test_that("config supports method matrices, typed models, ERA5, and explicit tra
 
     config$methods <- "qdm"
     expect_error(
-        epwshiftr_cli_read_shift_config(cli_batch__write_config(config)),
+        epwshiftr_cli_read_shift_config(cli_shift_test_write_config(config)),
         "methods.*transform|transform.*methods"
     )
     config$methods <- NULL
     config$observed_reference <- config$calibration
     expect_error(
-        epwshiftr_cli_read_shift_config(cli_batch__write_config(config)),
+        epwshiftr_cli_read_shift_config(cli_shift_test_write_config(config)),
         "either calibration"
     )
     config$observed_reference <- NULL
     config$calibration$key <- "must-not-be-stored"
     expect_error(
-        epwshiftr_cli_read_shift_config(cli_batch__write_config(config)),
+        epwshiftr_cli_read_shift_config(cli_shift_test_write_config(config)),
         "key"
     )
 })
@@ -197,17 +195,15 @@ test_that("local batch validation never discovers remote coverage", {
         "--model",
         "all"
     ))$config
-    path <- cli_batch__write_config(config)
-    result <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    path <- cli_shift_test_write_config(config)
+    result <- cli_run(
         tempfile(),
         "shift",
         "config",
         "validate",
         "--config",
         path
-    ))
+    )
     expect_equal(result$status, 0L)
     expect_identical(result$result$validation, "local")
     expect_equal(nrow(result$result$selected_models), 0L)
@@ -238,24 +234,13 @@ test_that("network validation and doctor share reanalysis readiness checks", {
         "--model",
         "1"
     ))$config
-    path <- cli_batch__write_config(config)
+    path <- cli_shift_test_write_config(config)
     root <- tempfile()
-    local <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        root,
-        "shift",
-        "config",
-        "validate",
-        "--config",
-        path
-    ))
+    local <- cli_run(root, "shift", "config", "validate", "--config", path)
     expect_equal(local$status, 1L)
     expect_identical(local$result$status, "valid")
     expect_identical(local$result$readiness, "blocked")
-    remote <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    remote <- cli_run(
         root,
         "shift",
         "config",
@@ -263,17 +248,10 @@ test_that("network validation and doctor share reanalysis readiness checks", {
         "--config",
         path,
         "--network"
-    ))
+    )
     expect_identical(remote$result$validation, "network")
     expect_equal(nrow(remote$result$selected_models), 1L)
-    doctor <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        root,
-        "doctor",
-        "--config",
-        path
-    ))
+    doctor <- cli_run(root, "doctor", "--config", path)
     expect_true(any(doctor$result$checks$check == "cds_credentials"))
     expect_identical(network_flags, c(FALSE, TRUE, FALSE))
 })
@@ -291,18 +269,18 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
     config$dir <- tempfile("cli-batch-output-")
     config$periods <- list(future = 2049:2050)
     root <- tempfile("cli-batch-store-")
-    path <- cli_batch__write_config(config)
+    path <- cli_shift_test_write_config(config)
     text <- capture.output(
-        result <- epwshiftr_cli(c(
-            "--json",
-            "--store",
+        result <- cli_run(
             root,
+            "--json",
             "shift",
             "run",
             "--config",
             path,
-            "--dry-run"
-        ))
+            "--dry-run",
+            quiet = FALSE
+        )
     )
     expect_equal(result$status, 0L)
     expect_true(jsonlite::validate(paste(text, collapse = "\n")))
@@ -326,15 +304,7 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
         "data",
         "cancel"
     )) {
-        out <- epwshiftr_cli(c(
-            "--quiet",
-            "--store",
-            root,
-            "shift",
-            command,
-            "--batch",
-            id
-        ))
+        out <- cli_run(root, "shift", command, "--batch", id)
         expect_equal(out$status, 0L, info = command)
     }
     expect_silent(shift_watch(batch, follow = FALSE, ui = shift_ui("none")))
@@ -473,7 +443,7 @@ test_that("failed batch execution returns a nonzero CLI status with its receipt"
         },
         .package = "epwshiftr"
     )
-    result <- epwshiftr_cli(c("--quiet", "shift", "run"))
+    result <- cli_run(NULL, "shift", "run")
     expect_equal(result$status, 1L)
     expect_identical(result$result$batch_id, "batch-partial")
     expect_null(result$error)
@@ -489,76 +459,25 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         },
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
-    variables <- epw_morph_variables(transform__recipe(monthly_transform(
-        "epwshiftr"
-    )))
-    files <- stats::setNames(
-        vapply(
-            variables,
-            function(variable) {
-                path <- tempfile(fileext = ".nc")
-                write_local_cmip6_netcdf_fixture(
-                    path,
-                    2060L,
-                    variable_id = variable,
-                    frequency = "mon"
-                )
-                path
-            },
-            character(1L)
-        ),
-        variables
-    )
-    withr::defer(unlink(files))
-    docs <- data.table::rbindlist(
-        lapply(variables, function(variable) {
-            esgf_test__file_docs(
-                basename(files[[variable]]),
-                opendap_url = files[[variable]],
-                download_url = files[[variable]],
-                variable_id = variable,
-                frequency = "mon",
-                table_id = "Amon"
-            )
-        }),
-        fill = TRUE
-    )
-    docs[, `:=`(
-        dataset_id = paste0("future-", variable_id),
-        master_id = paste0("future-", variable_id),
-        instance_id = paste0("future-", variable_id, ".v20260101"),
-        tracking_id = paste0("hdl:21.14100/future-", variable_id),
-        id = paste0(title, "|future-", variable_id)
-    )]
-    data.table::set(
-        docs,
-        j = "checksum",
-        value = vapply(
-            files[docs$variable_id],
-            checksum_file,
-            character(1L),
-            algo = "sha256"
-        )
-    )
-    calls <- shift_test__mock_collect(docs)
+    calls <- cli_shift_test_mock_monthly_fixtures()
     config_path <- tempfile(fileext = ".json")
     cli_shift_test_config(config_path)
     config <- epwshiftr_cli_read_shift_config(config_path)
     config$climate$model <- 1L
     config$control$overwrite <- FALSE
-    config_path <- cli_batch__write_config(config)
+    config_path <- cli_shift_test_write_config(config)
     root <- tempfile("cli-batch-integration-")
-    base <- c("--quiet", "--store", root, "shift")
-    planned <- epwshiftr_cli(c(
-        base,
+    planned <- cli_run(
+        root,
+        "shift",
         "run",
         "--config",
         config_path,
         "--dry-run"
-    ))
+    )
     expect_equal(planned$status, 0L, info = planned$error)
     id <- planned$result$batch_id
-    completed <- epwshiftr_cli(c(base, "resume", "--batch", id))
+    completed <- cli_run(root, "shift", "resume", "--batch", id)
     expect_equal(completed$status, 0L, info = completed$error)
     expect_identical(completed$result$status, "completed")
     output <- completed$result$outputs$export_path
@@ -570,7 +489,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     receipt_path <- shift_batch__receipt_path(file.path(root, "batches", id))
     receipt_hash <- tools::md5sum(receipt_path)
 
-    reused <- epwshiftr_cli(c(base, "run", "--config", config_path))
+    reused <- cli_run(root, "shift", "run", "--config", config_path)
     expect_equal(reused$status, 0L, info = reused$error)
     expect_identical(reused$result$children$run_id, child_ids)
     expect_identical(reused$result$execution$action, "reused")
@@ -578,14 +497,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_identical(tools::md5sum(receipt_path), receipt_hash)
     expect_equal(length(calls$types), collected)
     human <- capture.output(
-        epwshiftr_cli(c(
-            "--store",
-            root,
-            "shift",
-            "run",
-            "--config",
-            config_path
-        )),
+        cli_run(root, "shift", "run", "--config", config_path, quiet = FALSE),
         type = "message"
     )
     expect_equal(
@@ -598,8 +510,9 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     )
     expect_equal(snapshot$batch$completed, 1L)
     expect_equal(snapshot$batch$epw_files, 1L)
-    data <- epwshiftr_cli(c(
-        base,
+    data <- cli_run(
+        root,
+        "shift",
         "data",
         "--batch",
         id,
@@ -607,18 +520,18 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         "2",
         "--columns",
         "method,model,dry_bulb_temperature"
-    ))
+    )
     expect_equal(data$status, 0L, info = data$error)
     expect_equal(nrow(data$result), 2L)
     expect_true(all(data$result$method == "epwshiftr"))
     expect_true(all(data$result$model == "EC-Earth3"))
     expect_true(all(is.finite(data$result$dry_bulb_temperature)))
-    summary <- epwshiftr_cli(c(base, "summary", "--batch", id, "--weather"))
+    summary <- cli_run(root, "shift", "summary", "--batch", id, "--weather")
     expect_equal(summary$status, 0L, info = summary$error)
     expect_equal(summary$result$epw_files, 1L)
     expect_true(all(is.finite(summary$result$mean_temperature_c)))
     expect_equal(summary$result$weather_hours, 8760L)
-    history <- epwshiftr_cli(c(base, "list", "--type", "batch"))
+    history <- cli_run(root, "shift", "list", "--type", "batch")
     expect_equal(history$status, 0L, info = history$error)
     expect_identical(history$result$status, "completed")
     reopened <- shift_batch_get(id, root)
@@ -633,7 +546,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     # Remove only this test's exported file. The persisted plan and cached
     # scientific artifacts must be sufficient to reconstruct the delivery.
     unlink(output)
-    repaired <- epwshiftr_cli(c(base, "resume", "--batch", id))
+    repaired <- cli_run(root, "shift", "resume", "--batch", id)
     expect_equal(repaired$status, 0L, info = repaired$error)
     expect_identical(repaired$result$status, "completed")
     expect_true(all(file.exists(repaired$result$outputs$export_path)))

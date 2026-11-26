@@ -86,9 +86,9 @@ epwshiftr_cli_shift_config_example <- function(args) {
             "--reconstruction",
             "--model"
         ),
-        multi_options = "--option"
+        multi_options = "--option",
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     config <- epwshiftr_cli_shift_example_config()
     methods <- epwshiftr_cli_csv(parsed$options[["--methods"]])
     if (!is.null(methods)) {
@@ -197,6 +197,39 @@ epwshiftr_cli_shift_config_example <- function(args) {
 }
 # }}}
 
+# cli_shift__config_components {{{
+cli_shift__config_components <- function(config) {
+    list(
+        transforms = shift_batch__transforms(
+            methods = config$methods,
+            transform = cli_shift__config_transform(config$transform)
+        ),
+        climate = epwshiftr_cli_config_climate(config$climate),
+        reference = cli_shift__config_reference(config$reference, "reference"),
+        calibration = cli_shift__config_reference(
+            shift_stage__coalesce(
+                config$calibration,
+                config$observed_reference
+            ),
+            "observed_reference"
+        ),
+        periods = shift_spec__periods_from_input(config$periods)
+    )
+}
+# }}}
+
+# cli_shift__format_models {{{
+cli_shift__format_models <- function(climate) {
+    if (!is.null(climate@model)) {
+        paste(climate@model, collapse = ", ")
+    } else if (is.null(climate@n_models)) {
+        "all compatible models"
+    } else {
+        sprintf("%d compatible models", climate@n_models)
+    }
+}
+# }}}
+
 # epwshiftr_cli_shift_config_validate {{{
 epwshiftr_cli_shift_config_validate <- function(
     store,
@@ -208,34 +241,24 @@ epwshiftr_cli_shift_config_validate <- function(
     parsed <- epwshiftr_cli_parse_command(
         args,
         options = "--config",
-        flags = c("--network", "--no-progress", "--reduced-motion")
+        flags = c("--network", "--no-progress", "--reduced-motion"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     config_path <- epwshiftr_cli_required_option(parsed, "--config")
     config <- epwshiftr_cli_read_shift_config(config_path)
-    transforms <- shift_batch__transforms(
-        methods = config$methods,
-        transform = cli_shift__config_transform(config$transform)
-    )
-    climate <- epwshiftr_cli_config_climate(config$climate)
-    reference <- cli_shift__config_reference(config$reference, "reference")
-    observed <- cli_shift__config_reference(
-        shift_stage__coalesce(
-            config$calibration,
-            config$observed_reference
-        ),
-        "observed_reference"
-    )
-    periods <- shift_spec__periods_from_input(config$periods)
+    parts <- cli_shift__config_components(config)
+    transforms <- parts$transforms
+    climate <- parts$climate
+    observed <- parts$calibration
     references <- lapply(transforms, function(transform) {
-        shift_spec__validate_transform_periods(transform, periods)
+        shift_spec__validate_transform_periods(transform, parts$periods)
         if (!is.null(climate@frequency)) {
             shift_spec__validate_transform_frequency(
                 transform,
                 climate@frequency
             )
         }
-        shift_batch__references(transform, reference, observed)
+        shift_batch__references(transform, parts$reference, observed)
     })
     locations <- shift_batch__sites(lapply(config$sites, function(site) {
         do.call(shift_site, site)
@@ -271,7 +294,7 @@ epwshiftr_cli_shift_config_validate <- function(
         shift_batch_ui__discover_models(
             climate,
             transforms,
-            periods = shift_spec__periods_from_input(config$periods),
+            periods = parts$periods,
             references = references,
             store = store,
             ui = ui
@@ -281,13 +304,15 @@ epwshiftr_cli_shift_config_validate <- function(
     }
     list(
         action = "validate",
-        intent = cli_shift__config_intent(config),
+        intent = cli_shift__config_intent(config, components = parts),
         status = "valid",
         validation = if (network) "network" else "local",
         readiness = if (any(checks$severity == "error")) {
             "blocked"
+        } else if (network) {
+            "network_checks_passed"
         } else {
-            if (network) "network_checks_passed" else "local_checks_passed"
+            "local_checks_passed"
         },
         config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
         cases = data.table::data.table(),
@@ -308,15 +333,7 @@ epwshiftr_cli_shift_config_validate <- function(
                     ),
                     collapse = "; "
                 ),
-                if (!is.null(climate@model)) {
-                    paste(climate@model, collapse = ", ")
-                } else {
-                    if (is.null(climate@n_models)) {
-                        "all compatible models"
-                    } else {
-                        sprintf("%d compatible models", climate@n_models)
-                    }
-                },
+                cli_shift__format_models(climate),
                 if (network) {
                     "Network coverage checked"
                 } else {
@@ -335,34 +352,24 @@ epwshiftr_cli_shift_config_validate <- function(
 # store or resolving remote models. Keep calibration separate from historical
 # model reference data so the two input roles remain unambiguous.
 # cli_shift__config_intent {{{
-cli_shift__config_intent <- function(config) {
-    transforms <- shift_batch__transforms(
-        methods = config$methods,
-        transform = cli_shift__config_transform(config$transform)
+cli_shift__config_intent <- function(config, components = NULL) {
+    parts <- shift_stage__coalesce(
+        components,
+        cli_shift__config_components(config)
     )
-    climate <- epwshiftr_cli_config_climate(config$climate)
-    reference <- cli_shift__config_reference(config$reference, "reference")
-    calibration <- cli_shift__config_reference(
-        shift_stage__coalesce(
-            config$calibration,
-            config$observed_reference
-        ),
-        "observed_reference"
-    )
+    climate <- parts$climate
     list(
         Baseline = paste(
             vapply(
                 config$sites,
-                function(site) {
-                    paste0(site$id, ": ", site$epw)
-                },
+                function(site) paste0(site$id, ": ", site$epw),
                 character(1L)
             ),
             collapse = "; "
         ),
         Methods = paste(
             vapply(
-                transforms,
+                parts$transforms,
                 function(transform) {
                     sprintf(
                         "%s / %s / %s [%s]",
@@ -376,22 +383,12 @@ cli_shift__config_intent <- function(config) {
             ),
             collapse = "; "
         ),
-        Models = if (!is.null(climate@model)) {
-            paste(climate@model, collapse = ", ")
-        } else {
-            if (is.null(climate@n_models)) {
-                "all compatible models"
-            } else {
-                sprintf("%d compatible models", climate@n_models)
-            }
-        },
+        Models = cli_shift__format_models(climate),
         `Common models` = climate@common,
         Scenarios = paste(climate@scenarios, collapse = ", "),
-        Periods = shift_ui_view__ui_periods(shift_spec__periods_from_input(
-            config$periods
-        )),
-        Reference = shift_print__format_reference(reference),
-        Calibration = shift_print__format_reference(calibration),
+        Periods = shift_ui_view__ui_periods(parts$periods),
+        Reference = shift_print__format_reference(parts$reference),
+        Calibration = shift_print__format_reference(parts$calibration),
         Output = config$dir
     )
 }

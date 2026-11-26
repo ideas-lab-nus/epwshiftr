@@ -2,33 +2,54 @@
 # types; attributes do not change the machine-readable snapshot fields.
 # epwshiftr_cli_shift_show {{{
 epwshiftr_cli_shift_show <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
+    req <- cli_shift__parse_target(
+        store,
         args,
-        options = c("--run", "--batch"),
         flags = c("--verbose", "--debug")
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    run <- cli_shift__target(parsed, store)
-    if (S7::S7_inherits(run, ShiftBatch)) {
-        snapshot <- shift_batch_ui__snapshot(
+    run <- req$target
+    snapshot <- if (S7::S7_inherits(run, ShiftBatch)) {
+        out <- shift_batch_ui__snapshot(
             run,
             event_count = Inf,
             refresh = FALSE
         )
-        snapshot$explain <- shift_explain(run)
-        attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(parsed)
-        return(snapshot)
+        out$explain <- shift_explain(run)
+        out
+    } else {
+        list(
+            run = run@meta$run,
+            cases = shift_cases(run),
+            events = run@meta$events,
+            outputs = shift_outputs(run),
+            diagnostics = shift_diagnostics(run),
+            explain = shift_explain(run)
+        )
     }
-    snapshot <- list(
-        run = run@meta$run,
-        cases = shift_cases(run),
-        events = run@meta$events,
-        outputs = shift_outputs(run),
-        diagnostics = shift_diagnostics(run),
-        explain = shift_explain(run)
-    )
-    attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(parsed)
+    attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(req$parsed)
     snapshot
+}
+# }}}
+
+# cli_shift__read_watch_snapshot {{{
+cli_shift__read_watch_snapshot <- function(
+    store,
+    run_id,
+    batch_id = NULL,
+    event_count = 10L
+) {
+    if (is.null(batch_id)) {
+        return(epwshiftr_cli_shift_watch_snapshot(
+            store,
+            run_id = run_id,
+            event_count = event_count
+        ))
+    }
+    shift_batch_ui__snapshot(
+        shift_batch_get(batch_id, store),
+        event_count = event_count,
+        refresh = FALSE
+    )
 }
 # }}}
 
@@ -44,25 +65,18 @@ epwshiftr_cli_shift_watch <- function(
 ) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c(
-            "--follow",
-            "--no-progress",
-            "--reduced-motion",
-            "--verbose",
-            "--debug"
-        ),
-        options = c("--run", "--batch", "--interval", "--count", "--events")
+        flags = c("--follow", CLI_UI_FLAGS),
+        options = c("--run", "--batch", "--interval", "--count", "--events"),
+        no_positionals = TRUE
     )
-    epwshiftr_cli_assert_no_positionals(parsed)
     batch_id <- parsed$options[["--batch"]]
     if (is.null(batch_id) == is.null(parsed$options[["--run"]])) {
         epwshiftr_cli_usage_abort("Supply exactly one of --run or --batch.")
     }
-    run_id <- if (is.null(batch_id)) {
-        epwshiftr_cli_required_single_id(parsed, "--run")
-    } else {
-        epwshiftr_cli_required_single_id(parsed, "--batch")
-    }
+    run_id <- epwshiftr_cli_required_single_id(
+        parsed,
+        if (is.null(batch_id)) "--run" else "--batch"
+    )
     detail <- epwshiftr_cli_shift_detail(parsed)
     progress <- if (isTRUE(parsed$flags[["--no-progress"]])) {
         "none"
@@ -106,19 +120,12 @@ epwshiftr_cli_shift_watch <- function(
         }
         return(snapshot)
     }
-    snapshot <- if (is.null(batch_id)) {
-        epwshiftr_cli_shift_watch_snapshot(
-            store,
-            run_id = run_id,
-            event_count = event_count
-        )
-    } else {
-        shift_batch_ui__snapshot(
-            shift_batch_get(batch_id, store),
-            event_count = event_count,
-            refresh = FALSE
-        )
-    }
+    snapshot <- cli_shift__read_watch_snapshot(
+        store,
+        run_id = run_id,
+        batch_id = batch_id,
+        event_count = event_count
+    )
     attr(snapshot, "shift_ui_detail") <- detail
     snapshot
 }
@@ -266,19 +273,12 @@ epwshiftr_cli_shift_watch_follow <- function(
     repeat {
         i <- i + 1L
         frame <- frame + 1L
-        snapshot <- if (is.null(batch_id)) {
-            epwshiftr_cli_shift_watch_snapshot(
-                store,
-                run_id = run_id,
-                event_count = event_count
-            )
-        } else {
-            shift_batch_ui__snapshot(
-                shift_batch_get(batch_id, store),
-                event_count = event_count,
-                refresh = FALSE
-            )
-        }
+        snapshot <- cli_shift__read_watch_snapshot(
+            store,
+            run_id = run_id,
+            batch_id = batch_id,
+            event_count = event_count
+        )
         active <- epwshiftr_cli_shift_watch_active(snapshot)
         if (isTRUE(quiet)) {
             # no output

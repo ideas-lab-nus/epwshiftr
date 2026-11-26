@@ -1,69 +1,26 @@
 # epwshiftr_cli_storage() / epwshiftr_cli_esgf() {{{
 test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and ESGF commands", {
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
+    fixture <- cli_test_store(label = "cli esgf")
+    dir <- fixture$dir
+    store <- fixture$store
+    query_id <- fixture$query_id
     on.exit(store$close(), add = TRUE)
-    query_id <- store$add_query(
-        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
-            "tas"
-        )$limit(1L),
-        label = "cli esgf",
-        track = TRUE
-    )
 
     file_docs <- esgf_test__file_docs(
         "cli-file.nc",
         opendap_url = "https://example.org/dods/cli-file.nc.html",
         download_url = "https://example.org/fileServer/cli-file.nc"
     )
-    testthat::local_mocked_bindings(
-        query__collect = function(
-            index_node,
-            params,
-            required_fields = NULL,
-            all = FALSE,
-            limit = TRUE,
-            constraints = TRUE,
-            dict_check = FALSE,
-            progress_callback = NULL
-        ) {
-            response <- esgf_test__response(file_docs)
-            params$fields(c(
-                query_param__value(params$fields()),
-                required_fields
-            ))
-            list(
-                response = response,
-                docs = response$response$docs,
-                parameter = params
-            )
-        },
-        .package = "epwshiftr"
-    )
+    cli_test_mock_query_collect(file_docs)
 
-    updated <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "update",
-        query_id
-    ))
+    updated <- cli_run(dir, "query", "update", query_id)
     expect_equal(updated$status, 0L)
 
-    esgf_help <- epwshiftr_cli(c("--quiet", "--store", dir, "esgf", "help"))
+    esgf_help <- cli_run(dir, "esgf", "help")
     expect_equal(esgf_help$status, 0L)
     expect_match(esgf_help$result[[1L]], "Usage: epwshiftr esgf")
 
-    status <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "esgf",
-        "report",
-        "--query",
-        query_id
-    ))
+    status <- cli_run(dir, "esgf", "report", "--query", query_id)
     expect_equal(status$status, 0L)
     expect_named(
         status$result,
@@ -72,14 +29,14 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     expect_equal(status$result$summary$query_id, query_id)
 
     esgf_text <- capture.output(
-        esgf_rendered <- epwshiftr_cli(c(
-            "--store",
+        esgf_rendered <- cli_run(
             dir,
             "esgf",
             "report",
             "--query",
-            query_id
-        )),
+            query_id,
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(esgf_rendered$status, 0L)
@@ -88,25 +45,10 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     expect_true(any(grepl("Downloads", esgf_text)))
     expect_false(any(grepl("^\\$summary", esgf_text)))
 
-    old_workflow <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "workflow",
-        "report",
-        "--query",
-        query_id
-    ))
+    old_workflow <- cli_run(dir, "workflow", "report", "--query", query_id)
     expect_equal(old_workflow$status, 2L)
 
-    storage <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "storage",
-        "report",
-        "--detail"
-    ))
+    storage <- cli_run(dir, "storage", "report", "--detail")
     expect_equal(storage$status, 0L)
     expect_named(
         storage$result,
@@ -121,20 +63,11 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
         )
     )
 
-    layout <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "storage",
-        "layout",
-        "show"
-    ))
+    layout <- cli_run(dir, "storage", "layout", "show")
     expect_equal(layout$status, 0L)
     expect_equal(layout$result$layout, "flat")
 
-    layout_set <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    layout_set <- cli_run(
         dir,
         "storage",
         "layout",
@@ -145,35 +78,31 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
         "false",
         "--collision",
         "suffix"
-    ))
+    )
     expect_equal(layout_set$status, 0L)
     expect_equal(layout_set$result$layout, "drs")
     expect_false(layout_set$result$include_version)
     expect_equal(layout_set$result$collision, "suffix")
 
-    validated <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    validated <- cli_run(
         dir,
         "storage",
         "validate",
         "--query",
         query_id,
         "--checksum"
-    ))
+    )
     expect_equal(validated$status, 0L)
     expect_named(
         validated$result,
         c("summary", "files", "artifacts", "untracked", "actions")
     )
 
-    repaired <- epwshiftr_cli(c("--quiet", "--store", dir, "storage", "repair"))
+    repaired <- cli_run(dir, "storage", "repair")
     expect_equal(repaired$status, 0L)
     expect_true(all(repaired$result$dry_run))
 
-    cleanup <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    cleanup <- cli_run(
         dir,
         "storage",
         "cleanup",
@@ -181,7 +110,7 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
         "tmp,missing_records",
         "--older-than",
         "0"
-    ))
+    )
     expect_equal(cleanup$status, 0L)
     expect_s3_class(cleanup$result, "data.table")
 })

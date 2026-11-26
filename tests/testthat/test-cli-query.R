@@ -8,12 +8,12 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     query_id <- fixture$query_id
     on.exit(store$close(), add = TRUE)
 
-    listed <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "list"))
+    listed <- cli_run(dir, "query", "list")
     expect_equal(listed$status, 0L)
     expect_equal(listed$result$query_id, query_id)
 
     list_text <- capture.output(
-        listed_rendered <- epwshiftr_cli(c("--store", dir, "query", "list")),
+        listed_rendered <- cli_run(dir, "query", "list", quiet = FALSE),
         type = "message"
     )
     expect_equal(listed_rendered$status, 0L)
@@ -21,121 +21,51 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     expect_true(any(grepl("Cli Query|cli query", list_text)))
     expect_false(any(grepl("^\\[\\[|^\\$", list_text)))
 
-    shown <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "show",
-        query_id
-    ))
+    shown <- cli_run(dir, "query", "show", query_id)
     expect_equal(shown$status, 0L)
     expect_named(shown$result, c("query", "tags", "graph", "status"))
     expect_equal(shown$result$query$query_id, query_id)
 
-    query_status <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "status",
-        query_id
-    ))
+    query_status <- cli_run(dir, "query", "status", query_id)
     expect_equal(query_status$status, 0L)
     expect_equal(query_status$result$query_id, query_id)
 
-    query_files <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    query_files <- cli_run(
         dir,
         "query",
         "files",
         query_id,
         "--status",
         "current,stale"
-    ))
+    )
     expect_equal(query_files$status, 0L)
     expect_equal(nrow(query_files$result), 0L)
 
-    query_updates <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "updates",
-        query_id,
-        "--latest"
-    ))
+    query_updates <- cli_run(dir, "query", "updates", query_id, "--latest")
     expect_equal(query_updates$status, 0L)
     expect_equal(nrow(query_updates$result), 0L)
 
-    query_changes <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "changes",
-        query_id,
-        "--latest"
-    ))
+    query_changes <- cli_run(dir, "query", "changes", query_id, "--latest")
     expect_equal(query_changes$status, 0L)
     expect_equal(nrow(query_changes$result), 0L)
 
-    tagged <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "tag",
-        query_id,
-        "daily",
-        "cmip"
-    ))
+    tagged <- cli_run(dir, "query", "tag", query_id, "daily", "cmip")
     expect_equal(tagged$status, 0L)
     expect_setequal(tagged$result$tag, c("daily", "cmip"))
 
-    tags <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "tags",
-        query_id
-    ))
+    tags <- cli_run(dir, "query", "tags", query_id)
     expect_equal(tags$status, 0L)
     expect_setequal(tags$result$tag, c("daily", "cmip"))
 
-    untagged <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "untag",
-        query_id,
-        "cmip"
-    ))
+    untagged <- cli_run(dir, "query", "untag", query_id, "cmip")
     expect_equal(untagged$status, 0L)
     expect_equal(untagged$result$tag, "daily")
 
-    untracked <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "untrack",
-        query_id
-    ))
+    untracked <- cli_run(dir, "query", "untrack", query_id)
     expect_equal(untracked$status, 0L)
     expect_false(untracked$result$tracked)
 
-    tracked <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "track",
-        query_id
-    ))
+    tracked <- cli_run(dir, "query", "track", query_id)
     expect_equal(tracked$status, 0L)
     expect_true(tracked$result$tracked)
 
@@ -146,32 +76,15 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         label = "remove me",
         track = FALSE
     )
-    remove_preview <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "remove",
-        remove_id
-    ))
+    remove_preview <- cli_run(dir, "query", "remove", remove_id)
     expect_equal(remove_preview$status, 0L)
     expect_true(remove_preview$result$dry_run)
     expect_true(remove_id %in% store$queries()$query_id)
-    removed <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "remove",
-        remove_id,
-        "--execute"
-    ))
+    removed <- cli_run(dir, "query", "remove", remove_id, "--execute")
     expect_equal(removed$status, 0L)
     expect_false(remove_id %in% store$queries()$query_id)
 
-    dry_search <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    dry_search <- cli_run(
         dir,
         "query",
         "search",
@@ -186,7 +99,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         "datetime_start=2050",
         "datetime_stop=2050-12-31",
         "latest=true"
-    ))
+    )
     expect_equal(dry_search$status, 0L)
     expect_equal(dry_search$result$type, "Dataset")
     expect_match(dry_search$result$url, "project=CMIP6")
@@ -205,38 +118,32 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     )
     expect_false("columns" %in% names(dry_search$result))
 
-    mixed_negate <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    mixed_negate <- cli_run(
         dir,
         "query",
         "search",
         "--dry-run",
         "source_id=MPI-ESM1-2-HR",
         "source_id!=BCC-CSM2-MR"
-    ))
+    )
     expect_equal(mixed_negate$status, 2L)
     expect_match(
         mixed_negate$error,
         "Cannot combine positive and negated values"
     )
 
-    negated_condition <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    negated_condition <- cli_run(
         dir,
         "query",
         "search",
         "--dry-run",
         "datetime_start!=2050"
-    ))
+    )
     expect_equal(negated_condition$status, 2L)
     expect_match(negated_condition$error, "Query condition cannot be negated")
 
     before_dry_add <- store$queries()$query_id
-    dry_add <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    dry_add <- cli_run(
         dir,
         "query",
         "add",
@@ -252,7 +159,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         "project=CMIP6",
         "variable_id=tas",
         "latest=true"
-    ))
+    )
     expect_equal(dry_add$status, 0L)
     expect_true(dry_add$result$dry_run)
     expect_match(dry_add$result$url, "project=CMIP6")
@@ -261,9 +168,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     expect_setequal(dry_add$result$tags, c("cmip", "tas"))
     expect_setequal(store$queries()$query_id, before_dry_add)
 
-    added <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    added <- cli_run(
         dir,
         "query",
         "add",
@@ -280,7 +185,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         "source_id!=BCC-CSM2-MR,CESM2",
         "variable_id=tas,pr",
         "latest=true"
-    ))
+    )
     expect_equal(added$status, 0L)
     expect_equal(added$result$label, "added from cli")
     expect_true(added$result$tracked)
@@ -296,9 +201,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         c("BCC-CSM2-MR", "CESM2")
     )
 
-    time_added <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    time_added <- cli_run(
         dir,
         "query",
         "add",
@@ -310,7 +213,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         "variable_id=tas",
         "datetime_start=2050",
         "datetime_end=2060"
-    ))
+    )
     expect_equal(time_added$status, 0L)
     time_query <- esg_query()$load(file.path(dir, time_added$result$query_file))
     time_range <- time_query$datetime_range()
@@ -318,7 +221,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     expect_false(is.null(time_range$stop))
 
     json_text <- capture.output(
-        json <- epwshiftr_cli(c("--store", dir, "--json", "query", "list"))
+        json <- cli_run(dir, "--json", "query", "list", quiet = FALSE)
     )
     parsed <- jsonlite::fromJSON(paste(json_text, collapse = "\n"))
     expect_equal(json$status, 0L)
@@ -328,9 +231,7 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
     esg_query("https://example.org")$experiment_id("ssp126")$variable_id(
         "tas"
     )$save(query_file)
-    imported <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    imported <- cli_run(
         dir,
         "query",
         "add",
@@ -341,42 +242,36 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
         "--tag",
         "imported",
         "--track"
-    ))
+    )
     expect_equal(imported$status, 0L)
     expect_equal(imported$result$label, "imported")
     expect_true(imported$result$tracked)
     expect_equal(store$query_tags(imported$result$query_id)$tag, "imported")
 
-    empty_add <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "add"))
+    empty_add <- cli_run(dir, "query", "add")
     expect_equal(empty_add$status, 2L)
     expect_match(empty_add$error, "requires --query-file")
 
-    mixed_add <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
+    mixed_add <- cli_run(
         dir,
         "query",
         "add",
         "--query-file",
         query_file,
         "project=CMIP6"
-    ))
+    )
     expect_equal(mixed_add$status, 2L)
     expect_match(mixed_add$error, "cannot combine --query-file")
 })
 # }}}
+
 # epwshiftr_cli_query() {{{
 test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
+    fixture <- cli_test_store(label = "cli esgf")
+    dir <- fixture$dir
+    store <- fixture$store
+    query_id <- fixture$query_id
     on.exit(store$close(), add = TRUE)
-    query_id <- store$add_query(
-        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
-            "tas"
-        )$limit(1L),
-        label = "cli esgf",
-        track = TRUE
-    )
 
     file_docs <- esgf_test__file_docs(
         "cli-file.nc",
@@ -415,50 +310,43 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
         .package = "epwshiftr"
     )
 
-    searched <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
+    search_base <- c(
         "query",
         "search",
         "--index-node",
         "https://example.org",
         "--type",
         "File",
-        "--fields",
-        "id,title",
-        "--columns",
-        "title,id",
         "--limit",
         "1",
         "experiment_id=ssp585",
         "variable_id=tas"
-    ))
+    )
+
+    searched <- cli_run(
+        dir,
+        search_base,
+        "--fields",
+        "id,title",
+        "--columns",
+        "title,id"
+    )
     expect_equal(searched$status, 0L)
     expect_equal(nrow(searched$result), 1L)
     expect_true(all(c("id", "title") %in% names(searched$result)))
     expect_false(any(vapply(collect_calls, `[[`, logical(1L), "progress")))
 
     json_search_text <- capture.output(
-        json_search <- epwshiftr_cli(c(
-            "--store",
+        json_search <- cli_run(
             dir,
             "--json",
-            "query",
-            "search",
-            "--index-node",
-            "https://example.org",
-            "--type",
-            "File",
+            search_base,
             "--fields",
             "id,title,source_id",
             "--columns",
             "title",
-            "--limit",
-            "1",
-            "experiment_id=ssp585",
-            "variable_id=tas"
-        ))
+            quiet = FALSE
+        )
     )
     expect_equal(json_search$status, 0L)
     json_search_result <- jsonlite::fromJSON(paste(
@@ -476,25 +364,16 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )))
 
     jsonl_search_text <- capture.output(
-        jsonl_search <- epwshiftr_cli(c(
-            "--store",
+        jsonl_search <- cli_run(
             dir,
             "--jsonl",
-            "query",
-            "search",
-            "--index-node",
-            "https://example.org",
-            "--type",
-            "File",
+            search_base,
             "--fields",
             "id,title,source_id",
             "--columns",
             "title",
-            "--limit",
-            "1",
-            "experiment_id=ssp585",
-            "variable_id=tas"
-        ))
+            quiet = FALSE
+        )
     )
     expect_equal(jsonl_search$status, 0L)
     expect_match(paste(jsonl_search_text, collapse = "\n"), "\"id\"")
@@ -506,25 +385,16 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )))
 
     capture.output(
-        no_progress <- epwshiftr_cli(c(
-            "--store",
+        no_progress <- cli_run(
             dir,
-            "query",
-            "search",
-            "--index-node",
-            "https://example.org",
-            "--type",
-            "File",
+            search_base,
             "--fields",
             "id,title",
             "--columns",
             "title,id",
-            "--limit",
-            "1",
             "--no-progress",
-            "experiment_id=ssp585",
-            "variable_id=tas"
-        )),
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(no_progress$status, 0L)
@@ -536,24 +406,15 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )))
 
     capture.output(
-        bad_columns <- epwshiftr_cli(c(
-            "--store",
+        bad_columns <- cli_run(
             dir,
-            "query",
-            "search",
-            "--index-node",
-            "https://example.org",
-            "--type",
-            "File",
+            search_base,
             "--fields",
             "id,title",
             "--columns",
             "missing_column",
-            "--limit",
-            "1",
-            "experiment_id=ssp585",
-            "variable_id=tas"
-        )),
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(bad_columns$status, 2L)
@@ -569,28 +430,20 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
         c("Collecting Dataset records", "Collecting File records")
     )
 
-    preview <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "preview",
-        query_id,
-        "--detail"
-    ))
+    preview <- cli_run(dir, "query", "preview", query_id, "--detail")
     expect_equal(preview$status, 0L)
     expect_named(preview$result, c("summary", "changes"))
     expect_equal(preview$result$summary$query_id, query_id)
 
     preview_text <- capture.output(
-        preview_rendered <- epwshiftr_cli(c(
-            "--store",
+        preview_rendered <- cli_run(
             dir,
             "query",
             "preview",
             query_id,
-            "--detail"
-        )),
+            "--detail",
+            quiet = FALSE
+        ),
         type = "message"
     )
     expect_equal(preview_rendered$status, 0L)
@@ -599,14 +452,7 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     expect_true(any(grepl("Changes", preview_text)))
     expect_false(any(grepl("^\\$summary", preview_text)))
 
-    updated <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        dir,
-        "query",
-        "update",
-        query_id
-    ))
+    updated <- cli_run(dir, "query", "update", query_id)
     expect_equal(updated$status, 0L)
     expect_equal(nrow(updated$result), 1L)
 })

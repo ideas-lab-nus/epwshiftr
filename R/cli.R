@@ -25,6 +25,19 @@ epwshiftr_cli <- function(
     status <- 0L
     result <- NULL
     error <- NULL
+    handle_error <- function(code) {
+        function(e) {
+            status <<- code
+            error <<- conditionMessage(e)
+            epwshiftr_cli_emit_error(
+                error,
+                json = epwshiftr_cli_has_flag(args, "--json"),
+                jsonl = epwshiftr_cli_has_flag(args, "--jsonl"),
+                quiet = epwshiftr_cli_has_flag(args, "--quiet"),
+                status = status
+            )
+        }
+    }
     tryCatch(
         {
             parsed <- epwshiftr_cli_parse_globals(args)
@@ -59,28 +72,8 @@ epwshiftr_cli <- function(
                 context = epwshiftr_cli_context(parsed)
             )
         },
-        epwshiftr_cli_usage_error = function(e) {
-            status <<- 2L
-            error <<- conditionMessage(e)
-            epwshiftr_cli_emit_error(
-                error,
-                json = epwshiftr_cli_has_flag(args, "--json"),
-                jsonl = epwshiftr_cli_has_flag(args, "--jsonl"),
-                quiet = epwshiftr_cli_has_flag(args, "--quiet"),
-                status = status
-            )
-        },
-        error = function(e) {
-            status <<- 1L
-            error <<- conditionMessage(e)
-            epwshiftr_cli_emit_error(
-                error,
-                json = epwshiftr_cli_has_flag(args, "--json"),
-                jsonl = epwshiftr_cli_has_flag(args, "--jsonl"),
-                quiet = epwshiftr_cli_has_flag(args, "--quiet"),
-                status = status
-            )
-        }
+        epwshiftr_cli_usage_error = handle_error(2L),
+        error = handle_error(1L)
     )
     out <- list(status = status, result = result, error = error)
     if (isTRUE(exit)) {
@@ -99,6 +92,13 @@ epwshiftr_cli_parse_globals <- function(args) {
         quiet = FALSE,
         help = FALSE,
         args = character()
+    )
+    flag_map <- c(
+        "--json" = "json",
+        "--jsonl" = "jsonl",
+        "--quiet" = "quiet",
+        "--help" = "help",
+        "-h" = "help"
     )
     i <- 1L
     while (i <= length(args)) {
@@ -119,23 +119,8 @@ epwshiftr_cli_parse_globals <- function(args) {
             i <- i + 1L
             next
         }
-        if (identical(arg, "--json")) {
-            out$json <- TRUE
-            i <- i + 1L
-            next
-        }
-        if (identical(arg, "--jsonl")) {
-            out$jsonl <- TRUE
-            i <- i + 1L
-            next
-        }
-        if (identical(arg, "--quiet")) {
-            out$quiet <- TRUE
-            i <- i + 1L
-            next
-        }
-        if (arg %in% c("--help", "-h")) {
-            out$help <- TRUE
+        if (arg %in% names(flag_map)) {
+            out[[flag_map[[arg]]]] <- TRUE
             i <- i + 1L
             next
         }
@@ -216,6 +201,11 @@ epwshiftr_cli_dispatch <- function(parsed) {
     group <- args[[1L]]
     command <- args[[2L]]
     rest <- args[-seq_len(2L)]
+    ui_args <- list(
+        json = parsed$json,
+        jsonl = parsed$jsonl,
+        quiet = parsed$quiet
+    )
 
     if (identical(group, "shift")) {
         # Generating a JSON template needs neither a database nor a writable
@@ -225,12 +215,9 @@ epwshiftr_cli_dispatch <- function(parsed) {
                 length(rest) &&
                 identical(rest[[1L]], "example")
         ) {
-            return(epwshiftr_cli_shift_config(
-                NULL,
-                rest,
-                json = parsed$json,
-                jsonl = parsed$jsonl,
-                quiet = parsed$quiet
+            return(do.call(
+                epwshiftr_cli_shift_config,
+                c(list(NULL, rest), ui_args)
             ))
         }
         # Shift status/watch/cancel/log commands must be able to fall back to
@@ -242,13 +229,9 @@ epwshiftr_cli_dispatch <- function(parsed) {
         } else {
             store_normalize_path(parsed$store)
         }
-        return(epwshiftr_cli_shift(
-            store_path,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
+        return(do.call(
+            epwshiftr_cli_shift,
+            c(list(store_path, command, rest), ui_args)
         ))
     }
 
@@ -257,66 +240,62 @@ epwshiftr_cli_dispatch <- function(parsed) {
         identical(group, "morph") &&
             command %in% c("transforms", "describe", "variables")
     ) {
-        return(epwshiftr_cli_morph(
-            NULL,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
+        return(do.call(
+            epwshiftr_cli_morph,
+            c(list(NULL, command, rest), ui_args)
         ))
+    }
+
+    ui_groups <- list(
+        query = epwshiftr_cli_query,
+        download = epwshiftr_cli_download,
+        extract = epwshiftr_cli_extract,
+        morph = epwshiftr_cli_morph
+    )
+    plain_groups <- list(
+        esgf = epwshiftr_cli_esgf,
+        storage = epwshiftr_cli_storage
+    )
+    if (!group %in% c(names(ui_groups), names(plain_groups))) {
+        epwshiftr_cli_usage_abort(sprintf("Unknown command group: %s", group))
     }
 
     store <- EsgStore$new(path = parsed$store)
     on.exit(store$close(), add = TRUE)
 
-    if (identical(group, "query")) {
-        return(epwshiftr_cli_query(
-            store,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
+    if (group %in% names(ui_groups)) {
+        return(do.call(
+            ui_groups[[group]],
+            c(list(store, command, rest), ui_args)
         ))
     }
-    if (identical(group, "download")) {
-        return(epwshiftr_cli_download(
-            store,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
-        ))
+    plain_groups[[group]](store, command, rest)
+}
+# }}}
+
+# cli__write_json {{{
+cli__write_json <- function(
+    x,
+    pretty = FALSE,
+    dataframe = "rows",
+    flush = FALSE
+) {
+    cat(
+        jsonlite::toJSON(
+            x,
+            dataframe = dataframe,
+            POSIXt = "ISO8601",
+            auto_unbox = TRUE,
+            null = "null",
+            pretty = pretty
+        ),
+        "\n",
+        sep = ""
+    )
+    if (isTRUE(flush)) {
+        flush.console()
     }
-    if (identical(group, "esgf")) {
-        return(epwshiftr_cli_esgf(store, command, rest))
-    }
-    if (identical(group, "storage")) {
-        return(epwshiftr_cli_storage(store, command, rest))
-    }
-    if (identical(group, "extract")) {
-        return(epwshiftr_cli_extract(
-            store,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
-        ))
-    }
-    if (identical(group, "morph")) {
-        return(epwshiftr_cli_morph(
-            store,
-            command,
-            rest,
-            json = parsed$json,
-            jsonl = parsed$jsonl,
-            quiet = parsed$quiet
-        ))
-    }
-    epwshiftr_cli_usage_abort(sprintf("Unknown command group: %s", group))
+    invisible(NULL)
 }
 # }}}
 
@@ -328,34 +307,11 @@ epwshiftr_cli_emit_result <- function(
     quiet = FALSE,
     context = NULL
 ) {
-    if (inherits(result, "epwshiftr_cli_emitted")) {
+    if (inherits(result, "epwshiftr_cli_emitted") || isTRUE(quiet)) {
         return(invisible(NULL))
     }
-    if (isTRUE(quiet)) {
-        return(invisible(NULL))
-    }
-    if (isTRUE(jsonl)) {
-        cat(jsonlite::toJSON(
-            result,
-            dataframe = "rows",
-            POSIXt = "ISO8601",
-            auto_unbox = TRUE,
-            null = "null"
-        ))
-        cat("\n")
-        return(invisible(NULL))
-    }
-    if (isTRUE(json)) {
-        cat(jsonlite::toJSON(
-            result,
-            dataframe = "rows",
-            POSIXt = "ISO8601",
-            auto_unbox = TRUE,
-            null = "null",
-            pretty = TRUE
-        ))
-        cat("\n")
-        return(invisible(NULL))
+    if (isTRUE(jsonl) || isTRUE(json)) {
+        return(cli__write_json(result, pretty = !isTRUE(jsonl)))
     }
     epwshiftr_cli_with_theme(epwshiftr_cli_render(result, context = context))
     invisible(NULL)
@@ -373,24 +329,11 @@ epwshiftr_cli_emit_error <- function(
     if (isTRUE(quiet)) {
         return(invisible(NULL))
     }
-    if (isTRUE(jsonl)) {
-        cat(jsonlite::toJSON(
+    if (isTRUE(jsonl) || isTRUE(json)) {
+        return(cli__write_json(
             list(status = status, error = message),
-            auto_unbox = TRUE,
-            null = "null"
+            pretty = !isTRUE(jsonl)
         ))
-        cat("\n")
-        return(invisible(NULL))
-    }
-    if (isTRUE(json)) {
-        cat(jsonlite::toJSON(
-            list(status = status, error = message),
-            auto_unbox = TRUE,
-            null = "null",
-            pretty = TRUE
-        ))
-        cat("\n")
-        return(invisible(NULL))
     }
     cli::cli_alert_danger(message)
     invisible(NULL)

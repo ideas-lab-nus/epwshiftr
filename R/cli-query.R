@@ -7,13 +7,20 @@ epwshiftr_cli_query <- function(
     jsonl = FALSE,
     quiet = FALSE
 ) {
+    opt_id <- function(flags = character(), options = character()) {
+        p <- epwshiftr_cli_parse_command(args, flags = flags, options = options)
+        list(parsed = p, id = epwshiftr_cli_optional_position(p, "query_id"))
+    }
+    req_id <- function(flags = character(), options = character()) {
+        p <- epwshiftr_cli_parse_command(args, flags = flags, options = options)
+        list(parsed = p, id = epwshiftr_cli_required_position(p, "query_id"))
+    }
     if (identical(command, "list")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        epwshiftr_cli_assert_no_positionals(parsed)
+        epwshiftr_cli_parse_command(args, no_positionals = TRUE)
         return(store$queries())
     }
     if (identical(command, "search")) {
-        parsed <- epwshiftr_cli_parse_command(
+        p <- epwshiftr_cli_parse_command(
             args,
             flags = c("--all", "--dry-run", "--no-progress"),
             options = c(
@@ -24,58 +31,53 @@ epwshiftr_cli_query <- function(
                 "--limit"
             )
         )
-        query <- epwshiftr_cli_search_query(parsed)
-        type <- if (is.null(parsed$options[["--type"]])) {
-            "Dataset"
-        } else {
-            parsed$options[["--type"]]
-        }
-        fields <- epwshiftr_cli_csv(parsed$options[["--fields"]])
+        query <- epwshiftr_cli_search_query(p)
+        type <- shift_stage__coalesce(p$options[["--type"]], "Dataset")
+        fields <- epwshiftr_cli_csv(p$options[["--fields"]])
         progress <- !isTRUE(quiet) &&
             !isTRUE(json) &&
             !isTRUE(jsonl) &&
-            !isTRUE(parsed$flags[["--no-progress"]])
-        limit <- if (isTRUE(parsed$flags[["--all"]])) {
+            !isTRUE(p$flags[["--no-progress"]])
+        limit <- if (isTRUE(p$flags[["--all"]])) {
             FALSE
-        } else if (is.null(parsed$options[["--limit"]])) {
+        } else if (is.null(p$options[["--limit"]])) {
             TRUE
         } else {
-            epwshiftr_cli_count(parsed$options[["--limit"]], "--limit")
+            epwshiftr_cli_count(p$options[["--limit"]], "--limit")
         }
-        if (isTRUE(parsed$flags[["--dry-run"]])) {
+        if (isTRUE(p$flags[["--dry-run"]])) {
             return(list(
                 url = query$url(),
                 type = type,
                 fields = fields,
-                all = parsed$flags[["--all"]],
+                all = p$flags[["--all"]],
                 limit = limit,
                 query = query$state(null = TRUE)
             ))
         }
-        result <- query$collect(
+        return(query$collect(
             type = type,
             fields = fields,
-            all = parsed$flags[["--all"]],
+            all = p$flags[["--all"]],
             limit = limit,
             progress = progress
-        )
-        return(result$to_data_table(fields = fields))
+        )$to_data_table(fields = fields))
     }
     if (identical(command, "add")) {
-        parsed <- epwshiftr_cli_parse_command(
+        p <- epwshiftr_cli_parse_command(
             args,
             flags = c("--track", "--dry-run"),
             options = c("--query-file", "--label", "--index-node"),
             multi_options = "--tag"
         )
-        file <- parsed$options[["--query-file"]]
-        has_params <- length(parsed$positionals) > 0L
+        file <- p$options[["--query-file"]]
+        has_params <- length(p$positionals) > 0L
         if (!is.null(file) && has_params) {
             epwshiftr_cli_usage_abort(
                 "query add cannot combine --query-file with key=value query parameters."
             )
         }
-        if (!is.null(file) && !is.null(parsed$options[["--index-node"]])) {
+        if (!is.null(file) && !is.null(p$options[["--index-node"]])) {
             epwshiftr_cli_usage_abort(
                 "query add cannot combine --query-file with --index-node."
             )
@@ -85,25 +87,25 @@ epwshiftr_cli_query <- function(
                 "query add requires --query-file or at least one key=value query parameter."
             )
         }
-        tags <- epwshiftr_cli_query_tags(parsed$options[["--tag"]])
-        if (is.null(file)) {
-            query <- epwshiftr_cli_search_query(parsed)
+        tags <- epwshiftr_cli_query_tags(p$options[["--tag"]])
+        query <- if (is.null(file)) {
+            epwshiftr_cli_search_query(p)
         } else {
-            query <- esg_query()$load(file)
+            esg_query()$load(file)
         }
-        if (isTRUE(parsed$flags[["--dry-run"]])) {
+        if (isTRUE(p$flags[["--dry-run"]])) {
             return(epwshiftr_cli_query_add_preview(
                 query,
-                label = parsed$options[["--label"]],
-                track = parsed$flags[["--track"]],
+                label = p$options[["--label"]],
+                track = p$flags[["--track"]],
                 tags = tags
             ))
         }
         before <- store$queries()$query_id
         query_id <- store$add_query(
             query,
-            label = parsed$options[["--label"]],
-            track = parsed$flags[["--track"]]
+            label = p$options[["--label"]],
+            track = p$flags[["--track"]]
         )
         query_id <- epwshiftr_cli_added_query_id(store, query_id, before)
         if (length(tags)) {
@@ -112,31 +114,21 @@ epwshiftr_cli_query <- function(
         return(epwshiftr_cli_query_row(store, query_id))
     }
     if (identical(command, "show")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            flags = c("--files", "--updates", "--changes")
-        )
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        wanted_query_id <- query_id
-        query <- store$queries()
-        query <- query[query[["query_id"]] == wanted_query_id]
-        if (!nrow(query)) {
-            cli::cli_abort("Unknown query ID: {.val {query_id}}.")
-        }
+        r <- req_id(flags = c("--files", "--updates", "--changes"))
         out <- list(
-            query = query[],
-            tags = store$query_tags(query_id),
-            graph = store$query_graph(query_id = query_id, direction = "both"),
-            status = store$query_status(query_id)
+            query = epwshiftr_cli_query_row(store, r$id),
+            tags = store$query_tags(r$id),
+            graph = store$query_graph(query_id = r$id, direction = "both"),
+            status = store$query_status(r$id)
         )
-        if (isTRUE(parsed$flags[["--files"]])) {
-            out$files <- store$query_files(query_id)
+        if (isTRUE(r$parsed$flags[["--files"]])) {
+            out$files <- store$query_files(r$id)
         }
-        if (isTRUE(parsed$flags[["--updates"]])) {
-            out$updates <- store$query_updates(query_id)
+        if (isTRUE(r$parsed$flags[["--updates"]])) {
+            out$updates <- store$query_updates(r$id)
         }
-        if (isTRUE(parsed$flags[["--changes"]])) {
-            updates <- store$query_updates(query_id, latest = TRUE)
+        if (isTRUE(r$parsed$flags[["--changes"]])) {
+            updates <- store$query_updates(r$id, latest = TRUE)
             out$changes <- if (nrow(updates)) {
                 store$query_changes(update_id = updates$update_id)
             } else {
@@ -145,126 +137,89 @@ epwshiftr_cli_query <- function(
         }
         return(out)
     }
-    if (identical(command, "status")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
-        return(store$query_status(query_id))
+    if (command %in% c("status", "tags", "update")) {
+        method <- c(
+            status = "query_status",
+            tags = "query_tags",
+            update = "update_queries"
+        )[[command]]
+        return(store[[method]](query_id = opt_id()$id))
     }
     if (identical(command, "files")) {
-        parsed <- epwshiftr_cli_parse_command(args, options = "--status")
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
+        r <- req_id(options = "--status")
         return(store$query_files(
-            query_id,
-            status = epwshiftr_cli_csv(parsed$options[["--status"]])
+            r$id,
+            status = epwshiftr_cli_csv(r$parsed$options[["--status"]])
         ))
     }
     if (identical(command, "updates")) {
-        parsed <- epwshiftr_cli_parse_command(args, flags = "--latest")
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        r <- opt_id(flags = "--latest")
         return(store$query_updates(
-            query_id = query_id,
-            latest = parsed$flags[["--latest"]]
+            query_id = r$id,
+            latest = r$parsed$flags[["--latest"]]
         ))
     }
     if (identical(command, "changes")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            flags = "--latest",
-            options = c("--update", "--type")
-        )
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
-        update_id <- parsed$options[["--update"]]
-        if (is.null(update_id) && isTRUE(parsed$flags[["--latest"]])) {
-            updates <- store$query_updates(query_id = query_id, latest = TRUE)
+        r <- opt_id(flags = "--latest", options = c("--update", "--type"))
+        update_id <- r$parsed$options[["--update"]]
+        if (is.null(update_id) && isTRUE(r$parsed$flags[["--latest"]])) {
+            updates <- store$query_updates(query_id = r$id, latest = TRUE)
             if (!nrow(updates)) {
                 return(data.table::data.table())
             }
-            update_id <- if (nrow(updates)) updates$update_id else character()
+            update_id <- updates$update_id
         }
         return(store$query_changes(
             update_id = epwshiftr_cli_empty_to_null(update_id),
-            query_id = query_id,
-            change_type = epwshiftr_cli_csv(parsed$options[["--type"]])
+            query_id = r$id,
+            change_type = epwshiftr_cli_csv(r$parsed$options[["--type"]])
         ))
     }
-    if (identical(command, "tags")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
-        return(store$query_tags(query_id))
-    }
-    if (identical(command, "track")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        store$track_query(query_id)
-        return(epwshiftr_cli_query_row(store, query_id))
-    }
-    if (identical(command, "untrack")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        store$untrack_query(query_id)
+    if (command %in% c("track", "untrack")) {
+        query_id <- req_id()$id
+        store[[paste0(command, "_query")]](query_id)
         return(epwshiftr_cli_query_row(store, query_id))
     }
     if (identical(command, "tag")) {
-        parsed <- epwshiftr_cli_parse_command(args, flags = "--replace")
-        if (length(parsed$positionals) < 2L) {
+        p <- epwshiftr_cli_parse_command(args, flags = "--replace")
+        if (length(p$positionals) < 2L) {
             epwshiftr_cli_usage_abort(
                 "Missing required arguments: query_id and tag."
             )
         }
-        query_id <- parsed$positionals[[1L]]
-        tags <- parsed$positionals[-1L]
         return(store$tag_query(
-            query_id,
-            tags,
-            replace = parsed$flags[["--replace"]]
+            p$positionals[[1L]],
+            p$positionals[-1L],
+            replace = p$flags[["--replace"]]
         ))
     }
     if (identical(command, "untag")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        if (!length(parsed$positionals)) {
+        p <- epwshiftr_cli_parse_command(args)
+        if (!length(p$positionals)) {
             epwshiftr_cli_usage_abort("Missing required argument: query_id.")
         }
-        query_id <- parsed$positionals[[1L]]
-        tags <- if (length(parsed$positionals) > 1L) {
-            parsed$positionals[-1L]
-        } else {
-            NULL
-        }
-        return(store$untag_query(query_id, tags))
+        tags <- if (length(p$positionals) > 1L) p$positionals[-1L]
+        return(store$untag_query(p$positionals[[1L]], tags))
     }
     if (identical(command, "remove")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            flags = "--execute",
-            options = "--delete"
+        r <- req_id(flags = "--execute", options = "--delete")
+        delete <- epwshiftr_cli_choice(
+            r$parsed$options[["--delete"]],
+            c("none", "orphaned"),
+            "--delete",
+            default = "none"
         )
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        delete <- parsed$options[["--delete"]]
-        if (is.null(delete)) {
-            delete <- "none"
+        if (isTRUE(r$parsed$flags[["--execute"]])) {
+            return(store$remove_query(r$id, delete = delete))
         }
-        if (!delete %in% c("none", "orphaned")) {
-            epwshiftr_cli_usage_abort(
-                "--delete must be one of: none, orphaned."
-            )
-        }
-        if (isTRUE(parsed$flags[["--execute"]])) {
-            return(store$remove_query(query_id, delete = delete))
-        }
-        return(epwshiftr_cli_query_remove_preview(store, query_id, delete))
+        return(epwshiftr_cli_query_remove_preview(store, r$id, delete))
     }
     if (identical(command, "preview")) {
-        parsed <- epwshiftr_cli_parse_command(args, flags = "--detail")
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
+        r <- opt_id(flags = "--detail")
         return(store$preview_update_queries(
-            query_id = query_id,
-            detail = parsed$flags[["--detail"]]
+            query_id = r$id,
+            detail = r$parsed$flags[["--detail"]]
         ))
-    }
-    if (identical(command, "update")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        query_id <- epwshiftr_cli_optional_position(parsed, "query_id")
-        return(store$update_queries(query_id = query_id))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown query command: %s", command))
 }
@@ -296,14 +251,10 @@ epwshiftr_cli_apply_search_params <- function(query, params) {
             next
         }
         method <- tryCatch(query[[key]], error = function(e) NULL)
-        if (is.function(method)) {
-            query <- epwshiftr_cli_apply_query_param(method, value)
+        query <- if (is.function(method)) {
+            epwshiftr_cli_apply_query_param(method, value)
         } else {
-            query <- epwshiftr_cli_apply_query_param(
-                query$params,
-                value,
-                name = key
-            )
+            epwshiftr_cli_apply_query_param(query$params, value, name = key)
         }
     }
     query
@@ -354,8 +305,7 @@ epwshiftr_cli_apply_query_condition_param <- function(query, key, value) {
 # epwshiftr_cli_apply_query_param {{{
 epwshiftr_cli_apply_query_param <- function(method, value, name = NULL) {
     if (epwshiftr_cli_is_negated_param(value)) {
-        arg <- as.call(list(as.name("!"), value$value))
-        args <- list(arg)
+        args <- list(as.call(list(as.name("!"), value$value)))
         if (!is.null(name)) {
             args <- stats::setNames(args, name)
         }
@@ -393,17 +343,20 @@ epwshiftr_cli_key_value_params <- function(values) {
         first_equal <- regexpr("=", value, fixed = TRUE)[[1L]]
         first_bang_equal <- regexpr("!=", value, fixed = TRUE)[[1L]]
         negate <- first_bang_equal > 0L && first_equal == first_bang_equal + 1L
-        parts <- strsplit(value, if (negate) "!=" else "=", fixed = TRUE)[[1L]]
+        sep <- if (negate) "!=" else "="
+        parts <- strsplit(value, sep, fixed = TRUE)[[1L]]
         key <- parts[[1L]]
-        raw <- paste(parts[-1L], collapse = if (negate) "!=" else "=")
+        raw <- paste(parts[-1L], collapse = sep)
         if (!nzchar(key)) {
             epwshiftr_cli_usage_abort(sprintf(
                 "Query parameter has an empty key: %s",
                 value
             ))
         }
-        parsed <- epwshiftr_cli_query_param_value(raw)
-        parsed <- list(value = parsed, negate = negate)
+        parsed <- list(
+            value = epwshiftr_cli_query_param_value(raw),
+            negate = negate
+        )
         if (key %in% names(out)) {
             if (!identical(isTRUE(out[[key]]$negate), isTRUE(parsed$negate))) {
                 epwshiftr_cli_usage_abort(sprintf(
@@ -439,12 +392,7 @@ epwshiftr_cli_query_tags <- function(values) {
     if (is.null(values) || !length(values)) {
         return(character())
     }
-    tags <- unlist(
-        strsplit(as.character(values), ",", fixed = TRUE),
-        use.names = FALSE
-    )
-    tags <- unique(trimws(tags))
-    tags <- tags[nzchar(tags)]
+    tags <- epwshiftr_cli_csv(as.character(values))
     if (!length(tags)) {
         epwshiftr_cli_usage_abort("--tag requires a non-empty tag.")
     }
@@ -476,7 +424,7 @@ epwshiftr_cli_query_remove_preview <- function(
     query_id,
     delete = "none"
 ) {
-    query <- epwshiftr_cli_query_row(store, query_id)
+    epwshiftr_cli_query_row(store, query_id)
     files <- store$query_files(query_id)
     data.table::data.table(
         dry_run = TRUE,
