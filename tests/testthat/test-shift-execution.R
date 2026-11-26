@@ -290,7 +290,7 @@ test_that("background launch preserves strings and reports launch failure", {
 test_that("process liveness checks do not terminate a worker", {
     skip_on_cran()
     profile <- paste0("pid-check-", basename(tempfile()))
-    mirai::daemons(1L, dispatcher = FALSE, .compute = profile)
+    mirai__start_pool(1L, dispatcher = FALSE, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
     first <- mirai::collect_mirai(mirai::mirai(
         Sys.getpid(),

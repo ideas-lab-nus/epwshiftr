@@ -6,8 +6,20 @@ on:
       - main
       - master
   pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      full_tests:
+        description: 'Run full tests including live ESGF and ERA5 on Linux'
+        type: boolean
+        default: false
 
 name: R-CMD-check
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   R-CMD-check:
@@ -20,20 +32,49 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: windows-latest, r: 'release', not_cran: false, full_tests: false}
-          - {os: ubuntu-latest,  r: 'release', not_cran: true, full_tests: true}
-          - {os: macos-latest,   r: 'release', not_cran: true, full_tests: false}
+          - {os: windows-latest, r: 'release', not_cran: false, allow_full_tests: false, testthat_cpus: 2}
+          - {os: ubuntu-latest,  r: 'release', not_cran: true,  allow_full_tests: true,  testthat_cpus: 4}
+          - {os: macos-latest,   r: 'release', not_cran: true,  allow_full_tests: false, testthat_cpus: 3}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: ${{ matrix.config.not_cran }}
-      EPWSHIFTR_REQUIRE_ALL_TESTS: ${{ matrix.config.full_tests }}
-      EPWSHIFTR_RUN_LIVE_ESGF: ${{ matrix.config.full_tests }}
-      EPWSHIFTR_RUN_LIVE_ERA5: ${{ matrix.config.full_tests }}
-      ECMWF_DATASTORES_KEY: ${{ matrix.config.full_tests && secrets.ECMWF_DATASTORES_KEY || '' }}
+      TESTTHAT_CPUS: ${{ matrix.config.testthat_cpus }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure test mode
+        id: test-mode
+        shell: bash
+        env:
+          ALLOW_FULL_TESTS: ${{ matrix.config.allow_full_tests }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
+          DISPATCH_FULL: ${{ inputs.full_tests == true }}
+          CDS_KEY: ${{ secrets.ECMWF_DATASTORES_KEY }}
+        run: |
+          full_tests=false
+          if [ "$ALLOW_FULL_TESTS" = "true" ]; then
+            if [ "$EVENT_NAME" = "release" ] || \
+               { [ "$EVENT_NAME" = "push" ] && { [ "$REF_NAME" = "refs/heads/main" ] || [ "$REF_NAME" = "refs/heads/master" ]; }; } || \
+               { [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_FULL" = "true" ]; }; then
+              full_tests=true
+            fi
+          fi
+          echo "full_tests=$full_tests" >> "$GITHUB_OUTPUT"
+          echo "EPWSHIFTR_REQUIRE_ALL_TESTS=$full_tests" >> "$GITHUB_ENV"
+          echo "EPWSHIFTR_RUN_LIVE_ESGF=$full_tests" >> "$GITHUB_ENV"
+          echo "EPWSHIFTR_RUN_LIVE_ERA5=$full_tests" >> "$GITHUB_ENV"
+          if [ "$full_tests" = "true" ]; then
+            if [ -z "$CDS_KEY" ]; then
+              echo "::error::Repository secret ECMWF_DATASTORES_KEY is required for full testing."
+              exit 1
+            fi
+            echo "ECMWF_DATASTORES_KEY=$CDS_KEY" >> "$GITHUB_ENV"
+          else
+            echo "ECMWF_DATASTORES_KEY=" >> "$GITHUB_ENV"
+          fi
 
       # The hosted image selects Azure first through an APT mirror list. Remove
       # that slow entry while retaining the official archive/security priorities.
@@ -59,45 +100,30 @@ jobs:
 
       - uses: r-lib/actions/setup-pandoc@v2
 
-      - name: Set EPWSHIFTR_CHECK_CACHE
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          echo "EPWSHIFTR_CHECK_CACHE=${{ runner.temp }}/epwshiftr" >> $GITHUB_ENV
-          if [ ! -d "${{ runner.temp }}/epwshiftr" ]; then mkdir -p "${{ runner.temp }}/epwshiftr"; fi
-
-      - name: Cache NetCDF files
-        if: runner.os != 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
-          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
-          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
-
       - name: Install macOS system libraries
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          brew install gettext
-          echo "PKG_CPPFLAGS=-I$(brew --prefix gettext)/include" >> $GITHUB_ENV
-          echo "PKG_LIBS=-L$(brew --prefix gettext)/lib -lintl" >> $GITHUB_ENV
+          if ! brew list gettext >/dev/null 2>&1; then
+            brew install gettext
+          fi
+          prefix="$(brew --prefix gettext)"
+          echo "PKG_CPPFLAGS=-I${prefix}/include" >> "$GITHUB_ENV"
+          echo "PKG_LIBS=-L${prefix}/lib -lintl" >> "$GITHUB_ENV"
 
-      - name: Prepare Linux full testing
-        if: matrix.config.full_tests
+      - name: Ensure Linux system tools
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          if [ -z "$ECMWF_DATASTORES_KEY" ]; then
-            echo "::error::Repository secret ECMWF_DATASTORES_KEY is required for full testing."
-            exit 1
-          fi
-          sudo apt-get update
-          sudo apt-get install -y zip
+          command -v zip >/dev/null || (sudo apt-get update && sudo apt-get install -y zip)
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
             any::rcmdcheck
-            any::webfakes
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

@@ -257,7 +257,7 @@ morph_test__context <- function(
     recipe,
     reference_climate = NULL,
     observed_reference = NULL,
-    epw = epw_file_read(get_cache_epw())
+    epw = get_cached_epw()
 ) {
     morpher__context(
         epw = epw,

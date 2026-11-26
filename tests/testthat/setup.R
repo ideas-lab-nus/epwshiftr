@@ -1,5 +1,34 @@
 get_cache_epw()
 
+# Isolate the default store directory per test worker so parallel runs never
+# collide across workers or write into the user's package data directory.
+test_store_dir <- tempfile("epwshiftr-test-store-")
+old_store_option <- options("epwshiftr.dir_store" = test_store_dir)
+withr::defer(
+    {
+        options(old_store_option)
+        if (dir.exists(test_store_dir)) {
+            unlink(test_store_dir, recursive = TRUE, force = TRUE)
+        }
+    },
+    envir = testthat::teardown_env()
+)
+
+# Parallel testthat workers already provide file-level concurrency. Cap nested
+# mirai pools and data.table OpenMP threads to 1 per worker so tests do not
+# multiply into W x 4 background daemons; explicit concurrency tests still set
+# higher worker counts locally.
+old_mirai_workers <- options("epwshiftr.mirai_workers" = 1L)
+old_dt_threads <- data.table::getDTthreads()
+data.table::setDTthreads(1L)
+withr::defer(
+    {
+        options(old_mirai_workers)
+        data.table::setDTthreads(old_dt_threads)
+    },
+    envir = testthat::teardown_env()
+)
+
 # Extraction tests exercise the content-addressed cache added for cross-method
 # reuse. Keep those disposable entries inside the test session so package
 # checks never write to, or reuse state from, the user's normal cache.

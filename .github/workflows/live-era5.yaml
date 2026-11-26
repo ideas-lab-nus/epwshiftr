@@ -15,6 +15,7 @@ concurrency:
 jobs:
   era5-live:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     env:
       ECMWF_DATASTORES_KEY: ${{ secrets.ECMWF_DATASTORES_KEY }}

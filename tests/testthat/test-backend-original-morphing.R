@@ -365,7 +365,7 @@ enhanced_test__change_climate <- function(reference = FALSE) {
 # }}}
 
 test_that("disabled precipitation preserves baseline EPW fields", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     baseline <- data.table::as.data.table(epw$data())[, .(
         liquid_precip_depth,
         liquid_precip_rate
@@ -429,7 +429,7 @@ test_that("disabled precipitation preserves baseline EPW fields", {
 
 test_that("Original morphing runner behavior is fixed across modes and profiles", {
     skip_on_cran()
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     future <- enhanced_test__change_climate()
     reference <- enhanced_test__change_climate(reference = TRUE)
     contexts <- list(
@@ -491,7 +491,7 @@ test_that("Original morphing runner behavior is fixed across modes and profiles"
 
 test_that("Original morphing production case contexts preserve identity and isolation", {
     skip_on_cran()
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     future_a <- enhanced_test__change_climate()
     reference_a <- enhanced_test__change_climate(reference = TRUE)
     future_b <- data.table::copy(future_a)
@@ -588,7 +588,7 @@ test_that("original-morphing profiles and current recipe JSON have explicit sema
 
 test_that("legacy profile preserves the historical 35-field EPW golden output", {
     input <- get_cache_epw()
-    epw <- epw_file_read(input)
+    epw <- get_cached_epw()
     context <- morpher__context(
         epw,
         enhanced_test__legacy_climate(),
@@ -837,7 +837,7 @@ test_that("specific humidity round trips and saturates at physical bounds", {
 
 
 test_that("enhanced runner integrates HUSS, radiation, snow, and final headers", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     context <- morpher__context(
         epw,
         enhanced_test__change_climate(),
@@ -953,7 +953,7 @@ test_that("integrated solar geometry and radiation models obey EPW closure", {
 
 
 test_that("snow depth uses metres-to-centimetres ratios without new events", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     weather <- epw$data()
     weather[, snow_depth := 0]
     # Place the synthetic event away from the month-boundary transition so the
@@ -1015,7 +1015,7 @@ test_that("snow depth uses metres-to-centimetres ratios without new events", {
 
 test_that("structured EPW headers round trip and enhanced policies recalculate", {
     path <- get_cache_epw()
-    epw <- epw_file_read(path)
+    epw <- get_cached_epw()
     untouched <- tempfile(fileext = ".epw")
     epw$save(untouched, overwrite = TRUE)
     expect_identical(readLines(path, n = 8L), readLines(untouched, n = 8L))
@@ -1658,7 +1658,7 @@ test_that("Original morphing combined temperature uses average daily EPW range",
 # Humidity and snow have their own smoothing paths. Changing only provenance
 # years must not change either physical result or its saved factors.
 test_that("humidity and snow smoothing ignore representative source-year labels", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     weather <- data.table::copy(epw$data())
     data.table::set(weather, j = "year", value = 2001L)
     data.table::set(
@@ -1858,7 +1858,7 @@ test_that("monthly smoothing follows the representative calendar across source y
 })
 
 test_that("HUSS state morphing applies specific humidity delta without shadowing tdb delta", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     data_epw <- epw_file__calculation_weather(
         suppressMessages(epw$clone()$add_unit()$data())
     )
