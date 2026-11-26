@@ -598,13 +598,6 @@ DownloadTask <- R6::R6Class(
         },
         # }}}
 
-        # update_progress {{{
-        update_progress = function(current, total = NULL) {
-            self$progress <- current
-            if (!is.null(total)) self$total <- total
-        },
-        # }}}
-
         # mark_completed {{{
         mark_completed = function() {
             self$status <- DownloadStatus$Completed
@@ -720,6 +713,44 @@ downloader__id <- function(prefix) {
 downloader__hostname <- function() {
     host <- unname(Sys.info()[["nodename"]])
     if (is.na(host) || !nzchar(host)) "localhost" else host
+}
+# }}}
+
+# downloader__int0 {{{
+downloader__int0 <- function(x) {
+    if (!length(x)) {
+        return(0L)
+    }
+    val <- suppressWarnings(as.integer(x[[1L]]))
+    if (is.na(val)) 0L else val
+}
+# }}}
+
+# downloader__sql_where {{{
+downloader__sql_where <- function(conn, eq = list(), in_vals = list()) {
+    clauses <- character()
+    for (col in names(eq)) {
+        if (!is.null(eq[[col]])) {
+            clauses <- c(
+                clauses,
+                sprintf(
+                    "%s = %s",
+                    downloader__ddb_ident(conn, col),
+                    downloader__ddb_literal(conn, eq[[col]])
+                )
+            )
+        }
+    }
+    for (col in names(in_vals)) {
+        if (!is.null(in_vals[[col]])) {
+            clauses <- c(clauses, downloader__sql_in(conn, col, in_vals[[col]]))
+        }
+    }
+    if (length(clauses)) {
+        paste("WHERE", paste(clauses, collapse = " AND "))
+    } else {
+        ""
+    }
 }
 # }}}
 
@@ -4886,239 +4917,99 @@ Downloader <- R6::R6Class(
 
         # init_manifest_schema {{{
         init_manifest_schema = function() {
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_config (
-                    config_id VARCHAR PRIMARY KEY,
-                    schema_version VARCHAR,
-                    dest VARCHAR,
-                    temp VARCHAR,
-                    retries INTEGER,
-                    timeout INTEGER,
-                    ssl_verifypeer BOOLEAN,
-                    proxy VARCHAR,
-                    connect_timeout INTEGER,
-                    useragent VARCHAR,
-                    cleanup BOOLEAN,
-                    n_workers INTEGER,
-                    node_cooldown_after_failures INTEGER,
-                    node_cooldown_seconds INTEGER,
-                    node_history_ttl_seconds INTEGER,
-                    node_min_attempts INTEGER,
-                    transfer_chunk_size DOUBLE,
-                    transfer_bandwidth_limit DOUBLE,
-                    transfer_low_speed_limit DOUBLE,
-                    transfer_low_speed_time DOUBLE,
-                    transfer_range_mode VARCHAR,
-                    transfer_piece_size INTEGER,
-                    transfer_piece_concurrency INTEGER,
-                    transfer_max_sources INTEGER,
+            ddls <- c(
+                "CREATE TABLE IF NOT EXISTS download_config (
+                    config_id VARCHAR PRIMARY KEY, schema_version VARCHAR,
+                    dest VARCHAR, temp VARCHAR, retries INTEGER, timeout INTEGER,
+                    ssl_verifypeer BOOLEAN, proxy VARCHAR,
+                    connect_timeout INTEGER, useragent VARCHAR,
+                    cleanup BOOLEAN, n_workers INTEGER,
+                    node_cooldown_after_failures INTEGER, node_cooldown_seconds INTEGER,
+                    node_history_ttl_seconds INTEGER, node_min_attempts INTEGER,
+                    transfer_chunk_size DOUBLE, transfer_bandwidth_limit DOUBLE,
+                    transfer_low_speed_limit DOUBLE, transfer_low_speed_time DOUBLE,
+                    transfer_range_mode VARCHAR, transfer_piece_size INTEGER,
+                    transfer_piece_concurrency INTEGER, transfer_max_sources INTEGER,
                     transfer_require_checksum_for_multisource BOOLEAN,
                     transfer_range_probe_timeout INTEGER,
-                    resource_host_concurrency INTEGER,
-                    resource_disk_preflight BOOLEAN,
-                    resource_min_free_space DOUBLE,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_session (
-                    session_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    status VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
+                    resource_host_concurrency INTEGER, resource_disk_preflight BOOLEAN,
+                    resource_min_free_space DOUBLE, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_session (
+                    session_id VARCHAR PRIMARY KEY, label VARCHAR, status VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_task (
+                    task_id VARCHAR PRIMARY KEY, session_id VARCHAR,
+                    logical_file_id VARCHAR, file_key VARCHAR, esgf_id VARCHAR,
+                    dataset_id VARCHAR, filename VARCHAR, subdir VARCHAR,
+                    target_path VARCHAR, checksum VARCHAR, checksum_type VARCHAR,
+                    size DOUBLE, status VARCHAR, attempts INTEGER,
+                    bytes_done DOUBLE, speed_bps DOUBLE, eta_seconds DOUBLE,
+                    progress_updated_at TIMESTAMP, current_url VARCHAR,
+                    job_id VARCHAR, owner_id VARCHAR, lease_until TIMESTAMP,
+                    heartbeat_at TIMESTAMP, selected_url VARCHAR, data_node VARCHAR,
+                    last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP,
                     completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_task (
-                    task_id VARCHAR PRIMARY KEY,
-                    session_id VARCHAR,
-                    logical_file_id VARCHAR,
-                    file_key VARCHAR,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    filename VARCHAR,
-                    subdir VARCHAR,
-                    target_path VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    status VARCHAR,
-                    attempts INTEGER,
-                    bytes_done DOUBLE,
-                    speed_bps DOUBLE,
-                    eta_seconds DOUBLE,
-                    progress_updated_at TIMESTAMP,
-                    current_url VARCHAR,
-                    job_id VARCHAR,
-                    owner_id VARCHAR,
-                    lease_until TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    selected_url VARCHAR,
-                    data_node VARCHAR,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_candidate (
-                    candidate_id VARCHAR PRIMARY KEY,
-                    task_id VARCHAR,
-                    url VARCHAR,
-                    service VARCHAR,
-                    data_node VARCHAR,
-                    priority INTEGER,
-                    probe_latency DOUBLE,
-                    probe_throughput DOUBLE,
-                    range_supported BOOLEAN,
-                    range_size DOUBLE,
-                    range_etag VARCHAR,
-                    range_last_modified VARCHAR,
-                    range_final_url VARCHAR,
-                    range_probe_error VARCHAR,
-                    range_probed_at TIMESTAMP,
-                    failed_count INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
+                )",
+                "CREATE TABLE IF NOT EXISTS download_candidate (
+                    candidate_id VARCHAR PRIMARY KEY, task_id VARCHAR, url VARCHAR,
+                    service VARCHAR, data_node VARCHAR, priority INTEGER,
+                    probe_latency DOUBLE, probe_throughput DOUBLE,
+                    range_supported BOOLEAN, range_size DOUBLE,
+                    range_etag VARCHAR, range_last_modified VARCHAR,
+                    range_final_url VARCHAR, range_probe_error VARCHAR,
+                    range_probed_at TIMESTAMP, failed_count INTEGER,
+                    last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_piece (
+                    piece_id VARCHAR PRIMARY KEY, task_id VARCHAR, piece_index INTEGER,
+                    start_byte DOUBLE, end_byte DOUBLE, byte_count DOUBLE,
+                    path VARCHAR, status VARCHAR, candidate_id VARCHAR,
+                    attempts INTEGER, bytes_done DOUBLE, last_error VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_event (
+                    event_id VARCHAR PRIMARY KEY, job_id VARCHAR, session_id VARCHAR,
+                    task_id VARCHAR, event VARCHAR, message VARCHAR, created_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_job (
+                    job_id VARCHAR PRIMARY KEY, session_id VARCHAR, status VARCHAR,
+                    mode VARCHAR, pid INTEGER, hostname VARCHAR, store_path VARCHAR,
+                    log_path VARCHAR, overwrite BOOLEAN, resume BOOLEAN,
+                    bytes_done DOUBLE, bytes_total DOUBLE, speed_bps DOUBLE,
+                    active_task_count INTEGER, progress_updated_at TIMESTAMP,
+                    started_at TIMESTAMP, heartbeat_at TIMESTAMP, completed_at TIMESTAMP,
+                    exit_code INTEGER, error VARCHAR, created_at TIMESTAMP,
                     updated_at TIMESTAMP
-                )
-            "
+                )",
+                "CREATE TABLE IF NOT EXISTS download_daemon (
+                    daemon_id VARCHAR PRIMARY KEY, status VARCHAR, pid INTEGER,
+                    hostname VARCHAR, port INTEGER, token VARCHAR,
+                    heartbeat_interval DOUBLE, started_at TIMESTAMP,
+                    heartbeat_at TIMESTAMP, stopped_at TIMESTAMP, log_path VARCHAR,
+                    error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_control (
+                    control_id VARCHAR PRIMARY KEY, target_type VARCHAR,
+                    target_id VARCHAR, command VARCHAR, status VARCHAR,
+                    message VARCHAR, created_at TIMESTAMP, handled_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_node (
+                    node_id VARCHAR PRIMARY KEY, data_node VARCHAR, service VARCHAR,
+                    success_count INTEGER, failure_count INTEGER, bytes_done DOUBLE,
+                    avg_latency DOUBLE, probe_success_count INTEGER,
+                    probe_failure_count INTEGER, last_success_at TIMESTAMP,
+                    last_failure_at TIMESTAMP, last_probe_at TIMESTAMP,
+                    cooldown_until TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_meta (
+                    key VARCHAR PRIMARY KEY, value VARCHAR, updated_at TIMESTAMP
+                )"
             )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_piece (
-                    piece_id VARCHAR PRIMARY KEY,
-                    task_id VARCHAR,
-                    piece_index INTEGER,
-                    start_byte DOUBLE,
-                    end_byte DOUBLE,
-                    byte_count DOUBLE,
-                    path VARCHAR,
-                    status VARCHAR,
-                    candidate_id VARCHAR,
-                    attempts INTEGER,
-                    bytes_done DOUBLE,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_event (
-                    event_id VARCHAR PRIMARY KEY,
-                    job_id VARCHAR,
-                    session_id VARCHAR,
-                    task_id VARCHAR,
-                    event VARCHAR,
-                    message VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_job (
-                    job_id VARCHAR PRIMARY KEY,
-                    session_id VARCHAR,
-                    status VARCHAR,
-                    mode VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    store_path VARCHAR,
-                    log_path VARCHAR,
-                    overwrite BOOLEAN,
-                    resume BOOLEAN,
-                    bytes_done DOUBLE,
-                    bytes_total DOUBLE,
-                    speed_bps DOUBLE,
-                    active_task_count INTEGER,
-                    progress_updated_at TIMESTAMP,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    exit_code INTEGER,
-                    error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_daemon (
-                    daemon_id VARCHAR PRIMARY KEY,
-                    status VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    port INTEGER,
-                    token VARCHAR,
-                    heartbeat_interval DOUBLE,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    stopped_at TIMESTAMP,
-                    log_path VARCHAR,
-                    error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_control (
-                    control_id VARCHAR PRIMARY KEY,
-                    target_type VARCHAR,
-                    target_id VARCHAR,
-                    command VARCHAR,
-                    status VARCHAR,
-                    message VARCHAR,
-                    created_at TIMESTAMP,
-                    handled_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_node (
-                    node_id VARCHAR PRIMARY KEY,
-                    data_node VARCHAR,
-                    service VARCHAR,
-                    success_count INTEGER,
-                    failure_count INTEGER,
-                    bytes_done DOUBLE,
-                    avg_latency DOUBLE,
-                    probe_success_count INTEGER,
-                    probe_failure_count INTEGER,
-                    last_success_at TIMESTAMP,
-                    last_failure_at TIMESTAMP,
-                    last_probe_at TIMESTAMP,
-                    cooldown_until TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_meta (
-                    key VARCHAR PRIMARY KEY,
-                    value VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
+            for (sql in ddls) {
+                private$exec_manifest(sql)
+            }
             private$migrate_manifest_schema()
             invisible(NULL)
         },
@@ -5180,144 +5071,73 @@ Downloader <- R6::R6Class(
                     )
                 }
             }
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_success_count INTEGER"
+            additions <- list(
+                download_node = c(
+                    "probe_success_count INTEGER",
+                    "probe_failure_count INTEGER",
+                    "last_probe_at TIMESTAMP",
+                    "cooldown_until TIMESTAMP"
+                ),
+                download_config = c(
+                    "node_cooldown_after_failures INTEGER",
+                    "node_cooldown_seconds INTEGER",
+                    "node_history_ttl_seconds INTEGER",
+                    "node_min_attempts INTEGER",
+                    "transfer_chunk_size DOUBLE",
+                    "transfer_bandwidth_limit DOUBLE",
+                    "transfer_low_speed_limit DOUBLE",
+                    "transfer_low_speed_time DOUBLE",
+                    "transfer_range_mode VARCHAR",
+                    "transfer_piece_size INTEGER",
+                    "transfer_piece_concurrency INTEGER",
+                    "transfer_max_sources INTEGER",
+                    "transfer_require_checksum_for_multisource BOOLEAN",
+                    "transfer_range_probe_timeout INTEGER",
+                    "resource_host_concurrency INTEGER",
+                    "resource_disk_preflight BOOLEAN",
+                    "resource_min_free_space DOUBLE"
+                ),
+                download_task = c(
+                    "speed_bps DOUBLE",
+                    "eta_seconds DOUBLE",
+                    "progress_updated_at TIMESTAMP",
+                    "current_url VARCHAR",
+                    "job_id VARCHAR",
+                    "owner_id VARCHAR",
+                    "lease_until TIMESTAMP",
+                    "heartbeat_at TIMESTAMP"
+                ),
+                download_event = "job_id VARCHAR",
+                download_job = c(
+                    "mode VARCHAR",
+                    "store_path VARCHAR",
+                    "overwrite BOOLEAN",
+                    "resume BOOLEAN",
+                    "bytes_done DOUBLE",
+                    "bytes_total DOUBLE",
+                    "speed_bps DOUBLE",
+                    "active_task_count INTEGER",
+                    "progress_updated_at TIMESTAMP"
+                ),
+                download_candidate = c(
+                    "range_supported BOOLEAN",
+                    "range_size DOUBLE",
+                    "range_etag VARCHAR",
+                    "range_last_modified VARCHAR",
+                    "range_final_url VARCHAR",
+                    "range_probe_error VARCHAR",
+                    "range_probed_at TIMESTAMP"
+                )
             )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_failure_count INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS last_probe_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS cooldown_until TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_after_failures INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_seconds INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_history_ttl_seconds INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_min_attempts INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_chunk_size DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_bandwidth_limit DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_limit DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_time DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_range_mode VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_piece_size INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_piece_concurrency INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_max_sources INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_require_checksum_for_multisource BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_range_probe_timeout INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_host_concurrency INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_disk_preflight BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_min_free_space DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS speed_bps DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS eta_seconds DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS progress_updated_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS current_url VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS job_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS owner_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS lease_until TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_event ADD COLUMN IF NOT EXISTS job_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS mode VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS store_path VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS overwrite BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS resume BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS bytes_done DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS bytes_total DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS speed_bps DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS active_task_count INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS progress_updated_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_supported BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_size DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_etag VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_last_modified VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_final_url VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_probe_error VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_probed_at TIMESTAMP"
-            )
+            for (tbl in names(additions)) {
+                for (col in additions[[tbl]]) {
+                    private$exec_manifest(sprintf(
+                        "ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s",
+                        tbl,
+                        col
+                    ))
+                }
+            }
             invisible(NULL)
         },
         # }}}
@@ -5381,61 +5201,45 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
+        # select_rows {{{
+        select_rows = function(
+            table,
+            eq = list(),
+            in_vals = list(),
+            order_by = NULL
+        ) {
+            where <- downloader__sql_where(
+                private$manifest_conn,
+                eq = eq,
+                in_vals = in_vals
+            )
+            sql <- paste(
+                "SELECT * FROM",
+                downloader__ddb_ident(private$manifest_conn, table),
+                where,
+                if (!is.null(order_by)) paste("ORDER BY", order_by) else ""
+            )
+            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
+        },
+        # }}}
+
         # select_jobs {{{
         select_jobs = function(job_id = NULL, status = NULL) {
-            clauses <- character()
-            if (!is.null(job_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "job_id", job_id)
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_job")
+            private$select_rows(
+                "download_job",
+                in_vals = list(job_id = job_id, status = status),
+                order_by = "created_at, job_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, job_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
         # select_daemons {{{
         select_daemons = function(daemon_id = NULL, status = NULL) {
-            clauses <- character()
-            if (!is.null(daemon_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(
-                        private$manifest_conn,
-                        "daemon_id",
-                        daemon_id
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_daemon")
+            private$select_rows(
+                "download_daemon",
+                in_vals = list(daemon_id = daemon_id, status = status),
+                order_by = "created_at DESC, daemon_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at DESC, daemon_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -5445,54 +5249,12 @@ Downloader <- R6::R6Class(
             target_id = NULL,
             status = "queued"
         ) {
-            clauses <- character()
-            if (!is.null(target_type)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "target_type"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            target_type
-                        )
-                    )
-                )
-            }
-            if (!is.null(target_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "target_id"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            target_id
-                        )
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_control")
+            private$select_rows(
+                "download_control",
+                eq = list(target_type = target_type, target_id = target_id),
+                in_vals = list(status = status),
+                order_by = "created_at, control_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, control_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -6701,58 +6463,12 @@ Downloader <- R6::R6Class(
             status = NULL,
             job_id = NULL
         ) {
-            clauses <- character()
-            if (!is.null(session_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "session_id"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            session_id
-                        )
-                    )
-                )
-            }
-            if (!is.null(job_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(private$manifest_conn, "job_id"),
-                        downloader__ddb_literal(private$manifest_conn, job_id)
-                    )
-                )
-            }
-            if (!is.null(task_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(
-                        private$manifest_conn,
-                        "task_id",
-                        task_id
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_task")
+            private$select_rows(
+                "download_task",
+                eq = list(session_id = session_id, job_id = job_id),
+                in_vals = list(task_id = task_id, status = status),
+                order_by = "created_at, task_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, task_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -6883,19 +6599,11 @@ Downloader <- R6::R6Class(
 
         # get_candidates {{{
         get_candidates = function(task_id) {
-            sql <- sprintf(
-                "SELECT * FROM %s WHERE %s = %s ORDER BY priority ASC NULLS LAST, failed_count ASC NULLS LAST, created_at ASC, candidate_id ASC",
-                downloader__ddb_ident(
-                    private$manifest_conn,
-                    "download_candidate"
-                ),
-                downloader__ddb_ident(private$manifest_conn, "task_id"),
-                downloader__ddb_literal(
-                    private$manifest_conn,
-                    downloader__one_chr(task_id)
-                )
+            private$select_rows(
+                "download_candidate",
+                eq = list(task_id = downloader__one_chr(task_id)),
+                order_by = "priority ASC NULLS LAST, failed_count ASC NULLS LAST, created_at ASC, candidate_id ASC"
             )
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -7083,6 +6791,7 @@ Downloader <- R6::R6Class(
                 return(invisible(NULL))
             }
             tasks <- private$select_tasks(job_id = job_id)
+            now <- downloader__now()
             bytes_done <- if (nrow(tasks)) {
                 sum(
                     suppressWarnings(as.numeric(tasks$bytes_done)),
@@ -7096,17 +6805,19 @@ Downloader <- R6::R6Class(
             } else {
                 numeric()
             }
-            bytes_total <- if (length(size) && any(!is.na(size) & size >= 0)) {
-                sum(size[!is.na(size) & size >= 0], na.rm = TRUE)
-            } else {
-                NA_real_
-            }
+            valid_size <- !is.na(size) & size >= 0
             active <- if (nrow(tasks)) {
                 tasks$status %in% "downloading"
             } else {
                 logical()
             }
-            speed <- if (any(active)) {
+            jobs$bytes_done[[idx]] <- as.numeric(bytes_done)
+            jobs$bytes_total[[idx]] <- if (any(valid_size)) {
+                sum(size[valid_size], na.rm = TRUE)
+            } else {
+                NA_real_
+            }
+            jobs$speed_bps[[idx]] <- if (any(active)) {
                 sum(
                     suppressWarnings(as.numeric(tasks$speed_bps[active])),
                     na.rm = TRUE
@@ -7114,18 +6825,12 @@ Downloader <- R6::R6Class(
             } else {
                 NA_real_
             }
-            jobs$bytes_done[[idx]] <- as.numeric(bytes_done)
-            jobs$bytes_total[[idx]] <- as.numeric(bytes_total)
-            jobs$speed_bps[[idx]] <- as.numeric(speed)
             jobs$active_task_count[[idx]] <- as.integer(sum(active))
-            jobs$progress_updated_at[[idx]] <- downloader__now()
-            jobs$updated_at[[idx]] <- downloader__now()
-            private$replace_rows(
-                "download_job",
-                jobs[idx, , drop = FALSE],
-                "job_id"
-            )
-            invisible(jobs[idx, , drop = FALSE])
+            jobs$progress_updated_at[[idx]] <- now
+            jobs$updated_at[[idx]] <- now
+            row <- jobs[idx, , drop = FALSE]
+            private$replace_rows("download_job", row, "job_id")
+            invisible(row)
         },
         # }}}
 
@@ -7143,25 +6848,22 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
-        # update_node_stats {{{
-        update_node_stats = function(candidate, ok, bytes_done = 0) {
-            candidate <- downloader__as_df(candidate)
-            data_node <- downloader__one_chr(candidate$data_node[[1L]])
+        # load_node_row {{{
+        load_node_row = function(entry, now) {
+            data_node <- downloader__one_chr(entry$data_node[[1L]])
             if (is.na(data_node)) {
-                data_node <- downloader__url_host(candidate$url[[1L]])
+                data_node <- downloader__url_host(entry$url[[1L]])
             }
             if (is.na(data_node)) {
-                return(invisible(NULL))
+                return(NULL)
             }
-            service <- downloader__one_chr(candidate$service[[1L]])
+            service <- downloader__one_chr(entry$service[[1L]])
             if (is.na(service)) {
                 service <- "HTTPServer"
             }
             node_id <- downloader__hash(service, data_node)
-            wanted_node_id <- node_id
-            now <- downloader__now()
             nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
+            row <- nodes[nodes[["node_id"]] == node_id, , drop = FALSE]
             if (!nrow(row)) {
                 row <- downloader__df(
                     node_id = node_id,
@@ -7181,7 +6883,10 @@ Downloader <- R6::R6Class(
                 )
             }
             for (col in c("probe_success_count", "probe_failure_count")) {
-                if (!col %in% names(row)) {
+                if (
+                    !col %in% names(row) ||
+                        is.na(suppressWarnings(as.integer(row[[col]][[1L]])))
+                ) {
                     row[[col]] <- 0L
                 }
             }
@@ -7190,56 +6895,74 @@ Downloader <- R6::R6Class(
                     row[[col]] <- as.POSIXct(NA)
                 }
             }
+            row
+        },
+        # }}}
 
-            latency <- suppressWarnings(as.numeric(candidate$probe_latency[[
-                1L
-            ]]))
+        # update_node_record {{{
+        update_node_record = function(
+            entry,
+            ok,
+            mode = c("transfer", "check"),
+            bytes_done = 0
+        ) {
+            mode <- match.arg(mode)
+            entry <- downloader__as_df(entry)
+            now <- downloader__now()
+            row <- private$load_node_row(entry, now)
+            if (is.null(row)) {
+                return(invisible(NULL))
+            }
+            latency <- suppressWarnings(as.numeric(entry$probe_latency[[1L]]))
             if (isTRUE(ok)) {
-                successes <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]]))
-                if (is.na(successes)) {
-                    successes <- 0L
+                if (mode == "transfer") {
+                    successes <- downloader__int0(row$success_count)
+                    prev_bytes <- suppressWarnings(as.numeric(row$bytes_done[[
+                        1L
+                    ]]))
+                    row$success_count <- successes + 1L
+                    row$bytes_done <- (if (is.na(prev_bytes)) {
+                        0
+                    } else {
+                        prev_bytes
+                    }) +
+                        bytes_done
+                    row$last_success_at <- now
+                    row$cooldown_until <- as.POSIXct(NA)
+                } else {
+                    successes <- downloader__int0(row$probe_success_count)
+                    row$probe_success_count <- successes + 1L
                 }
-                previous_latency <- suppressWarnings(as.numeric(row$avg_latency[[
-                    1L
-                ]]))
-                previous_bytes <- suppressWarnings(as.numeric(row$bytes_done[[
-                    1L
-                ]]))
-                if (is.na(previous_bytes)) {
-                    previous_bytes <- 0
-                }
-                row$success_count <- successes + 1L
-                row$bytes_done <- previous_bytes + bytes_done
                 if (!is.na(latency)) {
-                    row$avg_latency <- if (is.na(previous_latency)) {
+                    prev_latency <- suppressWarnings(as.numeric(row$avg_latency[[
+                        1L
+                    ]]))
+                    row$avg_latency <- if (is.na(prev_latency)) {
                         latency
                     } else {
-                        ((previous_latency * successes) + latency) /
+                        ((prev_latency * successes) + latency) /
                             (successes + 1L)
                     }
                 }
-                row$last_success_at <- now
-                row$cooldown_until <- as.POSIXct(NA)
             } else {
-                failures <- suppressWarnings(as.integer(row$failure_count[[
-                    1L
-                ]]))
-                if (is.na(failures)) {
-                    failures <- 0L
-                }
-                row$failure_count <- failures + 1L
-                row$last_failure_at <- now
-                attempts <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]])) +
-                    row$failure_count[[1L]]
-                if (is.na(attempts)) {
-                    attempts <- row$failure_count[[1L]]
+                if (mode == "transfer") {
+                    fail_count <- downloader__int0(row$failure_count) + 1L
+                    row$failure_count <- fail_count
+                    row$last_failure_at <- now
+                    attempts <- downloader__int0(row$success_count) + fail_count
+                } else {
+                    check_fails <- downloader__int0(row$probe_failure_count) +
+                        1L
+                    row$probe_failure_count <- check_fails
+                    fail_count <- downloader__int0(row$failure_count) +
+                        check_fails
+                    attempts <- downloader__int0(row$success_count) +
+                        downloader__int0(row$failure_count) +
+                        downloader__int0(row$probe_success_count) +
+                        check_fails
                 }
                 if (
-                    row$failure_count[[1L]] >=
+                    fail_count >=
                         private$node_policy_config$cooldown_after_failures &&
                         attempts >= private$node_policy_config$min_attempts
                 ) {
@@ -7247,123 +6970,29 @@ Downloader <- R6::R6Class(
                         private$node_policy_config$cooldown_seconds
                 }
             }
+            if (mode == "check") {
+                row$last_probe_at <- now
+            }
             row$updated_at <- now
             private$replace_rows("download_node", as.data.frame(row), "node_id")
             invisible(row)
         },
         # }}}
 
+        # update_node_stats {{{
+        update_node_stats = function(candidate, ok, bytes_done = 0) {
+            private$update_node_record(
+                candidate,
+                ok = ok,
+                mode = "transfer",
+                bytes_done = bytes_done
+            )
+        },
+        # }}}
+
         # update_node_probe {{{
         update_node_probe = function(plan_row, ok) {
-            plan_row <- downloader__as_df(plan_row)
-            data_node <- downloader__one_chr(plan_row$data_node[[1L]])
-            if (is.na(data_node)) {
-                data_node <- downloader__url_host(plan_row$url[[1L]])
-            }
-            if (is.na(data_node)) {
-                return(invisible(NULL))
-            }
-            service <- downloader__one_chr(plan_row$service[[1L]])
-            if (is.na(service)) {
-                service <- "HTTPServer"
-            }
-            node_id <- downloader__hash(service, data_node)
-            wanted_node_id <- node_id
-            now <- downloader__now()
-            nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
-            if (!nrow(row)) {
-                row <- downloader__df(
-                    node_id = node_id,
-                    data_node = data_node,
-                    service = service,
-                    success_count = 0L,
-                    failure_count = 0L,
-                    bytes_done = 0,
-                    avg_latency = NA_real_,
-                    probe_success_count = 0L,
-                    probe_failure_count = 0L,
-                    last_success_at = as.POSIXct(NA),
-                    last_failure_at = as.POSIXct(NA),
-                    last_probe_at = as.POSIXct(NA),
-                    cooldown_until = as.POSIXct(NA),
-                    updated_at = now
-                )
-            }
-            for (col in c("probe_success_count", "probe_failure_count")) {
-                if (!col %in% names(row)) {
-                    row[[col]] <- 0L
-                }
-                value <- suppressWarnings(as.integer(row[[col]][[1L]]))
-                if (is.na(value)) row[[col]] <- 0L
-            }
-            for (col in c("last_probe_at", "cooldown_until")) {
-                if (!col %in% names(row)) {
-                    row[[col]] <- as.POSIXct(NA)
-                }
-            }
-            latency <- suppressWarnings(as.numeric(plan_row$probe_latency[[
-                1L
-            ]]))
-            if (isTRUE(ok)) {
-                successes <- suppressWarnings(as.integer(row$probe_success_count[[
-                    1L
-                ]]))
-                if (is.na(successes)) {
-                    successes <- 0L
-                }
-                row$probe_success_count <- successes + 1L
-                previous_latency <- suppressWarnings(as.numeric(row$avg_latency[[
-                    1L
-                ]]))
-                if (!is.na(latency)) {
-                    row$avg_latency <- if (is.na(previous_latency)) {
-                        latency
-                    } else {
-                        ((previous_latency * successes) + latency) /
-                            (successes + 1L)
-                    }
-                }
-            } else {
-                failures <- suppressWarnings(as.integer(row$probe_failure_count[[
-                    1L
-                ]]))
-                if (is.na(failures)) {
-                    failures <- 0L
-                }
-                row$probe_failure_count <- failures + 1L
-                total_failures <- suppressWarnings(as.integer(row$failure_count[[
-                    1L
-                ]])) +
-                    row$probe_failure_count[[1L]]
-                total_attempts <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]])) +
-                    suppressWarnings(as.integer(row$failure_count[[1L]])) +
-                    suppressWarnings(as.integer(row$probe_success_count[[
-                        1L
-                    ]])) +
-                    row$probe_failure_count[[1L]]
-                if (is.na(total_failures)) {
-                    total_failures <- row$probe_failure_count[[1L]]
-                }
-                if (is.na(total_attempts)) {
-                    total_attempts <- total_failures
-                }
-                if (
-                    total_failures >=
-                        private$node_policy_config$cooldown_after_failures &&
-                        total_attempts >=
-                            private$node_policy_config$min_attempts
-                ) {
-                    row$cooldown_until <- now +
-                        private$node_policy_config$cooldown_seconds
-                }
-            }
-            row$last_probe_at <- now
-            row$updated_at <- now
-            private$replace_rows("download_node", as.data.frame(row), "node_id")
-            invisible(row)
+            private$update_node_record(plan_row, ok = ok, mode = "check")
         },
         # }}}
 
