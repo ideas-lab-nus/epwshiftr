@@ -13,10 +13,6 @@ lpad <- function(x, pad = " ", width = NULL) {
 unlst <- function(x) unlist(x, FALSE, FALSE)
 # }}}
 
-# trim_ws {{{
-trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
-# }}}
-
 # to_title_case {{{
 to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)

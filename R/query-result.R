@@ -783,20 +783,14 @@ EsgResult <- R6::R6Class(
         filter_time_ranges_drs = function(docs, result_label = "file") {
             # Warn only about records that actually cannot be interpreted;
             # selecting the documented DRS strategy is not itself exceptional.
-            labels <- query_result__drs_labels(docs)
-            ranges <- query_result__drs_ranges(labels$value)
-            unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)
-            if (any(unknown)) {
-                warning(
-                    sprintf(
-                        "Could not parse a DRS time range for %d %s record(s); keeping those records.",
-                        sum(unknown),
-                        result_label
-                    ),
-                    call. = FALSE
-                )
-            }
-
+            ranges <- query_result__drs_ranges(
+                query_result__drs_labels(docs)$value
+            )
+            private$warn_unknown_time_ranges(
+                ranges,
+                "Could not parse a DRS time range for %d %s record(s); keeping those records.",
+                result_label
+            )
             ranges
         },
         # }}}
@@ -809,22 +803,21 @@ EsgResult <- R6::R6Class(
             ranges <- query_result__fill_time_ranges(docs, function() {
                 query_result__drs_labels(docs)$value
             })
-            unknown <- is.na(ranges$datetime_start) |
-                is.na(ranges$datetime_end)
-            if (any(unknown)) {
-                warning(
-                    sprintf(
-                        paste(
-                            "Could not determine a metadata or DRS time range",
-                            "for %d %s record(s); keeping those records."
-                        ),
-                        sum(unknown),
-                        result_label
-                    ),
-                    call. = FALSE
-                )
-            }
+            private$warn_unknown_time_ranges(
+                ranges,
+                "Could not determine a metadata or DRS time range for %d %s record(s); keeping those records.",
+                result_label
+            )
             ranges
+        },
+        # }}}
+        # warn_unknown_time_ranges {{{
+        warn_unknown_time_ranges = function(ranges, fmt, result_label) {
+            unknown <- is.na(ranges$datetime_start) | is.na(ranges$datetime_end)
+            if (any(unknown)) {
+                warning(sprintf(fmt, sum(unknown), result_label), call. = FALSE)
+            }
+            invisible(NULL)
         },
         # }}}
         # filter_time_ranges_opendap
@@ -1042,6 +1035,16 @@ EsgResult <- R6::R6Class(
             )
         },
         # }}}
+        # get_opendap_url {{{
+        get_opendap_url = function() {
+            url <- private$get_url("OPENDAP", "OPeNDAP")
+            has_html <- !is.na(url) & tools::file_ext(url) == "html"
+            if (any(has_html)) {
+                url[has_html] <- tools::file_path_sans_ext(url[has_html])
+            }
+            url
+        },
+        # }}}
         # get_output_field
         # get_output_field {{{
         get_output_field = function(field, formatted = FALSE) {
@@ -1155,6 +1158,17 @@ EsgResult <- R6::R6Class(
             value
         },
         # }}}
+        # print_result {{{
+        print_result = function(n = 10L) {
+            type <- private$result_type
+            private$print_header(type)
+            private$print_summary(type)
+            private$print_parameters()
+            cli::cat_line()
+            private$print_contents(type, n)
+            invisible(self)
+        },
+        # }}}
         # print_header
         # print_header {{{
         print_header = function(type = "") {
@@ -1176,35 +1190,24 @@ EsgResult <- R6::R6Class(
             cli::cli_bullets(c("*" = "Collected at: {ts}"))
             cli::cli_bullets(c("*" = "Result count: {self$count()}"))
             if (identical(type, "Dataset")) {
-                n_files <- private$get_field("number_of_files")
-                if (!is.null(n_files)) {
-                    n_files <- suppressWarnings(as.numeric(n_files))
-                    n_files <- n_files[!is.na(n_files)]
-                    if (length(n_files)) {
-                        n_files <- format(
-                            sum(n_files),
+                emit_count <- function(field, label) {
+                    vals <- private$get_field(field)
+                    if (is.null(vals)) {
+                        return(invisible(NULL))
+                    }
+                    vals <- suppressWarnings(as.numeric(vals))
+                    vals <- vals[!is.na(vals)]
+                    if (length(vals)) {
+                        total <- format(
+                            sum(vals),
                             big.mark = ",",
                             scientific = FALSE
                         )
-                        cli::cli_bullets(c("*" = "Dataset files: {n_files}"))
+                        cli::cli_bullets(c("*" = "{label}: {total}"))
                     }
                 }
-
-                n_aggs <- private$get_field("number_of_aggregations")
-                if (!is.null(n_aggs)) {
-                    n_aggs <- suppressWarnings(as.numeric(n_aggs))
-                    n_aggs <- n_aggs[!is.na(n_aggs)]
-                    if (length(n_aggs)) {
-                        n_aggs <- format(
-                            sum(n_aggs),
-                            big.mark = ",",
-                            scientific = FALSE
-                        )
-                        cli::cli_bullets(c(
-                            "*" = "Dataset aggregations: {n_aggs}"
-                        ))
-                    }
-                }
+                emit_count("number_of_files", "Dataset files")
+                emit_count("number_of_aggregations", "Dataset aggregations")
             }
             if (type == "Aggregation") {
                 cli::cli_bullets(c(
@@ -1255,7 +1258,6 @@ EsgResult <- R6::R6Class(
                 return()
             }
 
-            checkmate::assert_count(n, positive = TRUE, null.ok = TRUE)
             n <- if (is.null(n)) self$count() else min(n, self$count())
             ind <- seq_len(n)
 
@@ -2291,11 +2293,7 @@ EsgResultDataset <- R6::R6Class(
             )
             params <- built$params
             limit <- built$limit
-            req_fld <- if (type == "File") {
-                EsgResultFile$private_fields$required_fields
-            } else if (type == "Aggregation") {
-                EsgResultAggregation$private_fields$required_fields
-            }
+            req_fld <- query_result__required(type)
 
             if (self$count() == 0L) {
                 result <- query_result__empty_response(params)
@@ -2330,23 +2328,13 @@ EsgResultDataset <- R6::R6Class(
             }
 
             # create new results
-            if (type == "File") {
-                query_result__new(
-                    EsgResultFile,
-                    child_index_node,
-                    result_params,
-                    result$response,
-                    context = result$context
-                )
-            } else if (type == "Aggregation") {
-                query_result__new(
-                    EsgResultAggregation,
-                    child_index_node,
-                    result_params,
-                    result$response,
-                    context = result$context
-                )
-            }
+            query_result__new(
+                query_result__generator(type),
+                child_index_node,
+                result_params,
+                result$response,
+                context = result$context
+            )
         },
         # }}}
         # expand_replicas
@@ -2389,12 +2377,7 @@ EsgResultDataset <- R6::R6Class(
         #' @return The `EsgResultDataset` object itself, invisibly.
         # print {{{
         print = function(n = 10L) {
-            private$print_header("Dataset")
-            private$print_summary("Dataset")
-            private$print_parameters()
-            cli::cat_line()
-            private$print_contents("Dataset", n)
-            invisible(self)
+            private$print_result(n)
         }
         # }}}
     ),
@@ -2569,27 +2552,17 @@ EsgResultDataset <- R6::R6Class(
                 dataset_id <- NULL
             }
 
-            # create a new query to validate params
-            query <- esg_query(private$index_node)
-            query$distrib(controls$distrib)
-
             store <- QueryParamStore$new()
             store$project(NULL)
+            store$distrib(controls$distrib)
             query_result__merge_params(
                 store,
                 c(extra_params, list(dataset_id = dataset_id))
             )
-            store$fields(query_param__value(query$fields(fields)$fields()))
-            store$shards(query_param__value(query$shards(
-                controls$shards
-            )$shards()))
-            store$replica(query_param__value(query$replica(
-                controls$replica
-            )$replica()))
-            store$latest(query_param__value(query$latest(
-                controls$latest
-            )$latest()))
-            store$distrib(query_param__value(query$distrib()))
+            store$fields(fields)
+            store$shards(controls$shards)
+            store$replica(controls$replica)
+            store$latest(controls$latest)
             store$limit(limit)
             store$offset(0L)
             store$type(type)
@@ -2990,12 +2963,7 @@ EsgResultFile <- R6::R6Class(
         #' @return The `EsgResultFile` object itself, invisibly.
         # print {{{
         print = function(n = 10L) {
-            private$print_header("File")
-            private$print_summary("File")
-            private$print_parameters()
-            cli::cat_line()
-            private$print_contents("File", n)
-            invisible(self)
+            private$print_result(n)
         },
         # }}}
         # open_dataset
@@ -3056,13 +3024,7 @@ EsgResultFile <- R6::R6Class(
         #'        files.
         # url_opendap {{{
         url_opendap = function() {
-            url <- private$get_url("OPENDAP", "OPeNDAP")
-
-            has_html <- !is.na(url) & tools::file_ext(url) == "html"
-            if (any(has_html)) {
-                url[has_html] <- tools::file_path_sans_ext(url[has_html])
-            }
-            url
+            private$get_opendap_url()
         },
         # }}}
         # url_download
@@ -3333,12 +3295,7 @@ EsgResultAggregation <- R6::R6Class(
         #' @return The `EsgResultAggregation` object itself, invisibly.
         # print {{{
         print = function(n = 10L) {
-            private$print_header("Aggregation")
-            private$print_summary("Aggregation")
-            private$print_parameters()
-            cli::cat_line()
-            private$print_contents("Aggregation", n)
-            invisible(self)
+            private$print_result(n)
         },
         # }}}
         # open_dataset
@@ -3393,12 +3350,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        files.
         # url_opendap {{{
         url_opendap = function() {
-            url <- private$get_url("OPENDAP", "OPeNDAP")
-            has_html <- !is.na(url) & tools::file_ext(url) == "html"
-            if (any(has_html)) {
-                url[has_html] <- tools::file_path_sans_ext(url[has_html])
-            }
-            url
+            private$get_opendap_url()
         },
         # }}}
         # url_download

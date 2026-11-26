@@ -736,17 +736,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # project {{{
         project = function(value = "CMIP6") {
-            if (missing(value)) {
-                return(private$parameter$project())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$project(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("project")
         },
         # }}}
 
@@ -761,17 +751,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # activity_id {{{
         activity_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$activity_id())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$activity_id(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("activity_id")
         },
         # }}}
 
@@ -786,17 +766,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # experiment_id {{{
         experiment_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$experiment_id())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$experiment_id(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("experiment_id")
         },
         # }}}
 
@@ -810,17 +780,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # source_id {{{
         source_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$source_id())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$source_id(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("source_id")
         },
         # }}}
 
@@ -834,17 +794,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # variable_id {{{
         variable_id = function(value) {
-            if (missing(value)) {
-                return(private$parameter$variable_id())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$variable_id(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("variable_id")
         },
         # }}}
 
@@ -858,17 +808,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # frequency {{{
         frequency = function(value) {
-            if (missing(value)) {
-                return(private$parameter$frequency())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$frequency(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("frequency")
         },
         # }}}
 
@@ -882,17 +822,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # variant_label {{{
         variant_label = function(value) {
-            if (missing(value)) {
-                return(private$parameter$variant_label())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$variant_label(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("variant_label")
         },
         # }}}
 
@@ -906,17 +836,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # nominal_resolution {{{
         nominal_resolution = function(value) {
-            if (missing(value)) {
-                return(private$parameter$nominal_resolution())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$nominal_resolution(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("nominal_resolution")
         },
         # }}}
 
@@ -930,17 +850,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # data_node {{{
         data_node = function(value) {
-            if (missing(value)) {
-                return(private$parameter$data_node())
-            }
-            private$eval_param_call(
-                substitute(
-                    private$parameter$data_node(value),
-                    list(value = substitute(value))
-                ),
-                parent.frame()
-            )
-            self
+            private$forward_facet("data_node")
         },
         # }}}
 
@@ -954,11 +864,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # facets {{{
         facets = function(value) {
-            if (missing(value)) {
-                return(private$parameter$facets())
-            }
-            private$parameter$facets(value)
-            self
+            private$forward_ctrl("facets")
         },
         # }}}
 
@@ -973,11 +879,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # fields {{{
         fields = function(value = "*") {
-            if (missing(value)) {
-                return(private$parameter$fields())
-            }
-            private$parameter$fields(value)
-            self
+            private$forward_ctrl("fields")
         },
         # }}}
 
@@ -991,11 +893,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # shards {{{
         shards = function(value) {
-            if (missing(value)) {
-                return(private$parameter$shards())
-            }
-            private$parameter$shards(value)
-            self
+            private$forward_ctrl("shards")
         },
         # }}}
 
@@ -1012,16 +910,7 @@ EsgQuery <- R6::R6Class(
         #'         object. Otherwise, a list with `start` and `stop` elements.
         # datetime_range {{{
         datetime_range = function(start, stop) {
-            if (missing(start) && missing(stop)) {
-                return(private$parameter$datetime_range())
-            }
-            if (!missing(start)) {
-                private$parameter$datetime_range(start = start)
-            }
-            if (!missing(stop)) {
-                private$parameter$datetime_range(stop = stop)
-            }
-            self
+            private$forward_range("datetime_range", "start", "stop")
         },
         # }}}
 
@@ -1037,16 +926,7 @@ EsgQuery <- R6::R6Class(
         #'         object. Otherwise, a list with `from` and `to` elements.
         # timestamp_range {{{
         timestamp_range = function(from, to) {
-            if (missing(from) && missing(to)) {
-                return(private$parameter$timestamp_range())
-            }
-            if (!missing(from)) {
-                private$parameter$timestamp_range(from = from)
-            }
-            if (!missing(to)) {
-                private$parameter$timestamp_range(to = to)
-            }
-            self
+            private$forward_range("timestamp_range", "from", "to")
         },
         # }}}
 
@@ -1064,16 +944,7 @@ EsgQuery <- R6::R6Class(
         #'         object. Otherwise, a list with `min` and `max` elements.
         # version_range {{{
         version_range = function(min, max) {
-            if (missing(min) && missing(max)) {
-                return(private$parameter$version_range())
-            }
-            if (!missing(min)) {
-                private$parameter$version_range(min = min)
-            }
-            if (!missing(max)) {
-                private$parameter$version_range(max = max)
-            }
-            self
+            private$forward_range("version_range", "min", "max")
         },
         # }}}
 
@@ -1087,11 +958,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # replica {{{
         replica = function(value) {
-            if (missing(value)) {
-                return(private$parameter$replica())
-            }
-            private$parameter$replica(value)
-            self
+            private$forward_ctrl("replica")
         },
         # }}}
 
@@ -1105,11 +972,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # latest {{{
         latest = function(value = NULL) {
-            if (missing(value)) {
-                return(private$parameter$latest())
-            }
-            private$parameter$latest(value)
-            self
+            private$forward_ctrl("latest")
         },
         # }}}
 
@@ -1123,11 +986,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # limit {{{
         limit = function(value = 10L) {
-            if (missing(value)) {
-                return(private$parameter$limit())
-            }
-            private$parameter$limit(value)
-            self
+            private$forward_ctrl("limit")
         },
         # }}}
 
@@ -1141,11 +1000,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # offset {{{
         offset = function(value = 0L) {
-            if (missing(value)) {
-                return(private$parameter$offset())
-            }
-            private$parameter$offset(value)
-            self
+            private$forward_ctrl("offset")
         },
         # }}}
 
@@ -1159,11 +1014,7 @@ EsgQuery <- R6::R6Class(
         #'         Otherwise, a `QueryParam` object or `NULL`.
         # distrib {{{
         distrib = function(value = TRUE) {
-            if (missing(value)) {
-                return(private$parameter$distrib())
-            }
-            private$parameter$distrib(value)
-            self
+            private$forward_ctrl("distrib")
         },
         # }}}
 
@@ -1710,6 +1561,58 @@ EsgQuery <- R6::R6Class(
             names(value) <- nm
 
             value
+        },
+        # }}}
+
+        # forward_facet {{{
+        forward_facet = function(name) {
+            frame <- parent.frame()
+            if (eval(quote(missing(value)), frame)) {
+                return(.subset2(private$parameter, name)())
+            }
+            expr <- eval(quote(substitute(value)), frame)
+            call <- as.call(list(
+                call("$", quote(private$parameter), as.name(name)),
+                expr
+            ))
+            private$eval_param_call(call, parent.frame(2L))
+            self
+        },
+        # }}}
+
+        # forward_ctrl {{{
+        forward_ctrl = function(name) {
+            frame <- parent.frame()
+            if (eval(quote(missing(value)), frame)) {
+                return(.subset2(private$parameter, name)())
+            }
+            .subset2(private$parameter, name)(get(
+                "value",
+                envir = frame,
+                inherits = FALSE
+            ))
+            self
+        },
+        # }}}
+
+        # forward_range {{{
+        forward_range = function(name, first_name, second_name) {
+            frame <- parent.frame()
+            fn <- .subset2(private$parameter, name)
+            m1 <- eval(call("missing", as.name(first_name)), frame)
+            m2 <- eval(call("missing", as.name(second_name)), frame)
+            if (m1 && m2) {
+                return(fn())
+            }
+            if (!m1) {
+                val <- get(first_name, envir = frame, inherits = FALSE)
+                do.call(fn, stats::setNames(list(val), first_name))
+            }
+            if (!m2) {
+                val <- get(second_name, envir = frame, inherits = FALSE)
+                do.call(fn, stats::setNames(list(val), second_name))
+            }
+            self
         },
         # }}}
 

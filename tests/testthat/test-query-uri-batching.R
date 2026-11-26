@@ -41,7 +41,7 @@ query_uri__reject <- function(url) {
 }
 # }}}
 
-test_that("complete URLs include normalized fields and fixed parameter overhead", {
+test_that("URL budgeting accounts for normalized fields and attempts oversized singletons", {
     seen <- character()
     local_mocked_bindings(cache__read_json = function(url, ...) {
         seen <<- c(seen, url)
@@ -66,27 +66,18 @@ test_that("complete URLs include normalized fields and fixed parameter overhead"
     ))
     expect_true(all(vapply(
         seen,
-        function(url) {
-            all(required %in% query_uri__param(url, "fields"))
-        },
+        function(url) all(required %in% query_uri__param(url, "fields")),
         logical(1L)
     )))
     expect_identical(out$docs$id, ids)
     expect_identical(query_param__value(store$fields()), "id")
     expect_identical(query_param__value(out$parameter$state()$dataset_id), ids)
-})
 
-test_that("an oversized singleton is sent and may succeed", {
     seen <- character()
-    local_mocked_bindings(cache__read_json = function(url, ...) {
-        seen <<- c(seen, url)
-        query_uri__response(query_uri__param(url, "dataset_id"))
-    })
-    ids <- c(strrep("a", 2500L), "b")
-    store <- QueryParamStore$new()$params(dataset_id = ids)$limit(10L)
+    long_ids <- c(strrep("a", 2500L), "b")
     out <- query_result__collect_batched(
         "https://example.org",
-        store,
+        QueryParamStore$new()$params(dataset_id = long_ids)$limit(10L),
         "dataset_id"
     )
     expect_length(seen, 2L)
@@ -94,7 +85,7 @@ test_that("an oversized singleton is sent and may succeed", {
         nchar(seen[[1L]], type = "bytes"),
         QUERY_RESULT_COLLECT_MAX_URL_BYTES
     )
-    expect_identical(out$docs$id, ids)
+    expect_identical(out$docs$id, long_ids)
 })
 
 test_that("414 retries halve all three identity facets and preserve limits", {
@@ -167,7 +158,7 @@ test_that("414 during pagination discards partial pages before restarting", {
     expect_equal(out$response$response$numFound, 4L)
 })
 
-test_that("only a rejected singleton ends 414 splitting", {
+test_that("rejected singletons end 414 splitting while unrelated errors do not split", {
     seen <- character()
     local_mocked_bindings(cache__read_json = function(url, ...) {
         seen <<- c(seen, url)
@@ -185,15 +176,12 @@ test_that("only a rejected singleton ends 414 splitting", {
     )
     expect_length(seen, 2L)
     expect_identical(query_uri__param(seen[[2L]], "dataset_id"), "a")
-})
 
-test_that("unrelated failures do not trigger splitting", {
     count <- 0L
     local_mocked_bindings(cache__read_json = function(url, ...) {
         count <<- count + 1L
         stop("HTTP 503")
     })
-    store <- QueryParamStore$new()$params(dataset_id = c("a", "b"))
     expect_error(
         query_result__collect_batched(
             "https://example.org",
@@ -371,3 +359,5 @@ test_that("bridge batching preserves response metadata without sending fields", 
         }
     }
 })
+
+# vim: fdm=marker :

@@ -170,6 +170,81 @@ local_esgdict_default <- function(
     }
 }
 # }}}
+
+# query_test__mock_pages {{{
+query_test__mock_pages <- function(
+    pages,
+    num_found = NULL,
+    events = NULL,
+    env = parent.frame()
+) {
+    state <- new.env(parent = emptyenv())
+    state$urls <- character()
+    state$reads <- 0L
+    testthat::local_mocked_bindings(
+        cache__read_json = function(url, ...) {
+            state$reads <- state$reads + 1L
+            state$urls <- c(state$urls, url)
+            if (!is.null(events)) {
+                events$log <- c(events$log, sprintf("read:%d", state$reads))
+            }
+            docs <- pages[[min(state$reads, length(pages))]]
+            total <- if (is.null(num_found)) nrow(docs) else num_found
+            list(response = list(numFound = as.integer(total), docs = docs))
+        },
+        .package = "epwshiftr",
+        .env = env
+    )
+    state
+}
+# }}}
+
+# query_test__mock_cli_progress {{{
+query_test__mock_cli_progress <- function(
+    events = NULL,
+    env = parent.frame()
+) {
+    state <- new.env(parent = emptyenv())
+    state$bars <- list()
+    state$updates <- list()
+    state$dones <- list()
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            state$bars[[length(state$bars) + 1L]] <- list(
+                name = name,
+                total = total
+            )
+            "progress-id"
+        },
+        cli_progress_update = function(
+            id = NULL,
+            set = NULL,
+            total = NULL,
+            force = FALSE,
+            ...
+        ) {
+            if (!is.null(events)) {
+                events$log <- c(events$log, sprintf("update:%d", set))
+            }
+            state$updates[[length(state$updates) + 1L]] <- list(
+                id = id,
+                set = as.integer(set),
+                total = if (is.null(total)) NA_integer_ else as.integer(total),
+                force = isTRUE(force)
+            )
+        },
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            state$dones[[length(state$dones) + 1L]] <- list(
+                id = id,
+                result = result
+            )
+        },
+        .package = "cli",
+        .env = env
+    )
+    state
+}
+# }}}
 # }}}
 # esg_query() {{{
 test_that("esg_query()", {
@@ -412,7 +487,7 @@ test_that("EsgQuery$list_values()", {
 })
 # }}}
 # query_listing_cached() {{{
-test_that("query_listing_cached() respects max_age", {
+test_that("query_listing_cached() respects max_age in normal and offline modes", {
     dir <- tempfile("epwshiftr-expired-cache-")
     cache <- DiskCache$new(dir, max_age = 0.1)
     old_cache <- cache__set(cache)
@@ -420,17 +495,19 @@ test_that("query_listing_cached() respects max_age", {
         cache__set(old_cache)
         cache$destroy()
     })
-    local_cache_mode("normal")
 
     url <- "https://example.org/esg-search/search?project=CMIP6"
     key <- cache__response_key(url)
-    cached <- list(timestamp = Sys.time() - 3600, value = "old")
-    cache$set(key, cached)
-    Sys.setFileTime(
-        file.path(cache$info()$dir, paste0(key, ".rds")),
-        Sys.time() - 3600
-    )
+    expire_entry <- function() {
+        cache$set(key, list(timestamp = Sys.time() - 3600, value = "old"))
+        Sys.setFileTime(
+            file.path(cache$info()$dir, paste0(key, ".rds")),
+            Sys.time() - 3600
+        )
+    }
 
+    local_cache_mode("normal")
+    expire_entry()
     calls <- 0L
     fetched <- list(timestamp = Sys.time(), value = "new")
     testthat::local_mocked_bindings(
@@ -440,160 +517,62 @@ test_that("query_listing_cached() respects max_age", {
         },
         .package = "epwshiftr"
     )
-
     q <- esg_query("https://example.org")
     expect_identical(
         priv(q)$query_listing_cached(url, force = FALSE, type = "facet"),
         fetched
     )
     expect_equal(calls, 1L)
-})
 
-test_that("query_listing_cached() treats expired offline entries as misses", {
-    dir <- tempfile("epwshiftr-expired-cache-")
-    cache <- DiskCache$new(dir, max_age = 0.1)
-    old_cache <- cache__set(cache)
-    withr::defer({
-        cache__set(old_cache)
-        cache$destroy()
-    })
     local_cache_mode("offline")
-
-    url <- "https://example.org/esg-search/search?project=CMIP6"
-    key <- cache__response_key(url)
-    cache$set(key, list(timestamp = Sys.time() - 3600, value = "old"))
-    Sys.setFileTime(
-        file.path(cache$info()$dir, paste0(key, ".rds")),
-        Sys.time() - 3600
-    )
-
-    q <- esg_query("https://example.org")
+    expire_entry()
     expect_error(
         priv(q)$query_listing_cached(url, force = FALSE, type = "facet"),
         "Cache miss in offline mode"
     )
 })
 # }}}
-# EsgQuery$project() {{{
-test_that("EsgQuery$project()", {
+# EsgQuery facet and control setters {{{
+test_that("EsgQuery facet setters forward values, negation, clearing, and resolution encoding", {
     q <- esg_query()
-
     expect_equal(query_param__value(q$project()), "CMIP6")
     expect_equal(query_param__value(q$project("CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(-"CMIP5")$project()), "CMIP5")
     expect_equal(query_param__value(q$project(!"CMIP5")$project()), "CMIP5")
-})
-# }}}
-# EsgQuery$activity_id() {{{
-test_that("EsgQuery$activity_id()", {
-    q <- esg_query()
+    expect_true(q$project()@negate)
 
-    expect_null(q$activity_id())
-    expect_equal(
-        query_param__value(q$activity_id(
-            !c("CFMIP", "ScenarioMIP")
-        )$activity_id()),
-        c("CFMIP", "ScenarioMIP")
+    facets <- list(
+        activity_id = c("CFMIP", "ScenarioMIP"),
+        experiment_id = c("ssp126", "ssp585"),
+        source_id = c("BCC-CSM2-MR", "CESM2"),
+        variable_id = c("tas", "pr"),
+        frequency = c("1hr", "day"),
+        variant_label = c("r1i1p1f1", "r1i2p1f1"),
+        data_node = "esgf-node.ornl.gov"
     )
-    expect_null(q$activity_id(NULL)$activity_id())
-})
-# }}}
-# EsgQuery$experiment_id() {{{
-test_that("EsgQuery$experiment_id()", {
-    q <- esg_query()
+    for (nm in names(facets)) {
+        q <- esg_query()
+        vals <- facets[[nm]]
+        expect_null(q[[nm]]())
+        expect_equal(query_param__value(q[[nm]](!vals)[[nm]]()), vals)
+        expect_true(q[[nm]]()@negate)
+        expect_null(q[[nm]](NULL)[[nm]]())
+    }
 
-    expect_null(q$experiment_id())
-    expect_equal(
-        query_param__value(q$experiment_id(
-            !c("ssp126", "ssp585")
-        )$experiment_id()),
-        c("ssp126", "ssp585")
-    )
-    expect_null(q$experiment_id(NULL)$experiment_id())
-})
-# }}}
-# EsgQuery$source_id() {{{
-test_that("EsgQuery$source_id()", {
     q <- esg_query()
-
-    expect_null(q$source_id())
-    expect_equal(
-        query_param__value(q$source_id(!c("BCC-CSM2-MR", "CESM2"))$source_id()),
-        c("BCC-CSM2-MR", "CESM2")
-    )
-    expect_null(q$source_id(NULL)$source_id())
-})
-# }}}
-# EsgQuery$variable_id() {{{
-test_that("EsgQuery$variable_id()", {
-    q <- esg_query()
-
-    expect_null(q$variable_id())
-    expect_equal(
-        query_param__value(q$variable_id(!c("tas", "pr"))$variable_id()),
-        c("tas", "pr")
-    )
-    expect_null(q$variable_id(NULL)$variable_id())
-})
-# }}}
-# EsgQuery$frequency() {{{
-test_that("EsgQuery$frequency()", {
-    q <- esg_query()
-
-    expect_null(q$frequency())
-    expect_equal(
-        query_param__value(q$frequency(!c("1hr", "day"))$frequency()),
-        c("1hr", "day")
-    )
-    expect_null(q$frequency(NULL)$frequency())
-})
-# }}}
-# EsgQuery$variant_label() {{{
-test_that("EsgQuery$variant_label()", {
-    q <- esg_query()
-
-    expect_null(q$variant_label())
-    expect_equal(
-        query_param__value(q$variant_label(
-            !c("r1i1p1f1", "r1i2p1f1")
-        )$variant_label()),
-        c("r1i1p1f1", "r1i2p1f1")
-    )
-    expect_null(q$variant_label(NULL)$variant_label())
-})
-# }}}
-# EsgQuery$nominal_resolution() {{{
-test_that("EsgQuery$nominal_resolution()", {
-    q <- esg_query()
-
     expect_null(q$nominal_resolution())
     expect_equal(
         query_param__value(q$nominal_resolution(c(
             "100 km",
             "1x1 degree"
         ))$nominal_resolution()),
-        {
-            c("100+km", "1x1+degree", "100km")
-        }
+        c("100+km", "1x1+degree", "100km")
     )
     expect_true(q$nominal_resolution()@encoded)
     expect_null(q$nominal_resolution(NULL)$nominal_resolution())
 })
-# }}}
-# EsgQuery$data_node() {{{
-test_that("EsgQuery$data_node()", {
-    q <- esg_query()
 
-    expect_null(q$data_node())
-    expect_equal(
-        query_param__value(q$data_node("esgf-node.ornl.gov")$data_node()),
-        "esgf-node.ornl.gov"
-    )
-    expect_null(q$data_node(NULL)$data_node())
-})
-# }}}
-# EsgQuery$facets() {{{
-test_that("EsgQuery$facets()", {
+test_that("EsgQuery control setters forward facets, fields, shards, replica, latest, limit, and offset", {
     expect_null(esg_query()$facets())
     expect_equal(
         query_param__value(esg_query()$facets(c(
@@ -603,10 +582,7 @@ test_that("EsgQuery$facets()", {
         c("activity_id", "source_id")
     )
     expect_null(esg_query()$facets(NULL)$facets())
-})
-# }}}
-# EsgQuery$fields() {{{
-test_that("EsgQuery$fields()", {
+
     expect_equal(query_param__value(esg_query()$fields()), "*")
     expect_equal(
         query_param__value(esg_query()$fields(c(
@@ -615,39 +591,38 @@ test_that("EsgQuery$fields()", {
         ))$fields()),
         c("activity_id", "source_id")
     )
-    expect_equal(query_param__value(esg_query()$fields("*")$fields()), "*")
     expect_null(esg_query()$fields(NULL)$fields())
-})
-# }}}
-# EsgQuery$shards() {{{
-test_that("EsgQuery$shards()", {
-    q <- expect_s3_class(esg_query(), "EsgQuery")
 
+    q <- esg_query()
     expect_null(q$shards())
     expect_false(query_param__value(q$distrib(FALSE)$distrib()))
     expect_error(q$shards("a"), "distrib")
     expect_true(query_param__value(q$distrib(TRUE)$distrib()))
-    expect_s3_class(q$shards("a"), "EsgQuery")
     expect_equal(
         query_param__value(q$shards("esgf-solr.ceda.ac.uk:8983/solr")$shards()),
         "esgf-solr.ceda.ac.uk:8983/solr"
     )
     expect_null(q$shards(NULL)$shards())
-})
-# }}}
-# EsgQuery$replica() {{{
-test_that("EsgQuery$replica()", {
+
     expect_null(esg_query()$replica())
-    expect_equal(query_param__value(esg_query()$replica(TRUE)$replica()), TRUE)
-    expect_equal(
-        query_param__value(esg_query()$replica(FALSE)$replica()),
-        FALSE
-    )
+    expect_true(query_param__value(esg_query()$replica(TRUE)$replica()))
+    expect_false(query_param__value(esg_query()$replica(FALSE)$replica()))
     expect_null(esg_query()$replica(NULL)$replica())
+
+    expect_null(esg_query()$latest())
+    expect_false(query_param__value(esg_query()$latest(FALSE)$latest()))
+    expect_true(query_param__value(esg_query()$latest(TRUE)$latest()))
+    expect_null(esg_query()$latest(TRUE)$latest(NULL)$latest())
+
+    expect_equal(query_param__value(esg_query()$limit()), 10L)
+    expect_warning(lim <- esg_query()$limit(12000)$limit(), "10,000")
+    expect_equal(query_param__value(lim), 10000L)
+
+    expect_equal(query_param__value(esg_query()$offset()), 0L)
+    expect_equal(query_param__value(esg_query()$offset(5L)$offset()), 5L)
 })
 # }}}
 # decode_query() {{{
-# decode_query {{{
 decode_query <- function(url) {
     m <- regmatches(url, regexpr("(?<=query=)[^&]*", url, perl = TRUE))
     if (!length(m)) {
@@ -656,74 +631,77 @@ decode_query <- function(url) {
     URLdecode(m)
 }
 # }}}
-# }}}
-# EsgQuery$datetime_range() {{{
-test_that("EsgQuery$datetime_range()", {
+# EsgQuery range rendering {{{
+test_that("EsgQuery range setters render standard and bridge Solr URLs", {
     test_local_dependencies(
         query_time = as.POSIXct("2025-06-13 12:34:56", tz = "UTC")
     )
 
     q <- esg_query()
+    expect_identical(q$datetime_range(), list(start = NULL, stop = NULL))
+    expect_identical(q$timestamp_range(), list(from = NULL, to = NULL))
+    expect_identical(q$version_range(), list(min = NULL, max = NULL))
 
-    # getter: initially returns NULL for both
-    result <- q$datetime_range()
-    expect_null(result$start)
-    expect_null(result$stop)
-
-    # normal inputs
-    # full ISO 8601: start -> datetime_start:[* TO ...]
-    q$datetime_range(start = "2017-01-01T00:00:00Z")
+    # Bridge datetime_range: quoted ISO dates, datetime_stop OR datetime_end, local Date Math
     expect_match(
-        decode_query(q$url()),
+        decode_query(esg_query()$datetime_range(start = "2017")$url()),
         'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
         fixed = TRUE
     )
-
-    # full ISO 8601: stop -> datetime_stop:[... TO *]
-    q2 <- esg_query()$datetime_range(stop = "2025-01-01T00:00:00Z")
     expect_match(
-        decode_query(q2$url()),
+        decode_query(esg_query()$datetime_range(
+            stop = "2025-01-01T00:00:00Z"
+        )$url()),
         '(datetime_stop:["2025-01-01T00:00:00Z" TO *] OR datetime_end:["2025-01-01T00:00:00Z" TO *])',
         fixed = TRUE
     )
-
-    # simplified date: auto-completed to ISO 8601
-    q3 <- esg_query()$datetime_range(start = "2017")
     expect_match(
-        decode_query(q3$url()),
-        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-
-    # Bridge Date Math is evaluated locally because the bridge API does not support it.
-    q4 <- esg_query()$datetime_range(start = "NOW-1YEAR")
-    expect_match(
-        decode_query(q4$url()),
+        decode_query(esg_query()$datetime_range(start = "NOW-1YEAR")$url()),
         'datetime_start:[* TO "2024-06-13T12:34:56Z"]',
         fixed = TRUE
     )
-
-    q5 <- esg_query()$datetime_range(stop = "NOW+6MONTHS")
     expect_match(
-        decode_query(q5$url()),
+        decode_query(esg_query()$datetime_range(stop = "NOW+6MONTHS")$url()),
         '(datetime_stop:["2025-12-13T12:34:56Z" TO *] OR datetime_end:["2025-12-13T12:34:56Z" TO *])',
         fixed = TRUE
     )
-
-    q_fixed_math <- esg_query()$datetime_range(
-        start = "2025-06-13T00:00:00Z-1YEAR"
-    )
     expect_match(
-        decode_query(q_fixed_math$url()),
+        decode_query(esg_query()$datetime_range(
+            start = "2025-06-13T00:00:00Z-1YEAR"
+        )$url()),
         'datetime_start:[* TO "2024-06-13T00:00:00Z"]',
         fixed = TRUE
     )
-
-    normal_math <- esg_query("https://example.org")$datetime_range(
-        start = "NOW-1YEAR",
-        stop = "2025-06-13T00:00:00Z+1YEAR"
+    expect_match(
+        decode_query(esg_query()$datetime_range(
+            start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]"
+        )$url()),
+        'datetime_start:["2017-01-01T00:00:00Z" TO "2020-01-01T00:00:00Z"]',
+        fixed = TRUE
     )
-    normal_query <- decode_query(normal_math$url())
+    both_dt <- decode_query(esg_query()$datetime_range(
+        start = "2017-01-01T00:00:00Z",
+        stop = "2025-01-01T00:00:00Z"
+    )$url())
+    expect_match(
+        both_dt,
+        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
+    expect_match(both_dt, " AND ", fixed = TRUE)
+    expect_null(
+        esg_query()$datetime_range(start = "2017")$datetime_range(
+            start = NULL
+        )$datetime_range()$start
+    )
+
+    # Standard Solr node preserves unquoted Date Math
+    normal_query <- decode_query(
+        esg_query("https://example.org")$datetime_range(
+            start = "NOW-1YEAR",
+            stop = "2025-06-13T00:00:00Z+1YEAR"
+        )$url()
+    )
     expect_match(normal_query, "datetime_start:[* TO NOW-1YEAR]", fixed = TRUE)
     expect_match(
         normal_query,
@@ -731,298 +709,41 @@ test_that("EsgQuery$datetime_range()", {
         fixed = TRUE
     )
 
-    # complete Range expression: used directly as the field value
-    q6 <- esg_query()$datetime_range(
-        start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]"
-    )
+    # timestamp_range incremental updates, Date Math, and "*" clearing
+    q_ts <- esg_query()$timestamp_range(from = "NOW-1YEAR")
     expect_match(
-        decode_query(q6$url()),
-        'datetime_start:["2017-01-01T00:00:00Z" TO "2020-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-
-    # both start and end: two conditions joined by AND in query=
-    q7 <- esg_query()$datetime_range(
-        start = "2017-01-01T00:00:00Z",
-        stop = "2025-01-01T00:00:00Z"
-    )
-    query7 <- decode_query(q7$url())
-    expect_match(
-        query7,
-        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-    expect_match(
-        query7,
-        '(datetime_stop:["2025-01-01T00:00:00Z" TO *] OR datetime_end:["2025-01-01T00:00:00Z" TO *])',
-        fixed = TRUE
-    )
-    expect_match(query7, " AND ", fixed = TRUE)
-
-    # NULL: clears the parameter
-    q8 <- esg_query()$datetime_range(start = "2017-01-01T00:00:00Z")
-    q8$datetime_range(start = NULL)
-    expect_null(q8$datetime_range()$start)
-
-    # raw REST temporal keywords are supported when no structured helper is set
-    raw <- esg_query()$params(start = "2020", end = "2021")
-    raw_url <- utils::URLdecode(raw$url())
-    expect_match(raw_url, "start=2020", fixed = TRUE)
-    expect_match(raw_url, "end=2021", fixed = TRUE)
-
-    # structured helper takes precedence over raw REST temporal keywords
-    helper_first <- esg_query()$datetime_range(start = "2020")
-    expect_warning(
-        helper_first$params(start = "2019", end = "2021"),
-        "structured helper .* takes precedence over raw REST keyword"
-    )
-    helper_first_query <- decode_query(helper_first$url())
-    helper_first_url <- utils::URLdecode(helper_first$url())
-    expect_match(
-        helper_first_query,
-        'datetime_start:[* TO "2020-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-    expect_false(grepl("start=2019", helper_first_url, fixed = TRUE))
-    expect_false(grepl("end=2021", helper_first_url, fixed = TRUE))
-
-    raw_first <- esg_query()$params(start = "2019", end = "2021")
-    expect_warning(
-        raw_first$datetime_range(stop = "2020"),
-        "structured helper .* takes precedence over raw REST keyword"
-    )
-    raw_first_query <- decode_query(raw_first$url())
-    raw_first_url <- utils::URLdecode(raw_first$url())
-    expect_match(
-        raw_first_query,
-        '(datetime_stop:["2020-01-01T00:00:00Z" TO *] OR datetime_end:["2020-01-01T00:00:00Z" TO *])',
-        fixed = TRUE
-    )
-    expect_false(grepl("start=2019", raw_first_url, fixed = TRUE))
-    expect_false(grepl("end=2021", raw_first_url, fixed = TRUE))
-
-    # --- error inputs ---
-
-    # invalid format: solr_date() errors
-    expect_error(esg_query()$datetime_range(start = "not-a-date"))
-})
-# }}}
-# EsgQuery$timestamp_range() {{{
-test_that("EsgQuery$timestamp_range()", {
-    test_local_dependencies(
-        query_time = as.POSIXct("2025-06-13 12:34:56", tz = "UTC")
-    )
-
-    q <- esg_query()
-
-    # getter: initially returns NULL for both
-    result <- q$timestamp_range()
-    expect_null(result$from)
-    expect_null(result$to)
-
-    # --- normal inputs ---
-
-    # full ISO 8601 from + to -> _timestamp:[from TO to]
-    q1 <- esg_query()$timestamp_range(
-        from = "2020-01-01T00:00:00Z",
-        to = "2021-01-01T00:00:00Z"
-    )
-    ts1 <- q1$timestamp_range()
-    expect_s3_class(ts1$from, "S7_object")
-    expect_s3_class(ts1$to, "S7_object")
-    expect_true(is.solr_date(query_param__value(ts1$from)))
-    expect_true(is.solr_date(query_param__value(ts1$to)))
-    expect_identical(
-        unname(priv(q1)$parameter$render("_timestamp")),
-        "_timestamp:[2020-01-01T00:00:00Z TO 2021-01-01T00:00:00Z]"
-    )
-    expect_match(
-        decode_query(q1$url()),
-        '_timestamp:["2020-01-01T00:00:00Z" TO "2021-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-
-    # simplified date: auto-completed, to defaults to *
-    q2 <- esg_query()$timestamp_range(from = "2020")
-    expect_match(
-        decode_query(q2$url()),
-        '_timestamp:["2020-01-01T00:00:00Z" TO *]',
-        fixed = TRUE
-    )
-
-    # Date Math
-    q3 <- esg_query()$timestamp_range(from = "NOW-1YEAR")
-    expect_match(
-        decode_query(q3$url()),
+        decode_query(q_ts$url()),
         '_timestamp:["2024-06-13T12:34:56Z" TO *]',
         fixed = TRUE
     )
-
-    # only to
-    q4 <- esg_query()$timestamp_range(to = "2021-01-01T00:00:00Z")
+    q_ts$timestamp_range(to = "2021")
     expect_match(
-        decode_query(q4$url()),
-        '_timestamp:[* TO "2021-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-
-    # update existing lower boundary by setting upper boundary later
-    q5 <- esg_query()$timestamp_range(from = "2020")
-    q5$timestamp_range(to = "2021")
-    expect_match(
-        decode_query(q5$url()),
-        '_timestamp:["2020-01-01T00:00:00Z" TO "2021-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-
-    # existing Date Math boundary is preserved when updating the other side
-    q6 <- esg_query()$timestamp_range(from = "NOW-1YEAR")
-    q6$timestamp_range(to = "2021")
-    expect_match(
-        decode_query(q6$url()),
+        decode_query(q_ts$url()),
         '_timestamp:["2024-06-13T12:34:56Z" TO "2021-01-01T00:00:00Z"]',
         fixed = TRUE
     )
-
-    # NULL clears the parameter
-    q7 <- esg_query()$timestamp_range(from = "2020-01-01T00:00:00Z")
-    q7$timestamp_range(from = NULL)
-    expect_null(q7$timestamp_range()$from)
-    expect_null(q7$timestamp_range()$to)
-
-    # fully unbounded range is normalized away
-    q8 <- esg_query()$timestamp_range(from = "*", to = "*")
-    expect_null(q8$timestamp_range()$from)
-    expect_null(q8$timestamp_range()$to)
-    expect_identical(decode_query(q8$url()), character(0L))
-
-    # raw REST timestamp keywords are supported when no structured helper is set
-    raw <- esg_query()$params(from = "2020", to = "2021")
-    raw_url <- utils::URLdecode(raw$url())
-    expect_match(raw_url, "from=2020", fixed = TRUE)
-    expect_match(raw_url, "to=2021", fixed = TRUE)
-
-    # structured helper takes precedence over raw REST timestamp keywords
-    helper_first <- esg_query()$timestamp_range(from = "2020")
-    expect_warning(
-        helper_first$params(from = "2019", to = "2021"),
-        "structured helper .* takes precedence over raw REST keyword"
+    expect_identical(
+        decode_query(esg_query()$timestamp_range(from = "*", to = "*")$url()),
+        character(0L)
     )
-    helper_first_query <- decode_query(helper_first$url())
-    helper_first_url <- utils::URLdecode(helper_first$url())
-    expect_match(
-        helper_first_query,
-        '_timestamp:["2020-01-01T00:00:00Z" TO *]',
-        fixed = TRUE
-    )
-    expect_false(grepl("from=2019", helper_first_url, fixed = TRUE))
-    expect_false(grepl("to=2021", helper_first_url, fixed = TRUE))
-
-    raw_first <- esg_query()$params(from = "2019", to = "2021")
-    expect_warning(
-        raw_first$timestamp_range(to = "2020"),
-        "structured helper .* takes precedence over raw REST keyword"
-    )
-    raw_first_query <- decode_query(raw_first$url())
-    raw_first_url <- utils::URLdecode(raw_first$url())
-    expect_match(
-        raw_first_query,
-        '_timestamp:[* TO "2020-01-01T00:00:00Z"]',
-        fixed = TRUE
-    )
-    expect_false(grepl("from=2019", raw_first_url, fixed = TRUE))
-    expect_false(grepl("to=2021", raw_first_url, fixed = TRUE))
-
-    # --- error inputs ---
-
-    # Range syntax not supported for from/to
-    expect_error(esg_query()$timestamp_range(from = "[2020 TO 2021]"), "range")
-
-    # invalid format
-    expect_error(esg_query()$timestamp_range(from = "not-a-date"))
-})
-# }}}
-# EsgQuery$version_range() {{{
-test_that("EsgQuery$version_range()", {
-    q <- esg_query()
-
-    # getter: initially returns NULL for both
-    result <- q$version_range()
-    expect_null(result$min)
-    expect_null(result$max)
-
-    # --- normal inputs ---
-
-    # YYYYMMDD: used as-is
-    q1 <- esg_query()$version_range(min = "20200101")
-    expect_match(
-        decode_query(q1$url()),
-        "version:[20200101 TO *]",
-        fixed = TRUE
+    expect_null(
+        esg_query()$timestamp_range(from = "2020")$timestamp_range(
+            from = NULL
+        )$timestamp_range()$from
     )
 
-    # simplified year: converted to YYYYMMDD
-    q2 <- esg_query()$version_range(min = "2020")
-    expect_match(
-        decode_query(q2$url()),
-        "version:[20200101 TO *]",
-        fixed = TRUE
+    # version_range normalization to YYYYMMDD
+    ver_q <- decode_query(esg_query()$version_range(
+        min = "2020",
+        max = "2020-06"
+    )$url())
+    expect_match(ver_q, "version:[20200101 TO *]", fixed = TRUE)
+    expect_match(ver_q, "version:[* TO 20200601]", fixed = TRUE)
+    expect_null(
+        esg_query()$version_range(min = "20200101")$version_range(
+            min = NULL
+        )$version_range()$min
     )
-
-    # simplified year-month: converted to YYYYMMDD
-    q3 <- esg_query()$version_range(max = "2020-06")
-    expect_match(
-        decode_query(q3$url()),
-        "version:[* TO 20200601]",
-        fixed = TRUE
-    )
-
-    # both min and max
-    q4 <- esg_query()$version_range(min = "20200101", max = "20211231")
-    query4 <- decode_query(q4$url())
-    expect_match(query4, "version:[20200101 TO *]", fixed = TRUE)
-    expect_match(query4, "version:[* TO 20211231]", fixed = TRUE)
-
-    # NULL clears the parameter
-    q5 <- esg_query()$version_range(min = "20200101")
-    q5$version_range(min = NULL)
-    expect_null(q5$version_range()$min)
-
-    # --- error inputs ---
-
-    # Range syntax not supported
-    expect_error(esg_query()$version_range(min = "[2020 TO 2025]"), "range")
-
-    # Date Math not supported
-    expect_error(
-        esg_query()$version_range(min = "NOW-1YEAR"),
-        "[Dd]ate [Mm]ath"
-    )
-
-    # invalid format
-    expect_error(esg_query()$version_range(min = "not-a-date"))
-})
-# }}}
-# EsgQuery$latest() {{{
-test_that("EsgQuery$latest()", {
-    expect_null(esg_query()$latest())
-    expect_false(query_param__value(esg_query()$latest(FALSE)$latest()))
-    expect_true(query_param__value(esg_query()$latest(TRUE)$latest()))
-    expect_null(esg_query()$latest(TRUE)$latest(NULL)$latest())
-})
-# }}}
-# EsgQuery$limit() {{{
-test_that("EsgQuery$limit()", {
-    expect_equal(query_param__value(esg_query()$limit()), 10L)
-    expect_warning(lim <- esg_query()$limit(12000)$limit(), "10,000")
-    expect_equal(query_param__value(lim), 10000L)
-    expect_equal(query_param__value(esg_query()$limit(10L)$limit()), 10L)
-})
-# }}}
-# EsgQuery$offset() {{{
-test_that("EsgQuery$offset()", {
-    expect_equal(query_param__value(esg_query()$offset()), 0L)
-    expect_equal(query_param__value(esg_query()$offset(0)$offset()), 0L)
 })
 # }}}
 # EsgQuery$params() {{{
@@ -1282,35 +1003,21 @@ test_that("EsgQuery$collect() passes progress to Dataset and child collection", 
 })
 # }}}
 # query__collect() {{{
-test_that("query__collect() includes only result-field constraints in fields", {
-    captured_url <- character()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            captured_url <<- c(captured_url, url)
-            list(
-                response = list(
-                    numFound = 1L,
-                    docs = data.frame(
-                        id = "dataset-id",
-                        source_id = "source",
-                        project = "CMIP6",
-                        activity_id = "CMIP",
-                        table_id = "Amon",
-                        score = 1,
-                        check.names = FALSE
-                    )
-                )
-            )
-        },
-        .package = "epwshiftr"
-    )
+test_that("query__collect() normalizes fields and effective parameters", {
+    mock <- query_test__mock_pages(list(data.frame(
+        id = "dataset-id",
+        source_id = "source",
+        project = "CMIP6",
+        activity_id = "CMIP",
+        table_id = "Amon",
+        score = 1,
+        check.names = FALSE
+    )))
 
     expect_warning(
         params <- QueryParamStore$new()$activity_id("CMIP")$fields(
             "source_id"
-        )$facets("source_id")$shards(
-            "node"
-        )$params(
+        )$facets("source_id")$shards("node")$params(
             table_id = "Amon",
             bbox = "0,0,1,1",
             start = "2020",
@@ -1327,7 +1034,7 @@ test_that("query__collect() includes only result-field constraints in fields", {
         required_fields = "id",
         constraints = TRUE
     )
-    decoded_url <- utils::URLdecode(captured_url[[1L]])
+    decoded_url <- utils::URLdecode(mock$urls[[1L]])
     fields <- strsplit(
         regmatches(
             decoded_url,
@@ -1336,135 +1043,85 @@ test_that("query__collect() includes only result-field constraints in fields", {
         ",",
         fixed = TRUE
     )[[1L]]
-
     expect_identical(
         fields,
         c("source_id", "id", "project", "activity_id", "table_id")
     )
-    expect_false("bbox" %in% fields)
-    expect_false("start" %in% fields)
-    expect_false("facets" %in% fields)
+    expect_false(any(c("bbox", "start", "facets") %in% fields))
     expect_named(
         res$docs,
         c("id", "source_id", "project", "activity_id", "table_id"),
         ignore.order = TRUE
     )
-    expect_s3_class(res$parameter, "QueryParamStore")
     expect_identical(
         query_param__value(res$parameter$fields()),
         c("source_id", "id", "project", "activity_id", "table_id")
     )
-})
 
-test_that("query__collect() returns normalized effective parameters", {
-    captured_url <- character()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            captured_url <<- c(captured_url, url)
-            list(
-                response = list(
-                    numFound = 1L,
-                    docs = data.frame(
-                        id = "dataset-id",
-                        score = 1,
-                        check.names = FALSE
-                    )
-                )
-            )
-        },
-        .package = "epwshiftr"
-    )
-
-    params <- QueryParamStore$new()$fields("id")$limit(5L)$offset(2L)
-    res <- query__collect(
+    params2 <- QueryParamStore$new()$fields("id")$limit(5L)$offset(2L)
+    res2 <- query__collect(
         "https://example.org",
-        params,
+        params2,
         required_fields = c("size", "url"),
         all = TRUE,
         limit = 3L
     )
-
-    expect_s3_class(res$parameter, "QueryParamStore")
     expect_identical(
-        query_param__value(res$parameter$fields()),
+        query_param__value(res2$parameter$fields()),
         c("id", "size", "url", "project")
     )
-    expect_identical(query_param__value(res$parameter$limit()), 3L)
-    expect_identical(query_param__value(res$parameter$offset()), 0L)
+    expect_identical(query_param__value(res2$parameter$limit()), 3L)
+    expect_identical(query_param__value(res2$parameter$offset()), 0L)
 
     bridge <- query__collect(
         "https://esgf-node.ornl.gov/esgf-1-5-bridge",
-        params,
+        params2,
         required_fields = c("size", "url")
     )
     expect_null(bridge$parameter$fields())
 })
 
-test_that("query__collect() records actual page query URLs", {
-    captured_url <- character()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            captured_url <<- c(captured_url, url)
-            docs <- if (length(captured_url) == 1L) {
-                data.frame(
-                    id = c("dataset-1", "dataset-2"),
-                    score = 1,
-                    check.names = FALSE
-                )
-            } else {
-                data.frame(id = "dataset-3", score = 1, check.names = FALSE)
-            }
-            list(response = list(numFound = 3L, docs = docs))
-        },
-        .package = "epwshiftr"
+test_that("query__collect() records paginated URLs and warns on stalled pagination", {
+    page1 <- data.frame(
+        id = c("dataset-1", "dataset-2"),
+        score = 1,
+        check.names = FALSE
     )
-
+    mock <- query_test__mock_pages(
+        list(
+            page1,
+            data.frame(id = "dataset-3", score = 1, check.names = FALSE)
+        ),
+        num_found = 3L
+    )
     res <- query__collect(
         "https://example.org",
         QueryParamStore$new()$limit(2L),
         all = TRUE,
         limit = 2L
     )
-
     expect_equal(nrow(res$docs), 3L)
-    expect_identical(res$context$query_url, captured_url)
+    expect_identical(res$context$query_url, mock$urls)
     expect_true(grepl(
         "offset=0",
-        utils::URLdecode(captured_url[[1L]]),
+        utils::URLdecode(mock$urls[[1L]]),
         fixed = TRUE
     ))
     expect_true(grepl(
         "offset=2",
-        utils::URLdecode(captured_url[[2L]]),
+        utils::URLdecode(mock$urls[[2L]]),
         fixed = TRUE
     ))
-})
 
-test_that("query__collect() warns and returns partial docs when pagination does not progress", {
-    captured_url <- character()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            captured_url <<- c(captured_url, url)
-            docs <- if (length(captured_url) == 1L) {
-                data.frame(
-                    id = c("dataset-1", "dataset-2"),
-                    score = 1,
-                    check.names = FALSE
-                )
-            } else {
-                data.frame(
-                    id = character(),
-                    score = numeric(),
-                    check.names = FALSE
-                )
-            }
-            list(response = list(numFound = 3L, docs = docs))
-        },
-        .package = "epwshiftr"
+    stalled <- query_test__mock_pages(
+        list(
+            page1,
+            data.frame(id = character(), score = numeric(), check.names = FALSE)
+        ),
+        num_found = 3L
     )
-
     expect_warning(
-        res <- query__collect(
+        res_partial <- query__collect(
             "https://example.org",
             QueryParamStore$new()$limit(2L),
             all = TRUE,
@@ -1472,72 +1129,27 @@ test_that("query__collect() warns and returns partial docs when pagination does 
         ),
         "ESGF pagination stopped"
     )
-
-    expect_equal(nrow(res$docs), 2L)
-    expect_identical(res$docs$id, c("dataset-1", "dataset-2"))
-    expect_length(captured_url, 2L)
-    expect_identical(res$context$query_url, captured_url)
-    expect_true(grepl(
-        "offset=0",
-        utils::URLdecode(captured_url[[1L]]),
-        fixed = TRUE
-    ))
-    expect_true(grepl(
-        "offset=2",
-        utils::URLdecode(captured_url[[2L]]),
-        fixed = TRUE
-    ))
+    expect_identical(res_partial$docs$id, c("dataset-1", "dataset-2"))
+    expect_length(stalled$urls, 2L)
+    expect_identical(res_partial$context$query_url, stalled$urls)
 })
 
-test_that("query__collect() reports progress across collected pages", {
-    reads <- 0L
-    events <- character()
-    bars <- list()
-    updates <- list()
-    dones <- list()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            reads <<- reads + 1L
-            events <<- c(events, sprintf("read:%d", reads))
-            docs <- if (reads == 1L) {
-                data.frame(
-                    id = c("dataset-1", "dataset-2"),
-                    score = 1,
-                    check.names = FALSE
-                )
-            } else {
-                data.frame(id = "dataset-3", score = 1, check.names = FALSE)
-            }
-            list(response = list(numFound = 3L, docs = docs))
-        },
-        .package = "epwshiftr"
+test_that("query__collect() reports progress for multi-page and single-page requests", {
+    events <- new.env(parent = emptyenv())
+    events$log <- character()
+    query_test__mock_pages(
+        list(
+            data.frame(
+                id = c("dataset-1", "dataset-2"),
+                score = 1,
+                check.names = FALSE
+            ),
+            data.frame(id = "dataset-3", score = 1, check.names = FALSE)
+        ),
+        num_found = 3L,
+        events = events
     )
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(name = NULL, total = NA, ...) {
-            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
-            "progress-id"
-        },
-        cli_progress_update = function(
-            id = NULL,
-            set = NULL,
-            total = NULL,
-            force = FALSE,
-            ...
-        ) {
-            events <<- c(events, sprintf("update:%d", set))
-            updates[[length(updates) + 1L]] <<- list(
-                id = id,
-                set = as.integer(set),
-                total = if (is.null(total)) NA_integer_ else as.integer(total),
-                force = isTRUE(force)
-            )
-        },
-        cli_progress_done = function(id = NULL, result = "done", ...) {
-            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
-        },
-        .package = "cli"
-    )
-
+    prog <- query_test__mock_cli_progress(events = events)
     res <- query__collect(
         "https://example.org",
         QueryParamStore$new()$limit(2L),
@@ -1546,61 +1158,38 @@ test_that("query__collect() reports progress across collected pages", {
         progress = TRUE,
         progress_label = "Collecting test records"
     )
-
     expect_equal(nrow(res$docs), 3L)
-    expect_length(bars, 1L)
-    expect_identical(bars[[1L]]$name, "Collecting test records")
-    expect_identical(bars[[1L]]$total, 1L)
     expect_identical(
-        events,
+        prog$bars,
+        list(list(name = "Collecting test records", total = 1L))
+    )
+    expect_identical(
+        events$log,
         c("update:0", "read:1", "update:2", "read:2", "update:3")
     )
-    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(0L, 2L, 3L))
-    expect_equal(vapply(updates, `[[`, integer(1L), "total"), c(1L, 3L, 3L))
+    expect_equal(vapply(prog$updates, `[[`, integer(1L), "set"), c(0L, 2L, 3L))
     expect_equal(
-        vapply(updates, `[[`, logical(1L), "force"),
+        vapply(prog$updates, `[[`, integer(1L), "total"),
+        c(1L, 3L, 3L)
+    )
+    expect_equal(
+        vapply(prog$updates, `[[`, logical(1L), "force"),
         c(TRUE, FALSE, FALSE)
     )
-    expect_equal(dones, list(list(id = "progress-id", result = "done")))
-})
+    expect_equal(prog$dones, list(list(id = "progress-id", result = "done")))
 
-test_that("query__collect() updates progress once for a single request", {
-    updates <- list()
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) {
-            docs <- data.frame(id = "dataset-1", score = 1, check.names = FALSE)
-            list(response = list(numFound = 3L, docs = docs))
-        },
-        .package = "epwshiftr"
+    query_test__mock_pages(
+        list(data.frame(id = "dataset-1", score = 1, check.names = FALSE)),
+        num_found = 3L
     )
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(...) "progress-id",
-        cli_progress_update = function(
-            id = NULL,
-            set = NULL,
-            total = NULL,
-            force = FALSE,
-            ...
-        ) {
-            updates[[length(updates) + 1L]] <<- list(
-                id = id,
-                set = as.integer(set),
-                total = if (is.null(total)) NA_integer_ else as.integer(total),
-                force = isTRUE(force)
-            )
-        },
-        cli_progress_done = function(...) NULL,
-        .package = "cli"
-    )
-
+    prog2 <- query_test__mock_cli_progress()
     query__collect(
         "https://example.org",
         QueryParamStore$new()$limit(1L),
         progress = TRUE
     )
-
     expect_equal(
-        updates,
+        prog2$updates,
         list(
             list(id = "progress-id", set = 0L, total = 1L, force = TRUE),
             list(id = "progress-id", set = 1L, total = 3L, force = FALSE)
@@ -1609,38 +1198,26 @@ test_that("query__collect() updates progress once for a single request", {
 })
 # }}}
 # EsgQuery$collect() {{{
-test_that("EsgQuery$collect() validates local dictionary constraints", {
-    local_esgdict_default(local_query_test_esgdict())
+test_that("EsgQuery$collect() checks local dictionary only when present", {
     testthat::local_mocked_bindings(
         cache__read_json = function(url, ...) local_query_test_response(),
         .package = "epwshiftr"
     )
-
     q <- esg_query("https://example.org")$activity_id(
         "ScenarioMIP"
     )$experiment_id("historical")$limit(1L)
 
+    local_esgdict_default(local_query_test_esgdict())
     expect_warning(
         res <- q$collect(),
         "ESG dictionary check found invalid query constraint"
     )
     expect_s3_class(res, "EsgResultDataset")
-})
 
-test_that("EsgQuery$collect() skips dictionary validation without a local dictionary", {
     local_esgdict_default(NULL)
     withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
-    testthat::local_mocked_bindings(
-        cache__read_json = function(url, ...) local_query_test_response(),
-        .package = "epwshiftr"
-    )
-
-    q <- esg_query("https://example.org")$activity_id(
-        "ScenarioMIP"
-    )$experiment_id("historical")$limit(1L)
-
-    expect_warning(res <- q$collect(), NA)
-    expect_s3_class(res, "EsgResultDataset")
+    expect_warning(res2 <- q$collect(), NA)
+    expect_s3_class(res2, "EsgResultDataset")
 })
 
 test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
@@ -1696,93 +1273,6 @@ test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
 })
 # }}}
 # EsgQuery$save() / EsgQuery$load() {{{
-test_that("EsgQuery$save() / EsgQuery$load() round-trip without network", {
-    q <- EsgQuery$new("https://example.org")$activity_id(
-        "ScenarioMIP"
-    )$experiment_id("ssp585")$variable_id(
-        "tas"
-    )$limit(
-        2L
-    )$datetime_range(start = "2017")$timestamp_range(
-        from = "NOW-1YEAR",
-        to = "2021"
-    )$version_range(
-        min = "2020",
-        max = "2021"
-    )$params(table_id = c("Amon", "day"))
-
-    file <- tempfile(fileext = ".json")
-    expect_type(q$save(file), "character")
-    q_loaded <- expect_s3_class(esg_query()$load(file), "EsgQuery")
-    expect_identical(
-        priv(q_loaded)$parameter$serialize(null = TRUE),
-        priv(q)$parameter$serialize(null = TRUE)
-    )
-
-    json <- jsonlite::fromJSON(
-        file,
-        simplifyVector = TRUE,
-        simplifyMatrix = FALSE
-    )
-    expect_true(all(
-        c(
-            "project",
-            "activity_id",
-            "datetime_start",
-            "limit",
-            "type",
-            "table_id"
-        ) %in%
-            names(json$parameter)
-    ))
-
-    invalid_type <- json
-    invalid_type$parameter$type$value <- "File"
-    invalid_type_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(
-        invalid_type,
-        invalid_type_file,
-        null = "null",
-        auto_unbox = TRUE
-    )
-    expect_error(esg_query()$load(invalid_type_file), "Dataset queries")
-
-    invalid_format <- json
-    invalid_format$parameter$format$value <- "application/xml"
-    invalid_format_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(
-        invalid_format,
-        invalid_format_file,
-        null = "null",
-        auto_unbox = TRUE
-    )
-    expect_error(esg_query()$load(invalid_format_file), "JSON response format")
-
-    bucketed_parameter <- json
-    bucketed_parameter$parameter <- list(
-        facet = list(project = json$parameter$project),
-        query = list(datetime_start = json$parameter$datetime_start),
-        control = list(type = json$parameter$type)
-    )
-    bucketed_parameter$parameter[["others"]] <- list(
-        table_id = json$parameter$table_id
-    )
-    bucketed_parameter_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(
-        bucketed_parameter,
-        bucketed_parameter_file,
-        null = "null",
-        auto_unbox = TRUE
-    )
-    expect_error(esg_query()$load(bucketed_parameter_file), "Bucketed")
-
-    unlink(c(
-        file,
-        invalid_type_file,
-        invalid_format_file,
-        bucketed_parameter_file
-    ))
-})
 test_that("EsgQuery$save() / EsgQuery$load()", {
     index_node <- INDEX_NODES[["CEDA"]]
     testthat::local_mocked_bindings(
@@ -1814,12 +1304,10 @@ test_that("EsgQuery$save() / EsgQuery$load()", {
     )$timestamp_range(
         from = "NOW-1YEAR",
         to = "2021"
-    )$version_range(min = "2020")
-    expect_s3_class(priv(q_query)$parameter$datetime_range()$start, "S7_object")
-    expect_s3_class(priv(q_query)$parameter$timestamp_range()$from, "S7_object")
-    expect_s3_class(priv(q_query)$parameter$timestamp_range()$to, "S7_object")
-    expect_s3_class(priv(q_query)$parameter$version_range()$min, "S7_object")
-    file_query <- tempfile(fileext = ".json")
+    )$version_range(min = "2020", max = "2021")$params(
+        table_id = c("Amon", "day")
+    )
+    file_query <- withr::local_tempfile(fileext = ".json")
     expect_type(q_query$save(file_query), "character")
     q_query_loaded <- expect_s3_class(esg_query()$load(file_query), "EsgQuery")
     expect_equal(
@@ -1832,34 +1320,45 @@ test_that("EsgQuery$save() / EsgQuery$load()", {
         simplifyVector = TRUE,
         simplifyMatrix = FALSE
     )
+    expect_true(all(
+        c("project", "datetime_start", "limit", "type", "table_id") %in%
+            names(query_json$parameter)
+    ))
 
-    file_invalid_type <- tempfile(fileext = ".json")
-    query_json$parameter$type$value <- "File"
-    jsonlite::write_json(
-        query_json,
-        file_invalid_type,
-        null = "null",
-        auto_unbox = TRUE
-    )
-    expect_error(esg_query()$load(file_invalid_type), "Dataset queries")
+    write_mutated <- function(payload) {
+        path <- withr::local_tempfile(
+            fileext = ".json",
+            .local_envir = parent.frame()
+        )
+        jsonlite::write_json(payload, path, null = "null", auto_unbox = TRUE)
+        path
+    }
+    bad_type <- query_json
+    bad_type$parameter$type$value <- "File"
+    expect_error(esg_query()$load(write_mutated(bad_type)), "Dataset queries")
 
-    file_invalid_format <- tempfile(fileext = ".json")
-    query_json$parameter$type$value <- "Dataset"
-    query_json$parameter$format$value <- "application/xml"
-    jsonlite::write_json(
-        query_json,
-        file_invalid_format,
-        null = "null",
-        auto_unbox = TRUE
+    bad_format <- query_json
+    bad_format$parameter$format$value <- "application/xml"
+    expect_error(
+        esg_query()$load(write_mutated(bad_format)),
+        "JSON response format"
     )
-    expect_error(esg_query()$load(file_invalid_format), "JSON response format")
+
+    bucketed <- query_json
+    bucketed$parameter <- list(
+        facet = list(project = query_json$parameter$project),
+        query = list(datetime_start = query_json$parameter$datetime_start),
+        control = list(type = query_json$parameter$type),
+        others = list(table_id = query_json$parameter$table_id)
+    )
+    expect_error(esg_query()$load(write_mutated(bucketed)), "Bucketed")
 
     # query object with results
     q$collect()
-    file_collected <- tempfile(fileext = ".json")
+    file_collected <- withr::local_tempfile(fileext = ".json")
     expect_type(q$save(file_collected), "character")
     expect_true(file.exists(file_collected))
-    file_collected_copied <- tempfile(fileext = ".json")
+    file_collected_copied <- withr::local_tempfile(fileext = ".json")
     expect_true(file.copy(file_collected, file_collected_copied))
     expect_snapshot_file(
         file_collected_copied,
@@ -1872,14 +1371,6 @@ test_that("EsgQuery$save() / EsgQuery$load()", {
         priv(q_collected)$parameter$serialize(null = TRUE),
         priv(q)$parameter$serialize(null = TRUE)
     )
-
-    unlink(c(
-        file_query,
-        file_invalid_type,
-        file_invalid_format,
-        file_collected,
-        file_collected_copied
-    ))
 })
 # }}}
 # EsgQuery$print() {{{

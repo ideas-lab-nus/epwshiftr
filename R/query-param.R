@@ -1891,61 +1891,31 @@ QueryParamStore <- R6::R6Class(
                     stop = private$items$datetime_stop
                 ))
             }
-
-            # Convert a datetime boundary into the range form expected by ESGF.
-            # Point values become half-open Solr ranges, while `*` clears the bound.
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(NULL)
-                }
-
-                bound <- QueryParamDate(value)
-
-                # reset to NULL if "*"
-                if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
-                    bound <- NULL
-                } else if (S7::S7_inherits(bound@value, SolrDatePoint)) {
-                    bound@value <- if (name == "start") {
-                        SolrDateRange(
-                            start = SolrDateUnbounded(),
-                            end = bound@value
-                        )
-                    } else {
-                        SolrDateRange(
-                            start = bound@value,
-                            end = SolrDateUnbounded()
-                        )
-                    }
-                }
-
-                bound
-            }
-
             start_bound <- if (!missing(start)) {
-                ensure_bound("start", start)
-            } else {
-                NULL
+                private$parse_range_bound(
+                    "start",
+                    start,
+                    allow_range = TRUE,
+                    wrap = "start"
+                )
             }
             stop_bound <- if (!missing(stop)) {
-                ensure_bound("stop", stop)
-            } else {
-                NULL
+                private$parse_range_bound(
+                    "stop",
+                    stop,
+                    allow_range = TRUE,
+                    wrap = "stop"
+                )
             }
-            if (
-                (!missing(start) && !is.null(start_bound)) ||
-                    (!missing(stop) && !is.null(stop_bound))
-            ) {
+            if (!is.null(start_bound) || !is.null(stop_bound)) {
                 private$clear_raw(c("start", "end"), "$datetime_range()")
             }
-
             if (!missing(start)) {
                 private$set("datetime_start", start_bound)
             }
-
             if (!missing(stop)) {
                 private$set("datetime_stop", stop_bound)
             }
-
             self
         },
         # }}}
@@ -2000,55 +1970,21 @@ QueryParamStore <- R6::R6Class(
                     to = private$items$timestamp_to
                 ))
             }
-
-            # Convert a timestamp boundary into a single `QueryParamDate`.
-            # Timestamp helpers accept point-like dates only; full range syntax is rejected.
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(NULL)
-                }
-
-                bound <- QueryParamDate(value)
-
-                if (S7::S7_inherits(bound@value, SolrDateRange)) {
-                    stop(sprintf(
-                        paste(
-                            "`%s` does not support range syntax like '[... TO ...]'.",
-                            "Provide a single datetime value instead."
-                        ),
-                        name
-                    ))
-                }
-
-                # reset to NULL if "*"
-                if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
-                    bound <- NULL
-                }
-
-                bound
-            }
-
             from_bound <- if (!missing(from)) {
-                ensure_bound("from", from)
-            } else {
-                NULL
+                private$parse_range_bound("from", from)
             }
-            to_bound <- if (!missing(to)) ensure_bound("to", to) else NULL
-            if (
-                (!missing(from) && !is.null(from_bound)) ||
-                    (!missing(to) && !is.null(to_bound))
-            ) {
+            to_bound <- if (!missing(to)) {
+                private$parse_range_bound("to", to)
+            }
+            if (!is.null(from_bound) || !is.null(to_bound)) {
                 private$clear_raw(c("from", "to"), "$timestamp_range()")
             }
-
             if (!missing(from)) {
                 private$set("timestamp_from", from_bound)
             }
-
             if (!missing(to)) {
                 private$set("timestamp_to", to_bound)
             }
-
             self
         },
         # }}}
@@ -2110,65 +2046,28 @@ QueryParamStore <- R6::R6Class(
                     max = private$items$version_max
                 ))
             }
-
-            # helper: parse and validate a version boundary string.
-            # Accepts dates (incl. simplified) and converts to YYYYMMDD.
-            # Rejects Range syntax and Date Math expressions.
-            ensure_bound <- function(name, value) {
-                if (is.null(value)) {
-                    return(NULL)
-                }
-
-                bound <- QueryParamDate(value)
-
-                if (S7::S7_inherits(bound@value, SolrDateRange)) {
-                    stop(sprintf(
-                        paste(
-                            "`%s` must not contain range syntax like '[... TO ...]'.",
-                            "Use the 'min' and 'max' parameters separately to specify a range, ",
-                            "e.g. version_range(min = '20200101', max = '20211231')."
-                        ),
-                        name
-                    ))
-                }
-
-                if (S7::S7_inherits(bound@value, SolrDateMath)) {
-                    stop(sprintf(
-                        paste(
-                            "'%s' does not support Solr Date Math expressions (e.g. 'NOW-1YEAR'). ",
-                            "The 'version' field is a string type and does not support Date Math."
-                        ),
-                        name
-                    ))
-                }
-
-                if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
-                    bound <- NULL
-                } else {
-                    bound@value <- if (name == "min") {
-                        SolrDateRange(
-                            start = bound@value,
-                            end = SolrDateUnbounded()
-                        )
-                    } else {
-                        SolrDateRange(
-                            start = SolrDateUnbounded(),
-                            end = bound@value
-                        )
-                    }
-                }
-
-                bound
-            }
-
             if (!missing(min)) {
-                private$set("version_min", ensure_bound("min", min))
+                private$set(
+                    "version_min",
+                    private$parse_range_bound(
+                        "min",
+                        min,
+                        allow_math = FALSE,
+                        wrap = "min"
+                    )
+                )
             }
-
             if (!missing(max)) {
-                private$set("version_max", ensure_bound("max", max))
+                private$set(
+                    "version_max",
+                    private$parse_range_bound(
+                        "max",
+                        max,
+                        allow_math = FALSE,
+                        wrap = "max"
+                    )
+                )
             }
-
             invisible(self)
         },
         # }}}
@@ -2505,6 +2404,74 @@ QueryParamStore <- R6::R6Class(
 
             private$set(name, param)
             invisible(param)
+        },
+        # }}}
+        # parse_range_bound {{{
+        parse_range_bound = function(
+            name,
+            value,
+            allow_range = FALSE,
+            allow_math = TRUE,
+            wrap = c("none", "start", "stop", "min", "max")
+        ) {
+            wrap <- match.arg(wrap)
+            if (is.null(value)) {
+                return(NULL)
+            }
+            bound <- QueryParamDate(value)
+            if (
+                !isTRUE(allow_range) &&
+                    S7::S7_inherits(bound@value, SolrDateRange)
+            ) {
+                msg <- if (wrap %in% c("min", "max")) {
+                    paste(
+                        "`%s` must not contain range syntax like '[... TO ...]'.",
+                        "Use the 'min' and 'max' parameters separately to specify a range, ",
+                        "e.g. version_range(min = '20200101', max = '20211231')."
+                    )
+                } else {
+                    paste(
+                        "`%s` does not support range syntax like '[... TO ...]'.",
+                        "Provide a single datetime value instead."
+                    )
+                }
+                stop(sprintf(msg, name))
+            }
+            if (
+                !isTRUE(allow_math) &&
+                    S7::S7_inherits(bound@value, SolrDateMath)
+            ) {
+                stop(sprintf(
+                    paste(
+                        "'%s' does not support Solr Date Math expressions (e.g. 'NOW-1YEAR'). ",
+                        "The 'version' field is a string type and does not support Date Math."
+                    ),
+                    name
+                ))
+            }
+            if (S7::S7_inherits(bound@value, SolrDateUnbounded)) {
+                return(NULL)
+            }
+            if (
+                wrap %in%
+                    c("min", "max") ||
+                    (wrap %in%
+                        c("start", "stop") &&
+                        S7::S7_inherits(bound@value, SolrDatePoint))
+            ) {
+                bound@value <- if (wrap %in% c("start", "max")) {
+                    SolrDateRange(
+                        start = SolrDateUnbounded(),
+                        end = bound@value
+                    )
+                } else {
+                    SolrDateRange(
+                        start = bound@value,
+                        end = SolrDateUnbounded()
+                    )
+                }
+            }
+            bound
         },
         # }}}
         # extra_names

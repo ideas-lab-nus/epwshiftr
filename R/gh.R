@@ -12,7 +12,7 @@ gh_token <- function(token = NULL, header = TRUE) {
         if (token == "") return(NULL)
     }
 
-    token <- trim_ws(token)
+    token <- trimws(token)
     if (!nchar(token)) {
         return(NULL)
     }
@@ -57,16 +57,8 @@ gh_tags <- function(repo, token = NULL) {
 }
 # }}}
 
-# download_gh_file {{{
-download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
-    url <- sprintf(
-        "https://raw.githubusercontent.com/%s/%s/%s",
-        repo,
-        tag,
-        file
-    )
-    dest <- file.path(dir, file)
-
+# gh__download {{{
+gh__download <- function(url, dest, token = NULL) {
     cache__download(url, dest, function() {
         utils::download.file(
             url,
@@ -77,6 +69,18 @@ download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
         )
         dest
     })
+}
+# }}}
+
+# download_gh_file {{{
+download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
+    url <- sprintf(
+        "https://raw.githubusercontent.com/%s/%s/%s",
+        repo,
+        tag,
+        file
+    )
+    gh__download(url, file.path(dir, file), token)
 }
 # }}}
 
@@ -88,17 +92,7 @@ download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
         tag
     )
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), tag))
-
-    cache__download(url, dest, function() {
-        utils::download.file(
-            url,
-            dest,
-            mode = "wb",
-            headers = gh_token(token),
-            quiet = TRUE
-        )
-        dest
-    })
+    gh__download(url, dest, token)
 }
 # }}}
 
@@ -107,17 +101,7 @@ download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
     url <- sprintf("https://api.github.com/repos/%s/zipball/%s", repo, ref)
     ref_file <- gsub("[/\\\\]", "-", ref)
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), ref_file))
-
-    cache__download(url, dest, function() {
-        utils::download.file(
-            url,
-            dest,
-            mode = "wb",
-            headers = gh_token(token),
-            quiet = TRUE
-        )
-        dest
-    })
+    gh__download(url, dest, token)
 }
 # }}}
 

@@ -42,72 +42,26 @@ test_that("esgdict_get_default() / esgdict_set_default()", {
     )
 })
 # }}}
-# EsgDict$status() {{{
-test_that("EsgDict$status()", {
+# EsgDict getters {{{
+test_that("EsgDict getters inspect empty and built dictionaries", {
     empty <- EsgDict$new()
     expect_equal(empty$status(), "empty")
+    expect_false(empty$has_data())
+    expect_true(empty$is_empty())
+    expect_error(empty$get("activity_id"), "status is `empty`")
+    expect_error(empty$options("activity_id"), "status is `empty`")
 
     dict <- local_test_esgdict()
     expect_equal(dict$status(), "built")
-})
-# }}}
-# EsgDict$has_data() {{{
-test_that("EsgDict$has_data()", {
-    empty <- EsgDict$new()
-    expect_false(empty$has_data())
-
-    dict <- local_test_esgdict()
     expect_true(dict$has_data())
-})
-# }}}
-# EsgDict$is_empty() {{{
-test_that("EsgDict$is_empty()", {
-    empty <- EsgDict$new()
-    expect_true(empty$is_empty())
-
-    dict <- local_test_esgdict()
     expect_false(dict$is_empty())
-})
-# }}}
-# EsgDict$built_time() {{{
-test_that("EsgDict$built_time()", {
-    dict <- local_test_esgdict()
     expect_s3_class(dict$built_time(), "POSIXct")
-})
-# }}}
-# EsgDict$timestamp() {{{
-test_that("EsgDict$timestamp()", {
-    dict <- local_test_esgdict()
     expect_named(dict$timestamp(), c("vocab", tolower(CV_TYPES)))
-})
-# }}}
-# EsgDict$sources() {{{
-test_that("EsgDict$sources()", {
-    dict <- local_test_esgdict()
     expect_named(dict$sources(), c("vocab", "request"))
-})
-# }}}
-# EsgDict$get() {{{
-test_that("EsgDict$get()", {
-    empty <- EsgDict$new()
-    expect_error(empty$get("activity_id"), "status is `empty`")
-
-    dict <- local_test_esgdict()
     expect_s3_class(dict$get("EXPERIMENT_ID"), "data.table")
     expect_s3_class(dict$get("experiment_id"), "data.table")
     expect_s3_class(dict$get("request"), "data.table")
     expect_error(dict$get(c("request", "activity_id")), "Must have length 1")
-})
-# }}}
-# EsgDict$options() {{{
-test_that("EsgDict$options()", {
-    empty <- EsgDict$new()
-    expect_error(empty$options("activity_id"), "status is `empty`")
-})
-# }}}
-# EsgDict$indices() {{{
-test_that("EsgDict$indices()", {
-    dict <- local_test_esgdict()
     expect_s3_class(dict$indices("variable"), "data.table")
     expect_error(dict$indices(c("variable", "values")), "Must have length 1")
 })
@@ -252,8 +206,8 @@ test_that("print.Cmip6CV() / print.Cmip6DReq()", {
     )
 })
 # }}}
-# dict__parse_cv_activity_id() {{{
-test_that("dict__parse_cv_activity_id() parses local CMIP6 CV fixtures", {
+# dict__parse_cv_*() / dict__parse_dreq() {{{
+test_that("dict__parse_cv_*() and dict__parse_dreq() parse local CMIP6 fixtures", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
     cv_dir <- file.path(source_root, "vocab", "test-cv")
 
@@ -265,12 +219,6 @@ test_that("dict__parse_cv_activity_id() parses local CMIP6 CV fixtures", {
     expect_equal(names(activity), c("CMIP", "ScenarioMIP"))
     expect_equal(activity$CMIP, "CMIP activity")
     expect_false(is.null(attr(activity, "version")))
-})
-# }}}
-# dict__parse_cv_source_id() {{{
-test_that("dict__parse_cv_source_id() parses local CMIP6 CV fixtures", {
-    source_root <- local_cmip6_source_store(withr::local_tempdir())
-    cv_dir <- file.path(source_root, "vocab", "test-cv")
 
     source <- dict__parse_cv_source_id(file.path(
         cv_dir,
@@ -281,29 +229,17 @@ test_that("dict__parse_cv_source_id() parses local CMIP6 CV fixtures", {
         c("source_id", "institution_id", "release_year") %in% names(source)
     ))
     expect_equal(source$release_year, as.integer(c(2019, 2020)))
-})
-# }}}
-# dict__parse_cv_table_id() {{{
-test_that("dict__parse_cv_table_id() parses local CMIP6 CV fixtures", {
-    source_root <- local_cmip6_source_store(withr::local_tempdir())
-    cv_dir <- file.path(source_root, "vocab", "test-cv")
 
     tables <- dict__parse_cv_table_id(file.path(cv_dir, "CMIP6_table_id.json"))
     expect_s3_class(tables, "Cmip6CV_TableId")
     expect_setequal(unclass(tables), c("Amon", "day", "fx"))
-})
-# }}}
-# dict__parse_dreq() {{{
-test_that("dict__parse_dreq() parses local request table fixtures", {
-    source_root <- local_cmip6_source_store(withr::local_tempdir())
-    dreq_file <- file.path(
+
+    dreq <- dict__parse_dreq(file.path(
         source_root,
         "request",
         "test-request",
         "CMIP6_day.json"
-    )
-
-    dreq <- dict__parse_dreq(dreq_file)
+    ))
     expect_s3_class(dreq, "data.table")
     expect_true(all(c("variable", "modeling_realm", "units") %in% names(dreq)))
     expect_equal(dreq$variable, "tas")
@@ -312,8 +248,8 @@ test_that("dict__parse_dreq() parses local request table fixtures", {
     expect_equal(attr(dreq, "metadata")$realm, "atmos")
 })
 # }}}
-# dict__fetch_cv() {{{
-test_that("dict__fetch_cv() rebuilds parsed data from source files", {
+# dict__fetch_cv() / dict__fetch_dreq() {{{
+test_that("dict__fetch_cv() and dict__fetch_dreq() rebuild parsed data from source files", {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
 
     cvs <- dict__fetch_cv(
@@ -323,11 +259,6 @@ test_that("dict__fetch_cv() rebuilds parsed data from source files", {
     )
     expect_named(cvs, tolower(CV_TYPES))
     expect_s3_class(cvs$experiment_id, "data.table")
-})
-# }}}
-# dict__fetch_dreq() {{{
-test_that("dict__fetch_dreq() rebuilds parsed data from source files", {
-    source_root <- local_cmip6_source_store(withr::local_tempdir())
 
     dreq <- dict__fetch_dreq(
         "test-request",

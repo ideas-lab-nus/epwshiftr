@@ -165,48 +165,80 @@ query_result__node_urls <- function(node) {
 }
 # }}}
 
+# query_result__curl_handle {{{
+query_result__curl_handle <- function(
+    timeout,
+    network_policy = NULL,
+    nobody = TRUE,
+    failonerror = NULL,
+    range = FALSE
+) {
+    policy <- if (is.null(network_policy)) list() else network_policy
+    connect_timeout <- if (is.null(policy$connect_timeout)) {
+        min(timeout, 3)
+    } else {
+        policy$connect_timeout
+    }
+    ssl_verifypeer <- if (is.null(policy$ssl_verifypeer)) {
+        TRUE
+    } else {
+        policy$ssl_verifypeer
+    }
+    handle <- downloader__curl_handle(
+        timeout = timeout,
+        connect_timeout = connect_timeout,
+        ssl_verifypeer = ssl_verifypeer,
+        proxy = policy$proxy,
+        useragent = policy$useragent,
+        nobody = nobody
+    )
+    if (!is.null(failonerror)) {
+        curl::handle_setopt(handle, failonerror = isTRUE(failonerror))
+    }
+    if (isTRUE(range)) {
+        curl::handle_setheaders(handle, Range = "bytes=0-0")
+    }
+    handle
+}
+# }}}
+
+# query_result__set_reach_rows {{{
+query_result__set_reach_rows <- function(dt, i, res, extra = list()) {
+    if (is.logical(i)) {
+        i <- which(i)
+    }
+    if (!length(i)) {
+        return(invisible(dt))
+    }
+    values <- c(
+        list(
+            reachable = as.logical(res$reachable),
+            latency_ms = as.numeric(res$latency_ms),
+            error = as.character(res$error)
+        ),
+        extra
+    )
+    for (col in names(values)) {
+        data.table::set(dt, i = i, j = col, value = values[[col]])
+    }
+    invisible(dt)
+}
+# }}}
+
 # query_result__node_try {{{
 query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
-    if (is.null(network_policy)) {
-        network_policy <- list()
-    }
-    connect_timeout <- network_policy$connect_timeout
-    if (is.null(connect_timeout)) {
-        connect_timeout <- min(timeout, 3)
-    }
-    ssl_verifypeer <- network_policy$ssl_verifypeer
-    if (is.null(ssl_verifypeer)) {
-        ssl_verifypeer <- TRUE
-    }
-
-    start <- proc.time()[["elapsed"]]
-    tryCatch(
-        {
-            handle <- downloader__curl_handle(
-                timeout = timeout,
-                connect_timeout = connect_timeout,
-                ssl_verifypeer = ssl_verifypeer,
-                proxy = network_policy$proxy,
-                useragent = network_policy$useragent,
-                nobody = TRUE
-            )
-            curl::handle_setopt(handle, failonerror = FALSE)
-            curl::curl_fetch_memory(url, handle = handle)
-            list(
-                reachable = TRUE,
-                latency_ms = (proc.time()[["elapsed"]] - start) * 1000,
-                error = NA_character_,
-                probe_url = url
-            )
-        },
-        error = function(e) {
-            list(
-                reachable = FALSE,
-                latency_ms = NA_real_,
-                error = conditionMessage(e),
-                probe_url = url
-            )
-        }
+    res <- query_result__url_try(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = TRUE,
+        failonerror = FALSE
+    )
+    list(
+        reachable = isTRUE(res$ok),
+        latency_ms = res$latency_ms,
+        error = res$error,
+        probe_url = url
     )
 }
 # }}}
@@ -268,17 +300,6 @@ query_result__run_url_checks <- function(
     names(out) <- urls
     failed <- rep(FALSE, length(urls))
     failure_messages <- rep(NA_character_, length(urls))
-    if (is.null(network_policy)) {
-        network_policy <- list()
-    }
-    connect_timeout <- network_policy$connect_timeout
-    if (is.null(connect_timeout)) {
-        connect_timeout <- min(timeout, 3)
-    }
-    ssl_verifypeer <- network_policy$ssl_verifypeer
-    if (is.null(ssl_verifypeer)) {
-        ssl_verifypeer <- TRUE
-    }
 
     # Each wave owns its handles. Remove unfinished requests before admitting
     # the next wave or attempting serial recovery, including pool-level errors.
@@ -304,21 +325,13 @@ query_result__run_url_checks <- function(
             local({
                 j <- indices[[position]]
                 started_at <- clock()
-                handle <- downloader__curl_handle(
+                handle <- query_result__curl_handle(
                     timeout = timeout,
-                    connect_timeout = connect_timeout,
-                    ssl_verifypeer = ssl_verifypeer,
-                    proxy = network_policy$proxy,
-                    useragent = network_policy$useragent,
-                    nobody = nobody
+                    network_policy = network_policy,
+                    nobody = nobody,
+                    failonerror = failonerror
                 )
                 handles[[position]] <<- handle
-                if (!is.null(failonerror)) {
-                    curl::handle_setopt(
-                        handle,
-                        failonerror = isTRUE(failonerror)
-                    )
-                }
                 curl::handle_setopt(
                     handle,
                     url = request_url(urls[[j]])
@@ -559,35 +572,19 @@ query_result__url_try <- function(
     timeout = 5,
     network_policy = NULL,
     nobody = TRUE,
-    range = FALSE
+    range = FALSE,
+    failonerror = TRUE
 ) {
-    if (is.null(network_policy)) {
-        network_policy <- list()
-    }
-    connect_timeout <- network_policy$connect_timeout
-    if (is.null(connect_timeout)) {
-        connect_timeout <- min(timeout, 3)
-    }
-    ssl_verifypeer <- network_policy$ssl_verifypeer
-    if (is.null(ssl_verifypeer)) {
-        ssl_verifypeer <- TRUE
-    }
-
     start <- proc.time()[["elapsed"]]
     tryCatch(
         {
-            handle <- downloader__curl_handle(
+            handle <- query_result__curl_handle(
                 timeout = timeout,
-                connect_timeout = connect_timeout,
-                ssl_verifypeer = ssl_verifypeer,
-                proxy = network_policy$proxy,
-                useragent = network_policy$useragent,
-                nobody = nobody
+                network_policy = network_policy,
+                nobody = nobody,
+                failonerror = failonerror,
+                range = range
             )
-            curl::handle_setopt(handle, failonerror = TRUE)
-            if (isTRUE(range)) {
-                curl::handle_setheaders(handle, Range = "bytes=0-0")
-            }
             curl::curl_fetch_memory(url, handle = handle)
             list(
                 ok = TRUE,
@@ -645,28 +642,9 @@ query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
         ))
     }
 
-    error <- body$error
-    if (
-        is.null(error) ||
-            !length(error) ||
-            is.na(error[[1L]]) ||
-            !nzchar(error[[1L]])
-    ) {
-        error <- head$error
-    }
-    if (
-        is.null(error) ||
-            !length(error) ||
-            is.na(error[[1L]]) ||
-            !nzchar(error[[1L]])
-    ) {
-        error <- "URL check failed."
-    }
-    list(
-        reachable = FALSE,
-        latency_ms = NA_real_,
-        error = error
-    )
+    errs <- c(body$error, head$error, "URL check failed.")
+    errs <- errs[!is.na(errs) & nzchar(errs)]
+    list(reachable = FALSE, latency_ms = NA_real_, error = errs[[1L]])
 }
 # }}}
 
@@ -711,29 +689,15 @@ query_result__check_opendap_url <- function(
     if (!query_result__url_http(url)) {
         return(query_result__reach_missing("Unsupported URL scheme."))
     }
-    if (is.null(network_policy)) {
-        network_policy <- list()
-    }
-    connect_timeout <- network_policy$connect_timeout
-    if (is.null(connect_timeout)) {
-        connect_timeout <- min(timeout, 3)
-    }
-    ssl_verifypeer <- network_policy$ssl_verifypeer
-    if (is.null(ssl_verifypeer)) {
-        ssl_verifypeer <- TRUE
-    }
     started_at <- proc.time()[["elapsed"]]
     tryCatch(
         {
-            handle <- downloader__curl_handle(
+            handle <- query_result__curl_handle(
                 timeout = timeout,
-                connect_timeout = connect_timeout,
-                ssl_verifypeer = ssl_verifypeer,
-                proxy = network_policy$proxy,
-                useragent = network_policy$useragent,
-                nobody = FALSE
+                network_policy = network_policy,
+                nobody = FALSE,
+                failonerror = TRUE
             )
-            curl::handle_setopt(handle, failonerror = TRUE)
             response <- curl::curl_fetch_memory(
                 query_result__opendap_dds_url(url),
                 handle = handle
@@ -872,22 +836,14 @@ query_result__reach_service_urls <- function(
     pending <- character()
     cache_level <- paste0("url:", toupper(service))
     for (url in unique_urls) {
-        target_url <- url
         if (is.na(url) || !nzchar(url) || !query_result__url_http(url)) {
             result <- query_result__reach_url(
                 url,
                 timeout = timeout,
                 network_policy = network_policy
             )
-            idx <- if (is.na(url)) is.na(out$url) else out$url == target_url
-            out[
-                idx,
-                `:=`(
-                    reachable = as.logical(result$reachable),
-                    latency_ms = as.numeric(result$latency_ms),
-                    error = as.character(result$error)
-                )
-            ]
+            idx <- if (is.na(url)) is.na(out$url) else out$url == url
+            query_result__set_reach_rows(out, idx, result)
             next
         }
         cached <- query_result__reach_cache_get(
@@ -902,15 +858,12 @@ query_result__reach_service_urls <- function(
             pending <- c(pending, url)
             next
         }
-        out[
-            !is.na(url) & url == target_url,
-            `:=`(
-                reachable = as.logical(cached$reachable),
-                latency_ms = as.numeric(cached$latency_ms),
-                error = as.character(cached$error),
-                probe_cached = TRUE
-            )
-        ]
+        query_result__set_reach_rows(
+            out,
+            !is.na(out$url) & out$url == url,
+            cached,
+            list(probe_cached = TRUE)
+        )
     }
 
     if (length(pending)) {
@@ -930,7 +883,6 @@ query_result__reach_service_urls <- function(
             )
         }
         for (url in names(checked)) {
-            target_url <- url
             result <- checked[[url]]
             result$probe_url <- url
             query_result__reach_cache_set(
@@ -942,15 +894,12 @@ query_result__reach_service_urls <- function(
                 cache_seconds = cache_seconds,
                 cache_failures_seconds = cache_failures_seconds
             )
-            out[
-                !is.na(url) & url == target_url,
-                `:=`(
-                    reachable = as.logical(result$reachable),
-                    latency_ms = as.numeric(result$latency_ms),
-                    error = as.character(result$error),
-                    probe_cached = FALSE
-                )
-            ]
+            query_result__set_reach_rows(
+                out,
+                !is.na(out$url) & out$url == url,
+                result,
+                list(probe_cached = FALSE)
+            )
         }
     }
     out[]
@@ -1028,42 +977,52 @@ query_result__reach_nodes <- function(
             probe_concurrency = probe_concurrency
         )
 
+        normalize_node_check <- function(check, url) {
+            if (is.null(check)) {
+                check <- query_result__reach_missing(
+                    "Unsupported data node URL scheme."
+                )
+                check$probe_url <- url
+            }
+            check
+        }
+        format_node_error <- function(check, url) {
+            err <- as.character(check$error)
+            if (!length(err) || is.na(err[[1L]]) || !nzchar(err[[1L]])) {
+                err <- "Data node probe failed."
+            }
+            sprintf("%s: %s", url, err[[1L]])
+        }
+
         second_pos <- integer()
         first_errors <- rep(NA_character_, length(network_pos))
         for (j in seq_along(network_pos)) {
             k <- network_pos[[j]]
             urls <- node_urls[[j]]
             if (!length(urls)) {
-                probe <- query_result__reach_missing("Missing data node.")
-                probe$probe_url <- NA_character_
-                probe$probe_cached <- FALSE
-                probes[[k]] <- probe
+                check <- query_result__reach_missing("Missing data node.")
+                check$probe_url <- NA_character_
+                check$probe_cached <- FALSE
+                probes[[k]] <- check
                 next
             }
 
-            probe <- first_probes[[first_urls[[j]]]]
-            if (is.null(probe)) {
-                probe <- query_result__reach_missing(
-                    "Unsupported data node URL scheme."
-                )
-                probe$probe_url <- first_urls[[j]]
-            }
-            if (isTRUE(probe$reachable)) {
-                probe$probe_cached <- FALSE
-                probes[[k]] <- probe
+            check <- normalize_node_check(
+                first_probes[[first_urls[[j]]]],
+                first_urls[[j]]
+            )
+            if (isTRUE(check$reachable)) {
+                check$probe_cached <- FALSE
+                probes[[k]] <- check
                 next
             }
 
-            error <- as.character(probe$error)
-            if (!length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
-                error <- "Data node probe failed."
-            }
-            first_errors[[j]] <- sprintf("%s: %s", first_urls[[j]], error[[1L]])
+            first_errors[[j]] <- format_node_error(check, first_urls[[j]])
             if (length(urls) > 1L) {
                 second_pos <- c(second_pos, j)
             } else {
-                probe$probe_cached <- FALSE
-                probes[[k]] <- probe
+                check$probe_cached <- FALSE
+                probes[[k]] <- check
             }
         }
 
@@ -1074,7 +1033,7 @@ query_result__reach_nodes <- function(
                 character(1L),
                 2L
             )
-            second_probes <- query_result__reach_node_urls(
+            second_checks <- query_result__reach_node_urls(
                 second_urls,
                 timeout = timeout,
                 network_policy = network_policy,
@@ -1082,44 +1041,33 @@ query_result__reach_nodes <- function(
             )
             for (j in second_pos) {
                 k <- network_pos[[j]]
-                probe <- second_probes[[node_urls[[j]][[2L]]]]
-                if (is.null(probe)) {
-                    probe <- query_result__reach_missing(
-                        "Unsupported data node URL scheme."
-                    )
-                    probe$probe_url <- node_urls[[j]][[2L]]
-                }
-                if (!isTRUE(probe$reachable)) {
-                    error <- as.character(probe$error)
-                    if (
-                        !length(error) ||
-                            is.na(error[[1L]]) ||
-                            !nzchar(error[[1L]])
-                    ) {
-                        error <- "Data node probe failed."
-                    }
-                    probe$error <- paste(
+                second_url <- node_urls[[j]][[2L]]
+                check <- normalize_node_check(
+                    second_checks[[second_url]],
+                    second_url
+                )
+                if (!isTRUE(check$reachable)) {
+                    check$error <- paste(
                         c(
                             first_errors[[j]],
-                            sprintf("%s: %s", node_urls[[j]][[2L]], error[[1L]])
+                            format_node_error(check, second_url)
                         ),
                         collapse = " | "
                     )
-                    probe$probe_url <- node_urls[[j]][[1L]]
+                    check$probe_url <- node_urls[[j]][[1L]]
                 }
-                probe$probe_cached <- FALSE
-                probes[[k]] <- probe
+                check$probe_cached <- FALSE
+                probes[[k]] <- check
             }
         }
 
         for (k in network_pos) {
-            probe <- probes[[k]]
             query_result__reach_cache_set(
                 "data_node",
                 unique_nodes[[k]],
                 timeout = timeout,
                 network_policy = network_policy,
-                result = probe,
+                result = probes[[k]],
                 cache_seconds = cache_seconds,
                 cache_failures_seconds = cache_failures_seconds
             )
@@ -1128,22 +1076,21 @@ query_result__reach_nodes <- function(
 
     for (k in seq_along(unique_nodes)) {
         node <- unique_nodes[[k]]
-        probe <- probes[[k]]
-        if (is.na(node)) {
-            idx <- is.na(out$data_node)
+        check <- probes[[k]]
+        idx <- if (is.na(node)) {
+            is.na(out$data_node)
         } else {
-            idx <- !is.na(out$data_node) & out$data_node == node
+            !is.na(out$data_node) & out$data_node == node
         }
-        out[
+        query_result__set_reach_rows(
+            out,
             idx,
-            `:=`(
-                reachable = as.logical(probe$reachable),
-                latency_ms = as.numeric(probe$latency_ms),
-                error = as.character(probe$error),
-                probe_url = as.character(probe$probe_url),
-                probe_cached = isTRUE(probe$probe_cached)
+            check,
+            list(
+                probe_url = as.character(check$probe_url),
+                probe_cached = isTRUE(check$probe_cached)
             )
-        ]
+        )
     }
 
     out[]
@@ -1220,53 +1167,43 @@ query_result__reach_targets <- function(
 
     missing <- is.na(urls) | !nzchar(urls)
     if (any(missing)) {
-        out[
+        query_result__set_reach_rows(
+            out,
             missing,
-            `:=`(
-                reachable = NA,
-                latency_ms = NA_real_,
-                error = "Missing URL."
-            )
-        ]
+            query_result__reach_missing("Missing URL.")
+        )
     }
 
     local <- !missing & query_result__url_local(urls)
-    if (any(local)) {
-        for (i in which(local)) {
-            probe <- query_result__reach_local(urls[[i]])
-            out[
-                i,
-                `:=`(
-                    reachable = as.logical(probe$reachable),
-                    latency_ms = as.numeric(probe$latency_ms),
-                    error = as.character(probe$error),
-                    probe_level = "local",
-                    probe_url = urls[[i]],
-                    probe_cached = FALSE
-                )
-            ]
-        }
+    for (i in which(local)) {
+        query_result__set_reach_rows(
+            out,
+            i,
+            query_result__reach_local(urls[[i]]),
+            list(
+                probe_level = "local",
+                probe_url = urls[[i]],
+                probe_cached = FALSE
+            )
+        )
     }
 
     remote <- !missing & !local & query_result__url_http(urls)
     unsupported <- !missing & !local & !remote
     if (any(unsupported)) {
-        out[
+        query_result__set_reach_rows(
+            out,
             unsupported,
-            `:=`(
-                reachable = NA,
-                latency_ms = NA_real_,
-                error = "Unsupported URL scheme.",
-                probe_url = urls[unsupported]
-            )
-        ]
+            query_result__reach_missing("Unsupported URL scheme."),
+            list(probe_url = urls[unsupported])
+        )
     }
 
     if (any(remote)) {
         nodes <- data_node
         fallback <- is.na(nodes) | !nzchar(nodes)
         nodes[fallback] <- query_result__url_host(urls[fallback])
-        node_probes <- query_result__reach_nodes(
+        node_checks <- query_result__reach_nodes(
             nodes[remote],
             timeout = timeout,
             network_policy = network_policy,
@@ -1274,17 +1211,15 @@ query_result__reach_targets <- function(
             cache_seconds = cache_seconds,
             cache_failures_seconds = cache_failures_seconds
         )
-        idx <- which(remote)
-        out[
-            idx,
-            `:=`(
-                reachable = node_probes$reachable,
-                latency_ms = node_probes$latency_ms,
-                error = node_probes$error,
-                probe_url = node_probes$probe_url,
-                probe_cached = node_probes$probe_cached
+        query_result__set_reach_rows(
+            out,
+            which(remote),
+            node_checks,
+            list(
+                probe_url = node_checks$probe_url,
+                probe_cached = node_checks$probe_cached
             )
-        ]
+        )
     }
 
     out[]
@@ -1296,56 +1231,25 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
     if (is.na(url) || !nzchar(url) || startsWith(url, "file://")) {
         return(list(latency = NA_real_, throughput = NA_real_))
     }
-    if (is.null(network_policy)) {
-        network_policy <- list()
-    }
-    connect_timeout <- network_policy$connect_timeout
-    if (is.null(connect_timeout)) {
-        connect_timeout <- min(timeout, 3)
-    }
-    ssl_verifypeer <- network_policy$ssl_verifypeer
-    if (is.null(ssl_verifypeer)) {
-        ssl_verifypeer <- TRUE
-    }
-    start <- Sys.time()
-    ok <- tryCatch(
-        {
-            handle <- downloader__curl_handle(
-                timeout = timeout,
-                connect_timeout = connect_timeout,
-                ssl_verifypeer = ssl_verifypeer,
-                proxy = network_policy$proxy,
-                useragent = network_policy$useragent,
-                nobody = TRUE
-            )
-            curl::curl_fetch_memory(url, handle = handle)
-            TRUE
-        },
-        error = function(e) FALSE
+    res <- query_result__url_try(
+        url,
+        timeout = timeout,
+        network_policy = network_policy,
+        nobody = TRUE,
+        failonerror = NULL
     )
-    if (!ok) {
-        start <- Sys.time()
-        ok <- tryCatch(
-            {
-                handle <- downloader__curl_handle(
-                    timeout = timeout,
-                    connect_timeout = connect_timeout,
-                    ssl_verifypeer = ssl_verifypeer,
-                    proxy = network_policy$proxy,
-                    useragent = network_policy$useragent
-                )
-                curl::handle_setheaders(handle, Range = "bytes=0-0")
-                curl::curl_fetch_memory(url, handle = handle)
-                TRUE
-            },
-            error = function(e) FALSE
+    if (!isTRUE(res$ok)) {
+        res <- query_result__url_try(
+            url,
+            timeout = timeout,
+            network_policy = network_policy,
+            nobody = FALSE,
+            range = TRUE,
+            failonerror = NULL
         )
     }
-    if (!ok) {
-        return(list(latency = NA_real_, throughput = NA_real_))
-    }
     list(
-        latency = as.numeric(difftime(Sys.time(), start, units = "secs")),
+        latency = if (isTRUE(res$ok)) res$latency_ms / 1000 else NA_real_,
         throughput = NA_real_
     )
 }

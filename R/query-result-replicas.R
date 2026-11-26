@@ -242,6 +242,52 @@ query_result__replica_store <- function(type, params) {
 }
 # }}}
 
+# query_result__collect_stores {{{
+query_result__collect_stores <- function(
+    result,
+    stores,
+    type,
+    index_node = NULL,
+    all = TRUE,
+    merge_params = list()
+) {
+    if (is.null(index_node)) {
+        index_node <- priv(result)$index_node
+    } else {
+        checkmate::assert_string(index_node)
+        index_node <- query__normalize_node(index_node)
+    }
+    collected_parts <- lapply(stores, function(store) {
+        query_result__collect_batched(
+            index_node,
+            store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
+            required_fields = query_result__required(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    # The result retains the original identity facet, not only its first shard.
+    query_result__merge_params(collected$parameter, merge_params)
+    response <- collected$response
+    response$response$docs <- collected$docs
+
+    query_result__new(
+        query_result__generator(type),
+        index_node,
+        collected$parameter,
+        response,
+        context = collected$context
+    )
+}
+# }}}
+
 # query_result__collect_identity {{{
 query_result__collect_identity <- function(
     result,
@@ -251,13 +297,6 @@ query_result__collect_identity <- function(
     all = TRUE
 ) {
     type <- query_result__type(type)
-    if (is.null(index_node)) {
-        index_node <- priv(result)$index_node
-    } else {
-        checkmate::assert_string(index_node)
-        index_node <- query__normalize_node(index_node)
-    }
-
     instance_id <- unique(identity$instance_id[identity$has_instance])
     instance_id <- instance_id[!is.na(instance_id) & nzchar(instance_id)]
     master_id <- unique(identity$master_id[identity$has_master_version])
@@ -279,41 +318,18 @@ query_result__collect_identity <- function(
     if (!length(stores)) {
         stores[[1L]] <- query_result__replica_store(type, list())
     }
-
-    collected_parts <- lapply(stores, function(store) {
-        query_result__collect_batched(
-            index_node,
-            store,
-            facet = if (!is.null(store$state()$instance_id)) {
-                "instance_id"
-            } else {
-                "master_id"
-            },
-            required_fields = query_result__required(type),
-            all = all,
-            limit = this$data_max_limit,
-            constraints = FALSE
-        )
-    })
-    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
-    # The result retains the original identity facet, not only its first shard.
-    query_result__merge_params(
-        collected$parameter,
-        if (length(instance_id)) {
-            list(instance_id = instance_id)
-        } else {
-            list(master_id = master_id)
-        }
-    )
-    response <- collected$response
-    response$response$docs <- collected$docs
-
-    query_result__new(
-        query_result__generator(type),
-        index_node,
-        collected$parameter,
-        response,
-        context = collected$context
+    merge_params <- if (length(instance_id)) {
+        list(instance_id = instance_id)
+    } else {
+        list(master_id = master_id)
+    }
+    query_result__collect_stores(
+        result,
+        stores,
+        type = type,
+        index_node = index_node,
+        all = all,
+        merge_params = merge_params
     )
 }
 # }}}
@@ -333,44 +349,45 @@ query_result__collect_master <- function(
         min.len = 1L,
         unique = TRUE
     )
-    if (is.null(index_node)) {
-        index_node <- priv(result)$index_node
-    } else {
-        checkmate::assert_string(index_node)
-        index_node <- query__normalize_node(index_node)
-    }
-
     stores <- list(query_result__replica_store(
         type,
         list(master_id = master_id)
     ))
-    collected_parts <- lapply(stores, function(store) {
-        query_result__collect_batched(
-            index_node,
-            store,
-            facet = if (!is.null(store$state()$instance_id)) {
-                "instance_id"
-            } else {
-                "master_id"
-            },
-            required_fields = query_result__required(type),
-            all = all,
-            limit = this$data_max_limit,
-            constraints = FALSE
-        )
-    })
-    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
-    query_result__merge_params(collected$parameter, list(master_id = master_id))
-    response <- collected$response
-    response$response$docs <- collected$docs
-
-    query_result__new(
-        query_result__generator(type),
-        index_node,
-        collected$parameter,
-        response,
-        context = collected$context
+    query_result__collect_stores(
+        result,
+        stores,
+        type = type,
+        index_node = index_node,
+        all = all,
+        merge_params = list(master_id = master_id)
     )
+}
+# }}}
+
+# query_result__expand_by_identity {{{
+query_result__expand_by_identity <- function(
+    result,
+    docs,
+    type,
+    index_node = NULL,
+    all = TRUE
+) {
+    identity <- query_result__identity(docs)
+    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
+    if (!length(keys)) {
+        return(result)
+    }
+    expanded <- query_result__collect_identity(
+        result,
+        identity,
+        type = type,
+        index_node = index_node,
+        all = all
+    )
+    expanded_docs <- priv(expanded)$get_docs()
+    expanded_identity <- query_result__identity(expanded_docs)
+    keep <- query_result__identity_in(expanded_identity, identity)
+    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
 }
 # }}}
 
@@ -380,23 +397,12 @@ query_result__expand_files <- function(
     service = "HTTPServer",
     all = TRUE
 ) {
-    dt <- result$to_data_table()
-    identity <- query_result__identity(dt)
-    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
-    if (!length(keys)) {
-        return(result)
-    }
-
-    expanded <- query_result__collect_identity(
+    query_result__expand_by_identity(
         result,
-        identity,
+        result$to_data_table(),
         type = "File",
         all = all
     )
-    expanded_docs <- priv(expanded)$get_docs()
-    expanded_identity <- query_result__identity(expanded_docs)
-    keep <- query_result__identity_in(expanded_identity, identity)
-    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
 }
 # }}}
 
@@ -412,7 +418,6 @@ query_result__expand_datasets <- function(
     if (!nrow(docs)) {
         return(result)
     }
-
     if (identical(by, "master_id")) {
         master_id <- as.character(query_result__col(docs, "master_id"))
         master_id <- unique(master_id[!is.na(master_id) & nzchar(master_id)])
@@ -427,23 +432,13 @@ query_result__expand_datasets <- function(
             all = all
         ))
     }
-
-    identity <- query_result__identity(docs)
-    keys <- unique(identity$key[!is.na(identity$key) & nzchar(identity$key)])
-    if (!length(keys)) {
-        return(result)
-    }
-    expanded <- query_result__collect_identity(
+    query_result__expand_by_identity(
         result,
-        identity,
+        docs,
         type = "Dataset",
         index_node = index_node,
         all = all
     )
-    expanded_docs <- priv(expanded)$get_docs()
-    expanded_identity <- query_result__identity(expanded_docs)
-    keep <- query_result__identity_in(expanded_identity, identity)
-    priv(expanded)$result_with_docs(expanded_docs[keep, , drop = FALSE])
 }
 # }}}
 
@@ -568,34 +563,52 @@ query_result__repair_urls <- function(
     }
 
     out <- data.table::as.data.table(docs)
-
     repaired <- rep(FALSE, n)
-    for (i in repair_targets) {
-        rows <- setdiff(
-            query_result__identity_match(identity[i, , drop = FALSE], identity),
-            i
-        )
-        rows <- rows[query_result__compatible_content(
-            docs[i, , drop = FALSE],
-            docs[rows, , drop = FALSE]
-        )]
-        rows <- rows[reach$reachable[rows] %in% TRUE]
-        if (!length(rows)) {
-            next
-        }
 
-        latency <- reach$latency_ms[rows]
-        latency[is.na(latency)] <- Inf
-        chosen <- rows[order(latency, rows)[[1L]]]
-        # Repair only the requested service. The logical record and every
-        # already-valid endpoint remain anchored to the original selection.
-        out$url[i] <- list(query_result__set_service_url(
-            out$url[[i]],
-            service,
-            reach$url[[chosen]]
-        ))
-        repaired[[i]] <- TRUE
+    apply_candidates <- function(
+        target_rows,
+        cand_docs,
+        cand_id,
+        cand_reach,
+        exclude_self = FALSE
+    ) {
+        for (i in target_rows) {
+            rows <- query_result__identity_match(
+                identity[i, , drop = FALSE],
+                cand_id
+            )
+            if (isTRUE(exclude_self)) {
+                rows <- setdiff(rows, i)
+            }
+            rows <- rows[query_result__compatible_content(
+                docs[i, , drop = FALSE],
+                cand_docs[rows, , drop = FALSE]
+            )]
+            rows <- rows[cand_reach$reachable[rows] %in% TRUE]
+            if (!length(rows)) {
+                next
+            }
+            latency <- cand_reach$latency_ms[rows]
+            latency[is.na(latency)] <- Inf
+            chosen <- rows[order(latency, rows)[[1L]]]
+            # Repair only the requested service; the logical record and every
+            # already-valid endpoint remain anchored to the original selection.
+            out$url[i] <<- list(query_result__set_service_url(
+                out$url[[i]],
+                service,
+                cand_reach$url[[chosen]]
+            ))
+            repaired[[i]] <<- TRUE
+        }
     }
+
+    apply_candidates(
+        repair_targets,
+        docs,
+        identity,
+        reach,
+        exclude_self = TRUE
+    )
 
     can_collect <- identity$has_instance | identity$has_master_version
     external_targets <- repair_targets[
@@ -618,35 +631,12 @@ query_result__repair_urls <- function(
                 level = probe$level,
                 probe = probe[names(probe) != "level"]
             )
-            candidate_identity <- query_result__identity(candidate_docs)
-
-            for (i in external_targets) {
-                rows <- query_result__identity_match(
-                    identity[i, , drop = FALSE],
-                    candidate_identity
-                )
-                rows <- rows[query_result__compatible_content(
-                    docs[i, , drop = FALSE],
-                    candidate_docs[rows, , drop = FALSE]
-                )]
-                rows <- rows[candidate_reach$reachable[rows] %in% TRUE]
-                if (!length(rows)) {
-                    next
-                }
-
-                latency <- candidate_reach$latency_ms[rows]
-                latency[is.na(latency)] <- Inf
-                chosen <- rows[order(latency, rows)[[1L]]]
-                # External replicas supply only a compatible service URL; the
-                # caller's logical record, other service, and row order remain
-                # unchanged.
-                out$url[i] <- list(query_result__set_service_url(
-                    out$url[[i]],
-                    service,
-                    candidate_reach$url[[chosen]]
-                ))
-                repaired[[i]] <- TRUE
-            }
+            apply_candidates(
+                external_targets,
+                candidate_docs,
+                query_result__identity(candidate_docs),
+                candidate_reach
+            )
         }
     }
 
@@ -1062,11 +1052,6 @@ query_result__http_fallback <- function(
             missing_message,
             "x" = "Missing HTTPServer URL: {priv(selected)$record_labels(missing)}"
         ))
-    }
-    if (is.null(downloader)) {
-        cli::cli_abort(
-            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
-        )
     }
 
     session_id <- downloader$enqueue(plan, session_label = session_label)

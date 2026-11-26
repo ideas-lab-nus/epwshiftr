@@ -54,74 +54,46 @@ query_result__node_stats <- function(
             return(NULL)
         }
     }
-    stats[, node_success_count := suppressWarnings(as.integer(success_count))]
-    stats[, node_failure_count := suppressWarnings(as.integer(failure_count))]
-    stats[is.na(node_success_count), node_success_count := 0L]
-    stats[is.na(node_failure_count), node_failure_count := 0L]
-    stats[, node_attempt_count := node_success_count + node_failure_count]
-    stats[,
-        node_success_rate := data.table::fifelse(
-            node_attempt_count > 0L,
-            node_success_count / node_attempt_count,
+    cols <- names(stats)
+    n <- nrow(stats)
+    opt_int <- function(col) {
+        if (!col %in% cols) {
+            return(rep(NA_integer_, n))
+        }
+        val <- suppressWarnings(as.integer(stats[[col]]))
+        val[is.na(val)] <- 0L
+        val
+    }
+    opt_posix <- function(col) {
+        if (!col %in% cols) {
+            return(rep(as.POSIXct(NA), n))
+        }
+        as.POSIXct(stats[[col]], tz = "UTC")
+    }
+    n_ok <- opt_int("success_count")
+    n_fail <- opt_int("failure_count")
+    n_att <- n_ok + n_fail
+    cooldown_until <- opt_posix("cooldown_until")
+    data.table::data.table(
+        data_node = stats$data_node,
+        service = stats$service,
+        node_success_count = n_ok,
+        node_failure_count = n_fail,
+        node_attempt_count = n_att,
+        node_success_rate = data.table::fifelse(
+            n_att > 0L,
+            n_ok / n_att,
             NA_real_
-        )
-    ]
-    stats[, node_avg_latency := suppressWarnings(as.numeric(avg_latency))]
-    if ("probe_success_count" %in% names(stats)) {
-        stats[,
-            node_probe_success_count := suppressWarnings(as.integer(
-                probe_success_count
-            ))
-        ]
-        stats[is.na(node_probe_success_count), node_probe_success_count := 0L]
-    } else {
-        stats[, node_probe_success_count := NA_integer_]
-    }
-    if ("probe_failure_count" %in% names(stats)) {
-        stats[,
-            node_probe_failure_count := suppressWarnings(as.integer(
-                probe_failure_count
-            ))
-        ]
-        stats[is.na(node_probe_failure_count), node_probe_failure_count := 0L]
-    } else {
-        stats[, node_probe_failure_count := NA_integer_]
-    }
-    if ("cooldown_until" %in% names(stats)) {
-        stats[, node_cooldown_until := as.POSIXct(cooldown_until, tz = "UTC")]
-        stats[,
-            node_is_cooling_down := !is.na(node_cooldown_until) &
-                node_cooldown_until > Sys.time()
-        ]
-    } else {
-        stats[, node_cooldown_until := as.POSIXct(NA)]
-        stats[, node_is_cooling_down := FALSE]
-    }
-    if ("updated_at" %in% names(stats)) {
-        stats[, node_updated_at := as.POSIXct(updated_at, tz = "UTC")]
-    } else {
-        stats[, node_updated_at := as.POSIXct(NA)]
-    }
-    if ("last_probe_at" %in% names(stats)) {
-        stats[, node_last_probe_at := as.POSIXct(last_probe_at, tz = "UTC")]
-    } else {
-        stats[, node_last_probe_at := as.POSIXct(NA)]
-    }
-    stats[, .(
-        data_node,
-        service,
-        node_success_count,
-        node_failure_count,
-        node_attempt_count,
-        node_success_rate,
-        node_avg_latency,
-        node_probe_success_count,
-        node_probe_failure_count,
-        node_cooldown_until,
-        node_is_cooling_down,
-        node_updated_at,
-        node_last_probe_at
-    )]
+        ),
+        node_avg_latency = suppressWarnings(as.numeric(stats$avg_latency)),
+        node_probe_success_count = opt_int("probe_success_count"),
+        node_probe_failure_count = opt_int("probe_failure_count"),
+        node_cooldown_until = cooldown_until,
+        node_is_cooling_down = !is.na(cooldown_until) &
+            cooldown_until > Sys.time(),
+        node_updated_at = opt_posix("updated_at"),
+        node_last_probe_at = opt_posix("last_probe_at")
+    )
 }
 # }}}
 
