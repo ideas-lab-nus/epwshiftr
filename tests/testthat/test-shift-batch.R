@@ -1,3 +1,53 @@
+batch_test__child_run <- function(status = "completed") {
+    shift_stage__new(
+        ShiftRun,
+        "run",
+        store_path = "/example/child",
+        ids = list(run_id = "run-child"),
+        meta = list(run = data.table::data.table(status = status))
+    )
+}
+
+batch_test__child_ref <- function(status = "completed") {
+    list(
+        run_id = "run-child",
+        store_path = "/example/child",
+        status = status
+    )
+}
+
+batch_test__catalog <- function(
+    sources = c("Model-A", "Model-B", "Model-C"),
+    experiments = "ssp585",
+    start = "2041-01-01T00:00:00Z",
+    end = "2090-12-31T23:59:59Z",
+    variable = "tas",
+    frequency = "day",
+    table_id = "day",
+    grid_label = "gn"
+) {
+    rows <- data.table::CJ(
+        source_id = sources,
+        experiment_id = experiments,
+        unique = TRUE
+    )
+    data.table::set(
+        rows,
+        j = "variant_label",
+        value = rep("r1i1p1f1", nrow(rows))
+    )
+    data.table::set(rows, j = "frequency", value = rep(frequency, nrow(rows)))
+    data.table::set(rows, j = "table_id", value = rep(table_id, nrow(rows)))
+    data.table::set(rows, j = "variable_id", value = rep(variable, nrow(rows)))
+    data.table::set(rows, j = "grid_label", value = rep(grid_label, nrow(rows)))
+    data.table::set(rows, j = "latest", value = rep(TRUE, nrow(rows)))
+    data.table::set(rows, j = "retracted", value = rep(FALSE, nrow(rows)))
+    data.table::set(rows, j = "deprecated", value = rep(FALSE, nrow(rows)))
+    data.table::set(rows, j = "datetime_start", value = rep(start, nrow(rows)))
+    data.table::set(rows, j = "datetime_end", value = rep(end, nrow(rows)))
+    rows
+}
+
 test_that("method keys resolve through the transform registry", {
     transforms <- shift_batch__transforms(c(
         "original_morphing",
@@ -105,21 +155,13 @@ test_that("batch child failures return their durable run handles", {
 })
 
 test_that("completed batch children reuse one authoritative store", {
-    opened <- 0L
-    closed <- 0L
-    verified <- 0L
+    opened <- closed <- verified <- 0L
     child_store <- new.env(parent = emptyenv())
     child_store$close <- function() {
         closed <<- closed + 1L
         invisible(NULL)
     }
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = "/example/child",
-        ids = list(run_id = "run-child"),
-        meta = list(run = data.table::data.table(status = "completed"))
-    )
+    run <- batch_test__child_run("completed")
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) {
             opened <<- opened + 1L
@@ -141,11 +183,7 @@ test_that("completed batch children reuse one authoritative store", {
         .package = "epwshiftr"
     )
 
-    restored <- shift_batch__restore_child(list(
-        run_id = "run-child",
-        store_path = "/example/child",
-        status = "completed"
-    ))
+    restored <- shift_batch__restore_child(batch_test__child_ref())
 
     expect_identical(restored, run)
     expect_identical(opened, 1L)
@@ -157,13 +195,7 @@ test_that("completed receipt hints do not replace authoritative run status", {
     verified <- 0L
     child_store <- new.env(parent = emptyenv())
     child_store$close <- function() invisible(NULL)
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = "/example/child",
-        ids = list(run_id = "run-child"),
-        meta = list(run = data.table::data.table(status = "running"))
-    )
+    run <- batch_test__child_run("running")
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
@@ -174,11 +206,7 @@ test_that("completed receipt hints do not replace authoritative run status", {
         .package = "epwshiftr"
     )
 
-    restored <- shift_batch__restore_child(list(
-        run_id = "run-child",
-        store_path = "/example/child",
-        status = "completed"
-    ))
+    restored <- shift_batch__restore_child(batch_test__child_ref())
 
     expect_identical(shift_status(restored, refresh = FALSE), "running")
     expect_identical(verified, 0L)
@@ -191,13 +219,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
         closed <<- closed + 1L
         invisible(NULL)
     }
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = "/example/child",
-        ids = list(run_id = "run-child"),
-        meta = list(run = data.table::data.table(status = "completed"))
-    )
+    run <- batch_test__child_run("completed")
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
@@ -205,11 +227,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
         .package = "epwshiftr"
     )
 
-    restored <- shift_batch__restore_child(list(
-        run_id = "run-child",
-        store_path = "/example/child",
-        status = "completed"
-    ))
+    restored <- shift_batch__restore_child(batch_test__child_ref())
 
     expect_null(restored)
     expect_identical(closed, 1L)
@@ -217,13 +235,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
 
 test_that("locked completed children retain path-based live restoration", {
     store_arguments <- list()
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = "/example/child",
-        ids = list(run_id = "run-child"),
-        meta = list(run = data.table::data.table(status = "running"))
-    )
+    run <- batch_test__child_run("running")
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) {
             stop("manifest locked")
@@ -235,11 +247,7 @@ test_that("locked completed children retain path-based live restoration", {
         .package = "epwshiftr"
     )
 
-    restored <- shift_batch__restore_child(list(
-        run_id = "run-child",
-        store_path = "/example/child",
-        status = "completed"
-    ))
+    restored <- shift_batch__restore_child(batch_test__child_ref())
 
     expect_identical(restored, run)
     expect_identical(store_arguments, list("/example/child"))
@@ -257,21 +265,29 @@ test_that("high-level workflows select common models and retain child plans", {
     ))
     output <- tempfile("batch-output-")
     store <- tempfile("batch-store-")
-
-    batch <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            model = 2L,
-            scenarios = c("ssp126", "ssp585")
-        ),
-        periods = list(`2050` = 2049:2050, `2080` = 2079:2080),
-        methods = c("original_morphing", "bws_btws", "isimip3basd"),
-        calibration = shift_era5(years = 1995:2014),
+    plan_batch <- function(
         dir = output,
-        store = store,
-        dry_run = TRUE,
-        ui = shift_ui(progress = "none")
-    )
+        calibration = shift_era5(years = 1995:2014),
+        control = shift_control()
+    ) {
+        shift_epw_future(
+            sites = shift_site(epw = get_cache_epw()),
+            climate = shift_cmip6(
+                model = 2L,
+                scenarios = c("ssp126", "ssp585")
+            ),
+            periods = list(`2050` = 2049:2050, `2080` = 2079:2080),
+            methods = c("original_morphing", "bws_btws", "isimip3basd"),
+            calibration = calibration,
+            control = control,
+            dir = dir,
+            store = store,
+            dry_run = TRUE,
+            ui = shift_ui(progress = "none")
+        )
+    }
+
+    batch <- plan_batch()
 
     expect_true(S7::S7_inherits(batch, ShiftBatch))
     expect_identical(shift_status(batch), "planned")
@@ -300,56 +316,19 @@ test_that("high-level workflows select common models and retain child plans", {
 
     # Delivery paths do not change the scientific batch identity or reusable
     # store root selected for the same EPW, climate, periods, and methods.
-    second <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            model = 2L,
-            scenarios = c("ssp126", "ssp585")
-        ),
-        periods = list(`2050` = 2049:2050, `2080` = 2079:2080),
-        methods = c("original_morphing", "bws_btws", "isimip3basd"),
-        calibration = shift_era5(years = 1995:2014),
-        dir = tempfile("another-batch-output-"),
-        store = store,
-        dry_run = TRUE,
-        ui = shift_ui(progress = "none")
-    )
+    second <- plan_batch(dir = tempfile("another-batch-output-"))
     expect_identical(second@ids$batch_id, batch@ids$batch_id)
     expect_identical(availability_calls, first_discovery_calls)
 
     # Explicit refresh bypasses the persisted batch selection without changing
     # the scientific batch identity.
-    refreshed <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            model = 2L,
-            scenarios = c("ssp126", "ssp585")
-        ),
-        periods = list(`2050` = 2049:2050, `2080` = 2079:2080),
-        methods = c("original_morphing", "bws_btws", "isimip3basd"),
-        calibration = shift_era5(years = 1995:2014),
-        control = shift_control(refresh = TRUE),
-        dir = output,
-        store = store,
-        dry_run = TRUE,
-        ui = shift_ui(progress = "none")
-    )
+    refreshed <- plan_batch(control = shift_control(refresh = TRUE))
     expect_identical(refreshed@ids$batch_id, batch@ids$batch_id)
     expect_gt(availability_calls, first_discovery_calls)
 
-    changed_calibration <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            model = 2L,
-            scenarios = c("ssp126", "ssp585")
-        ),
-        periods = list(`2050` = 2049:2050, `2080` = 2079:2080),
-        methods = c("original_morphing", "bws_btws", "isimip3basd"),
-        calibration = shift_era5(years = 2000:2019),
+    changed_calibration <- plan_batch(
         dir = tempfile("another-batch-output-"),
-        store = store,
-        dry_run = TRUE,
-        ui = shift_ui(progress = "none")
+        calibration = shift_era5(years = 2000:2019)
     )
     expect_false(identical(
         changed_calibration@ids$batch_id,
@@ -597,52 +576,42 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
         frequency = c(tas = "day"),
         index_node = "https://example.org"
     ))
-    catalog <- data.table::CJ(
-        source_id = c("Model-A", "Model-B", "Model-C"),
-        experiment_id = c("ssp126", "ssp585"),
-        unique = TRUE
+    catalog <- batch_test__catalog(experiments = c("ssp126", "ssp585"))
+    data.table::set(
+        catalog,
+        i = which(catalog$source_id == "Model-B"),
+        j = "datetime_end",
+        value = "2050-12-31T23:59:59Z"
     )
-    catalog[, `:=`(
-        variant_label = "r1i1p1f1",
-        frequency = "day",
-        table_id = "day",
-        variable_id = "tas",
-        grid_label = "gn",
-        latest = TRUE,
-        retracted = FALSE,
-        deprecated = FALSE,
-        datetime_start = "2041-01-01T00:00:00Z",
-        datetime_end = data.table::fifelse(
-            source_id == "Model-B",
-            "2050-12-31T23:59:59Z",
-            "2090-12-31T23:59:59Z"
-        )
-    )]
     # Model-B resumes after an internal 2051 gap. Additional 2051 records use
     # incompatible member, table, or grid identities and therefore must not be
     # combined to manufacture complete coverage.
-    model_b_tail <- data.table::copy(catalog[source_id == "Model-B"])
-    model_b_tail[, `:=`(
-        datetime_start = "2052-01-01T00:00:00Z",
-        datetime_end = "2090-12-31T23:59:59Z"
-    )]
+    model_b_tail <- batch_test__catalog(
+        sources = "Model-B",
+        experiments = c("ssp126", "ssp585"),
+        start = "2052-01-01T00:00:00Z",
+        end = "2090-12-31T23:59:59Z"
+    )
     distractors <- data.table::rbindlist(
         lapply(
-            c("member", "table", "grid"),
-            function(kind) {
-                rows <- data.table::copy(catalog[source_id == "Model-B"])
-                rows[, `:=`(
-                    datetime_start = "2051-01-01T00:00:00Z",
-                    datetime_end = "2051-12-31T23:59:59Z"
-                )]
-                if (identical(kind, "member")) {
-                    rows[, variant_label := "r2i1p1f1"]
-                }
-                if (identical(kind, "table")) {
-                    rows[, table_id := "3hr"]
-                }
-                if (identical(kind, "grid")) {
-                    rows[, grid_label := "gr"]
+            list(
+                list(variant_label = "r2i1p1f1"),
+                list(table_id = "3hr"),
+                list(grid_label = "gr")
+            ),
+            function(override) {
+                rows <- batch_test__catalog(
+                    sources = "Model-B",
+                    experiments = c("ssp126", "ssp585"),
+                    start = "2051-01-01T00:00:00Z",
+                    end = "2051-12-31T23:59:59Z"
+                )
+                for (name in names(override)) {
+                    data.table::set(
+                        rows,
+                        j = name,
+                        value = rep(override[[name]], nrow(rows))
+                    )
                 }
                 rows
             }
@@ -716,20 +685,12 @@ test_that("File coverage retains completion on the exact table mapping", {
         use.names = TRUE,
         fill = TRUE
     )
-    catalog <- data.table::data.table(
-        source_id = "Model-A",
-        experiment_id = "ssp585",
-        variant_label = "r1i1p1f1",
-        variable_id = "tas",
-        frequency = "day",
-        table_id = "day",
-        grid_label = "gn",
-        replica = FALSE,
-        latest = TRUE,
-        deprecated = FALSE,
-        datetime_start = "2041-01-01T00:00:00Z",
-        datetime_end = "2060-12-31T23:59:59Z"
+    catalog <- batch_test__catalog(
+        sources = "Model-A",
+        start = "2041-01-01T00:00:00Z",
+        end = "2060-12-31T23:59:59Z"
     )
+    data.table::set(catalog, j = "replica", value = FALSE)
     testthat::local_mocked_bindings(
         shift_resolve__cmip6_coverage_catalog = function(...) catalog,
         .package = "epwshiftr"
@@ -760,36 +721,22 @@ test_that("File coverage applies the same year kernel to historical reference", 
         frequency = c(tas = "day"),
         index_node = "https://example.org"
     ))
-    make_catalog <- function(experiment, start, end) {
-        rows <- data.table::data.table(
-            source_id = c("Model-A", "Model-B", "Model-C")
-        )
-        rows[, `:=`(
-            experiment_id = experiment,
-            variant_label = "r1i1p1f1",
-            frequency = "day",
-            table_id = "day",
-            variable_id = "tas",
-            grid_label = "gn",
-            latest = TRUE,
-            retracted = FALSE,
-            deprecated = FALSE,
-            datetime_start = start,
-            datetime_end = end
-        )]
-        rows
-    }
-    future <- make_catalog(
-        "ssp585",
-        "2050-01-01T00:00:00Z",
-        "2050-12-31T23:59:59Z"
+    future <- batch_test__catalog(
+        experiments = "ssp585",
+        start = "2050-01-01T00:00:00Z",
+        end = "2050-12-31T23:59:59Z"
     )
-    historical <- make_catalog(
-        "historical",
-        "1995-01-01T00:00:00Z",
-        "2014-12-31T23:59:59Z"
+    historical <- batch_test__catalog(
+        experiments = "historical",
+        start = "1995-01-01T00:00:00Z",
+        end = "2014-12-31T23:59:59Z"
     )
-    historical[source_id == "Model-B", datetime_end := "2010-12-31T23:59:59Z"]
+    data.table::set(
+        historical,
+        i = which(historical$source_id == "Model-B"),
+        j = "datetime_end",
+        value = "2010-12-31T23:59:59Z"
+    )
     testthat::local_mocked_bindings(
         shift_resolve__cmip6_coverage_catalog = function(request, ...) {
             if (identical(request@meta$experiment, "historical")) {

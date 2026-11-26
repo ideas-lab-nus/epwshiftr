@@ -3,26 +3,18 @@
 # shift_batch_execution__job_read {{{
 shift_batch_execution__job_read <- function(root) {
     path <- file.path(root, "batch-job.json")
-    if (!dir.exists(root)) {
-        return(NULL)
-    }
     # Share a short receipt lock with every publisher. In particular, Windows
     # copy-overwrite fallback must finish before any reader opens the JSON file.
-    job <- manifest_with_lock(
+    job <- shift_batch__locked_read(
+        root,
         path,
-        {
-            if (file.exists(path)) {
-                jsonlite::read_json(path, simplifyVector = TRUE)
-            } else {
-                NULL
-            }
-        },
+        function(file) jsonlite::read_json(file, simplifyVector = TRUE),
         timeout = 5
     )
     if (is.null(job)) {
         return(NULL)
     }
-    if (job$status %in% c("queued", "running", "stopping")) {
+    if (job$status %in% SHIFT_BATCH_ACTIVE_STATUSES) {
         alive <- if (is.null(job$pid) || is.na(job$pid)) {
             as.numeric(Sys.time()) - job$started < 60
         } else {
@@ -133,8 +125,7 @@ shift_batch_execution__resume <- function(
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
     selected_options <- shift_execution__options()
-    job <- shift_batch_execution__job_read(x@store_path)
-    if (!is.null(job) && job$status %in% c("queued", "running", "stopping")) {
+    if (!is.null(shift_batch__active_job(x@store_path))) {
         return(shift_batch__refresh(x))
     }
     dir.create(x@store_path, recursive = TRUE, showWarnings = FALSE)
@@ -142,11 +133,7 @@ shift_batch_execution__resume <- function(
         file.path(x@store_path, "batch-execution"),
         {
             # Recheck after claiming the lock to close simultaneous-launch races.
-            job <- shift_batch_execution__job_read(x@store_path)
-            if (
-                !is.null(job) &&
-                    job$status %in% c("queued", "running", "stopping")
-            ) {
+            if (!is.null(shift_batch__active_job(x@store_path))) {
                 return(shift_batch__refresh(x))
             }
             x <- shift_batch__refresh(x)

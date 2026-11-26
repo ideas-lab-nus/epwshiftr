@@ -4,6 +4,108 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+resolve_test__catalog <- function(
+    variables,
+    source = "Model-A",
+    experiments = "ssp126",
+    member = "r1i1p1f1",
+    grids = "gn",
+    frequency = "mon",
+    table = "Amon",
+    start = "2055-01-01T00:00:00Z",
+    end = "2065-12-31T23:59:59Z",
+    span = NULL
+) {
+    freq_for <- function(v) {
+        if (is.null(names(frequency))) frequency[[1L]] else frequency[[v]]
+    }
+    table_for <- function(v) {
+        if (is.null(names(table))) table[[1L]] else table[[v]]
+    }
+    rows <- list()
+    for (experiment in experiments) {
+        for (grid in grids) {
+            for (variable in variables) {
+                tbl <- table_for(variable)
+                fname <- if (is.null(span)) {
+                    sprintf("%s_%s_%s.nc", experiment, variable, grid)
+                } else {
+                    sprintf(
+                        "%s_%s_%s_%s_%s_%s_%s.nc",
+                        variable,
+                        tbl,
+                        source,
+                        experiment,
+                        member,
+                        grid,
+                        span
+                    )
+                }
+                docs <- esgf_test__file_docs(
+                    fname,
+                    variable_id = variable,
+                    datetime_start = start,
+                    datetime_end = end
+                )
+                docs$source_id <- source
+                docs$experiment_id <- experiment
+                docs$variant_label <- member
+                docs$frequency <- freq_for(variable)
+                docs$table_id <- tbl
+                docs$grid_label <- grid
+                docs$id <- sprintf("%s-%s-%s", experiment, variable, grid)
+                docs$dataset_id <- sprintf(
+                    "dataset-%s-%s-%s",
+                    experiment,
+                    variable,
+                    grid
+                )
+                rows[[length(rows) + 1L]] <- docs
+            }
+        }
+    }
+    data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
+}
+
+resolve_test__files_stage <- function(docs, prefix = "shift-service-store-") {
+    store_path <- tempfile(prefix)
+    store <- EsgStore$new(store_path)
+    query_id <- store$add_files(esgf_test__file_result(docs))
+    store$close()
+    shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = shift_request(),
+            dataset_count = 1L,
+            file_count = nrow(docs),
+            fields = SHIFT_WORKFLOW_FILE_FIELDS
+        )
+    )
+}
+
+resolve_test__plan <- function(
+    climate_spec,
+    transform = monthly_transform("epwshiftr"),
+    periods = epw_morph_periods(`2060s` = 2060L)
+) {
+    plan <- shift_plan(
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
+        transform = transform,
+        store = tempfile("resolver-store-")
+    )
+    plan@meta$climate <- climate_spec
+    plan
+}
+
 test_that("historical workflow queries preserve years without exact datetime bounds", {
     reference_years <- 1995:2014
     plan <- shift_epw_future(
@@ -30,22 +132,12 @@ test_that("historical workflow queries preserve years without exact datetime bou
     # Real monthly CMIP6 Dataset metadata uses representative mid-month
     # timestamps. A December 16 endpoint still covers the calendar year 2014.
     variables <- epw_morph_variables(plan@meta$recipe)
-    reference_catalog <- data.table::rbindlist(
-        lapply(variables, function(variable) {
-            docs <- esgf_test__file_docs(
-                sprintf("historical_%s.nc", variable),
-                variable_id = variable,
-                datetime_start = "1850-01-16T12:00:00Z",
-                datetime_end = "2014-12-16T12:00:00Z"
-            )
-            docs$source_id <- "BCC-CSM2-MR"
-            docs$experiment_id <- "historical"
-            docs$frequency <- "mon"
-            docs$table_id <- "Amon"
-            docs$grid_label <- "gn"
-            docs
-        }),
-        fill = TRUE
+    reference_catalog <- resolve_test__catalog(
+        variables,
+        source = "BCC-CSM2-MR",
+        experiments = "historical",
+        start = "1850-01-16T12:00:00Z",
+        end = "2014-12-16T12:00:00Z"
     )
     candidates <- shift_resolve__cmip6_candidates(
         reference_catalog,
@@ -109,25 +201,10 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
 })
 
 test_that("workflow resolver resolves both File service paths", {
-    store_path <- tempfile("shift-service-store-")
-    store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(
         "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
     )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    store$close()
-    files <- shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = shift_request(),
-            dataset_count = 1L,
-            file_count = 1L,
-            fields = SHIFT_WORKFLOW_FILE_FIELDS
-        )
-    )
+    files <- resolve_test__files_stage(docs)
     resolver_calls <- 0L
     resolver_check <- NULL
     test_local_dependencies(list(
@@ -287,38 +364,15 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
     variables <- morpher__input_variables(recipe)
     frequencies <- morpher__recipe_required_frequency(recipe)
     tables <- shift_spec__cmip6_variable_tables(variables, frequencies)
-    catalog <- data.table::rbindlist(
-        lapply(
-            c("ssp245", "historical"),
-            function(experiment) {
-                data.table::rbindlist(
-                    lapply(variables, function(variable) {
-                        docs <- esgf_test__file_docs(
-                            sprintf(
-                                "%s_%s_Model-A_%s_r1i1p1f1_gn_19900101-20651231.nc",
-                                variable,
-                                tables[[variable]],
-                                experiment
-                            ),
-                            variable_id = variable,
-                            datetime_start = "1990-01-01T00:00:00Z",
-                            datetime_end = "2065-12-31T23:59:59Z"
-                        )
-                        docs$source_id <- "Model-A"
-                        docs$experiment_id <- experiment
-                        docs$variant_label <- "r1i1p1f1"
-                        docs$frequency <- frequencies[[variable]]
-                        docs$table_id <- tables[[variable]]
-                        docs$grid_label <- "gn"
-                        docs
-                    }),
-                    use.names = TRUE,
-                    fill = TRUE
-                )
-            }
-        ),
-        use.names = TRUE,
-        fill = TRUE
+    catalog <- resolve_test__catalog(
+        variables,
+        source = "Model-A",
+        experiments = c("ssp245", "historical"),
+        frequency = frequencies,
+        table = tables,
+        start = "1990-01-01T00:00:00Z",
+        end = "2065-12-31T23:59:59Z",
+        span = "19900101-20651231"
     )
 
     candidates <- shift_resolve__cmip6_candidates(
@@ -377,32 +431,15 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
 })
 
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
-    make_catalog <- function(variables) {
-        data.table::rbindlist(
-            lapply(variables, function(variable) {
-                docs <- esgf_test__file_docs(
-                    sprintf(
-                        "%s_Amon_BCC-CSM2-MR_ssp126_r1i1p1f1_gn_205501-206512.nc",
-                        variable
-                    ),
-                    variable_id = variable,
-                    datetime_start = "2055-01-01T00:00:00Z",
-                    datetime_end = "2065-12-31T23:59:59Z"
-                )
-                docs$source_id <- "BCC-CSM2-MR"
-                docs$experiment_id <- "ssp126"
-                docs$frequency <- "mon"
-                docs$table_id <- "Amon"
-                docs$grid_label <- "gn"
-                docs
-            }),
-            fill = TRUE
-        )
-    }
     requirements <- list(hurs = list("hurs", c("huss", "tas", "ps")))
     candidates <- function(variables) {
         shift_resolve__cmip6_candidates(
-            make_catalog(variables),
+            resolve_test__catalog(
+                variables,
+                source = "BCC-CSM2-MR",
+                experiments = "ssp126",
+                span = "205501-206512"
+            ),
             models = "BCC-CSM2-MR",
             experiments = "ssp126",
             variables = unique(unlist(requirements, recursive = TRUE)),
@@ -745,102 +782,51 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
 
     # Create two otherwise equivalent non-native grids so automatic preference
     # rules cannot choose one without user input.
-    catalogs <- data.table::rbindlist(
-        lapply(c("gr1", "gr2"), function(grid) {
-            data.table::rbindlist(
-                lapply(variables, function(variable_id) {
-                    docs <- esgf_test__file_docs(
-                        sprintf("%s_%s.nc", variable_id, grid),
-                        variable_id = variable_id
-                    )
-                    docs$grid_label <- grid
-                    docs$frequency <- "mon"
-                    docs$table_id <- "Amon"
-                    docs$id <- sprintf("%s-%s", variable_id, grid)
-                    docs$dataset_id <- sprintf(
-                        "dataset-%s-%s",
-                        variable_id,
-                        grid
-                    )
-                    docs
-                }),
-                fill = TRUE
-            )
-        }),
-        fill = TRUE
+    catalogs <- resolve_test__catalog(
+        variables,
+        source = "EC-Earth3",
+        experiments = "ssp585",
+        grids = c("gr1", "gr2"),
+        start = "2060-01-01T00:00:00Z",
+        end = "2060-12-31T23:59:59Z"
     )
 
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        frequency = "mon",
-        table = "Amon"
+    plan <- resolve_test__plan(
+        shift_cmip6("EC-Earth3", "ssp585", frequency = "mon", table = "Amon"),
+        transform = transform
     )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    plan <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
-        ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
-    )
-    plan@meta$climate <- climate_spec
     expect_error(
         shift_resolve__resolve_cmip6_selection(plan, catalogs),
         class = "epwshiftr_shift_resolution_ambiguity"
     )
 
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        member = "r1i1p1f1",
-        grid = "gr1",
-        frequency = "mon",
-        table = "Amon"
-    )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    explicit <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
+    explicit <- resolve_test__plan(
+        shift_cmip6(
+            "EC-Earth3",
+            "ssp585",
+            member = "r1i1p1f1",
+            grid = "gr1",
+            frequency = "mon",
+            table = "Amon"
         ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
+        transform = transform
     )
-    explicit@meta$climate <- climate_spec
     expect_equal(
         shift_resolve__resolve_cmip6_selection(explicit, catalogs)$grid_label,
         "gr1"
     )
 
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        member = "r2i1p1f1",
-        grid = "gr1",
-        frequency = "mon",
-        table = "Amon"
-    )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    missing_member <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
+    missing_member <- resolve_test__plan(
+        shift_cmip6(
+            "EC-Earth3",
+            "ssp585",
+            member = "r2i1p1f1",
+            grid = "gr1",
+            frequency = "mon",
+            table = "Amon"
         ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
+        transform = transform
     )
-    missing_member@meta$climate <- climate_spec
     expect_error(
         shift_resolve__resolve_cmip6_selection(missing_member, catalogs),
         "No complete CMIP6 member/grid candidate"
@@ -848,28 +834,13 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
 })
 
 test_that("workflow resolver removes HTTP-only files when downloads are forbidden", {
-    store_path <- tempfile("shift-opendap-only-store-")
-    store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(
         "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
     )
     docs$url <- I(list(
         "https://example.org/files/tas.nc|application/netcdf|HTTPServer"
     ))
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    store$close()
-    files <- shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = shift_request(),
-            dataset_count = 1L,
-            file_count = 1L,
-            fields = SHIFT_WORKFLOW_FILE_FIELDS
-        )
-    )
+    files <- resolve_test__files_stage(docs, "shift-opendap-only-store-")
 
     test_local_dependencies(list(
         query_result__resolve_file_services = function(
@@ -1050,32 +1021,22 @@ resolvecheck__paired_catalog <- function(
     member = "r1i1p1f1"
 ) {
     historical <- experiment == "historical"
-    span <- if (historical) "199501-201412" else "205501-206512"
-    start <- if (historical) "1995-01-01T00:00:00Z" else "2055-01-01T00:00:00Z"
-    end <- if (historical) "2014-12-31T23:59:59Z" else "2065-12-31T23:59:59Z"
-    data.table::rbindlist(
-        lapply(variables, function(variable) {
-            docs <- esgf_test__file_docs(
-                sprintf(
-                    "%s_Amon_Model-A_%s_%s_gn_%s.nc",
-                    variable,
-                    experiment,
-                    member,
-                    span
-                ),
-                variable_id = variable,
-                datetime_start = start,
-                datetime_end = end
-            )
-            docs$source_id <- "Model-A"
-            docs$experiment_id <- experiment
-            docs$variant_label <- member
-            docs$frequency <- "mon"
-            docs$table_id <- "Amon"
-            docs$grid_label <- "gn"
-            docs
-        }),
-        fill = TRUE
+    resolve_test__catalog(
+        variables,
+        source = "Model-A",
+        experiments = experiment,
+        member = member,
+        start = if (historical) {
+            "1995-01-01T00:00:00Z"
+        } else {
+            "2055-01-01T00:00:00Z"
+        },
+        end = if (historical) {
+            "2014-12-31T23:59:59Z"
+        } else {
+            "2065-12-31T23:59:59Z"
+        },
+        span = if (historical) "199501-201412" else "205501-206512"
     )
 }
 

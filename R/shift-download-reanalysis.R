@@ -262,183 +262,9 @@ shift_download_reanalysis <- function(
         seq_along(e$ledger$requests)
     }
     for (i in eligible) {
-        e$current <- i
-        row <- e$ledger$requests[[i]]
-        target <- file.path(dir, "raw", paste0(row$request_id, ".asset"))
-        if (identical(row$state, "downloaded")) {
-            if (
-                file.exists(target) &&
-                    identical(checksum_file(target), row$raw_asset$sha256) &&
-                    file.info(target)$size == row$raw_asset$bytes
-            ) {
-                verified[[i]] <- TRUE
-                next
-            }
-            e$ledger$requests[[i]]$state <- "failed"
-            e$ledger$requests[[i]]$error <- "cached_asset_changed"
-            reanalysis_transfer__save(e)
-            break
-        }
-        if (
-            row$state == "ambiguous" ||
-                (is.null(row$locator) && row$state != "not_submitted")
-        ) {
-            break
-        }
-        failure <- tryCatch(
-            {
-                if (is.null(row$locator)) {
-                    if (
-                        e$prior$submissions + e$execution$submissions >=
-                            settings$max_submissions
-                    ) {
-                        reanalysis_transfer__abort("submission_budget")
-                    }
-                    if (!nzchar(config$key)) {
-                        reanalysis_transfer__abort("missing_credentials")
-                    }
-                    reanalysis_transfer__remaining(e)
-                    reanalysis_transfer__budget(e)
-                    e$execution$submissions <- e$execution$submissions + 1
-                    e$ledger$requests[[i]]$submission_attempted <- TRUE
-                    e$ledger$requests[[i]]$state <- "submitting"
-                    reanalysis_transfer__save(e)
-                    submit_url <- paste0(
-                        config$url,
-                        "/retrieve/v1/processes/",
-                        row$dataset,
-                        "/execution"
-                    )
-                    response <- reanalysis_transfer__http(
-                        e,
-                        i,
-                        "submit",
-                        "POST",
-                        submit_url,
-                        body = list(inputs = row$request),
-                        timeout = settings$wait_timeout
-                    )
-                    monitor <- cds__absolute_url(
-                        cds__link(response, "monitor"),
-                        submit_url
-                    )
-                    prefix <- paste0(config$url, "/retrieve/v1/jobs/")
-                    id <- substring(monitor, nchar(prefix) + 1L)
-                    if (
-                        !startsWith(monitor, prefix) ||
-                            !grepl("^[A-Za-z0-9_-]+$", id)
-                    ) {
-                        reanalysis_transfer__abort("invalid_locator")
-                    }
-                    e$ledger$requests[[i]]$locator <- id
-                    e$ledger$requests[[i]]$state <- "submitted"
-                    reanalysis_transfer__save(e)
-                }
-                job_url <- paste0(
-                    config$url,
-                    "/retrieve/v1/jobs/",
-                    e$ledger$requests[[i]]$locator
-                )
-                wait_start <- proc.time()[["elapsed"]]
-                repeat {
-                    remaining <- settings$wait_timeout -
-                        (proc.time()[["elapsed"]] - wait_start)
-                    if (remaining <= 0) {
-                        reanalysis_transfer__abort("wait_timeout")
-                    }
-                    status <- reanalysis_transfer__http(
-                        e,
-                        i,
-                        "poll",
-                        "GET",
-                        job_url,
-                        timeout = remaining
-                    )
-                    if (identical(status$status, "successful")) {
-                        break
-                    }
-                    if (
-                        !status$status %in% c("accepted", "running", "queued")
-                    ) {
-                        reanalysis_transfer__abort("provider_job_failed")
-                    }
-                    Sys.sleep(min(
-                        poll_interval,
-                        remaining,
-                        reanalysis_transfer__remaining(e)
-                    ))
-                }
-                result_url <- paste0(job_url, "/results")
-                result <- reanalysis_transfer__http(
-                    e,
-                    i,
-                    "result",
-                    "GET",
-                    result_url,
-                    timeout = settings$wait_timeout
-                )
-                asset <- result$asset$value
-                url <- cds__absolute_url(asset$href, result_url)
-                if (!grepl("^https?://[^/@?#]+([/?#]|$)", url)) {
-                    reanalysis_transfer__abort("invalid_asset_url")
-                }
-                e$ledger$requests[[i]]$state <- "downloading"
-                reanalysis_transfer__save(e)
-                part <- paste0(target, ".part")
-                reanalysis_transfer__http(
-                    e,
-                    i,
-                    "download",
-                    "GET",
-                    url,
-                    target = part,
-                    timeout = settings$download_timeout
-                )
-                size <- file.info(part)$size
-                expected <- asset[["file:size"]]
-                if (
-                    !is.null(expected) &&
-                        (!is.numeric(expected) ||
-                            length(expected) != 1L ||
-                            !is.finite(expected) ||
-                            size != expected)
-                ) {
-                    reanalysis_transfer__abort("asset_size_mismatch")
-                }
-                hash <- checksum_file(part)
-                if (!file.rename(part, target)) {
-                    reanalysis_transfer__abort("asset_publish_failed")
-                }
-                e$ledger$requests[[i]]$raw_asset <- list(
-                    bytes = size,
-                    sha256 = hash
-                )
-                e$ledger$requests[[i]]$state <- "downloaded"
-                e$ledger$requests[[i]]$error <- NULL
-                reanalysis_transfer__save(e)
-                verified[[i]] <- TRUE
-                NULL
-            },
-            error = function(error) {
-                if (inherits(error, "epwshiftr_transfer_error")) {
-                    error$code
-                } else {
-                    "transport_failed"
-                }
-            },
-            interrupt = function(error) "interrupted"
-        )
-        if (!is.null(failure)) {
-            state <- if (e$ledger$requests[[i]]$state == "submitting") {
-                "ambiguous"
-            } else if (grepl("budget|timeout", failure)) {
-                "budget_exhausted"
-            } else {
-                "failed"
-            }
-            e$ledger$requests[[i]]$state <- state
-            e$ledger$requests[[i]]$error <- failure
-            reanalysis_transfer__save(e)
+        if (reanalysis_transfer__process_request(e, i, dir, poll_interval)) {
+            verified[[i]] <- TRUE
+        } else {
             break
         }
     }
@@ -471,6 +297,188 @@ shift_download_reanalysis <- function(
     )
 }
 # }}}
+
+# Execute or verify one planned transfer request without altering ledger rules.
+reanalysis_transfer__process_request <- function(e, i, dir, poll_interval) {
+    config <- e$config
+    settings <- e$limits
+    e$current <- i
+    row <- e$ledger$requests[[i]]
+    target <- file.path(dir, "raw", paste0(row$request_id, ".asset"))
+    if (identical(row$state, "downloaded")) {
+        if (
+            file.exists(target) &&
+                identical(checksum_file(target), row$raw_asset$sha256) &&
+                file.info(target)$size == row$raw_asset$bytes
+        ) {
+            return(TRUE)
+        }
+        e$ledger$requests[[i]]$state <- "failed"
+        e$ledger$requests[[i]]$error <- "cached_asset_changed"
+        reanalysis_transfer__save(e)
+        return(FALSE)
+    }
+    if (
+        row$state == "ambiguous" ||
+            (is.null(row$locator) && row$state != "not_submitted")
+    ) {
+        return(FALSE)
+    }
+    failure <- tryCatch(
+        {
+            if (is.null(row$locator)) {
+                if (
+                    e$prior$submissions + e$execution$submissions >=
+                        settings$max_submissions
+                ) {
+                    reanalysis_transfer__abort("submission_budget")
+                }
+                if (!nzchar(config$key)) {
+                    reanalysis_transfer__abort("missing_credentials")
+                }
+                reanalysis_transfer__remaining(e)
+                reanalysis_transfer__budget(e)
+                e$execution$submissions <- e$execution$submissions + 1
+                e$ledger$requests[[i]]$submission_attempted <- TRUE
+                e$ledger$requests[[i]]$state <- "submitting"
+                reanalysis_transfer__save(e)
+                submit_url <- paste0(
+                    config$url,
+                    "/retrieve/v1/processes/",
+                    row$dataset,
+                    "/execution"
+                )
+                response <- reanalysis_transfer__http(
+                    e,
+                    i,
+                    "submit",
+                    "POST",
+                    submit_url,
+                    body = list(inputs = row$request),
+                    timeout = settings$wait_timeout
+                )
+                monitor <- cds__absolute_url(
+                    cds__link(response, "monitor"),
+                    submit_url
+                )
+                prefix <- paste0(config$url, "/retrieve/v1/jobs/")
+                id <- substring(monitor, nchar(prefix) + 1L)
+                if (
+                    !startsWith(monitor, prefix) ||
+                        !grepl("^[A-Za-z0-9_-]+$", id)
+                ) {
+                    reanalysis_transfer__abort("invalid_locator")
+                }
+                e$ledger$requests[[i]]$locator <- id
+                e$ledger$requests[[i]]$state <- "submitted"
+                reanalysis_transfer__save(e)
+            }
+            job_url <- paste0(
+                config$url,
+                "/retrieve/v1/jobs/",
+                e$ledger$requests[[i]]$locator
+            )
+            wait_start <- proc.time()[["elapsed"]]
+            repeat {
+                remaining <- settings$wait_timeout -
+                    (proc.time()[["elapsed"]] - wait_start)
+                if (remaining <= 0) {
+                    reanalysis_transfer__abort("wait_timeout")
+                }
+                status <- reanalysis_transfer__http(
+                    e,
+                    i,
+                    "poll",
+                    "GET",
+                    job_url,
+                    timeout = remaining
+                )
+                if (identical(status$status, "successful")) {
+                    break
+                }
+                if (!status$status %in% c("accepted", "running", "queued")) {
+                    reanalysis_transfer__abort("provider_job_failed")
+                }
+                Sys.sleep(min(
+                    poll_interval,
+                    remaining,
+                    reanalysis_transfer__remaining(e)
+                ))
+            }
+            result_url <- paste0(job_url, "/results")
+            result <- reanalysis_transfer__http(
+                e,
+                i,
+                "result",
+                "GET",
+                result_url,
+                timeout = settings$wait_timeout
+            )
+            asset <- result$asset$value
+            url <- cds__absolute_url(asset$href, result_url)
+            if (!grepl("^https?://[^/@?#]+([/?#]|$)", url)) {
+                reanalysis_transfer__abort("invalid_asset_url")
+            }
+            e$ledger$requests[[i]]$state <- "downloading"
+            reanalysis_transfer__save(e)
+            part <- paste0(target, ".part")
+            reanalysis_transfer__http(
+                e,
+                i,
+                "download",
+                "GET",
+                url,
+                target = part,
+                timeout = settings$download_timeout
+            )
+            size <- file.info(part)$size
+            expected <- asset[["file:size"]]
+            if (
+                !is.null(expected) &&
+                    (!is.numeric(expected) ||
+                        length(expected) != 1L ||
+                        !is.finite(expected) ||
+                        size != expected)
+            ) {
+                reanalysis_transfer__abort("asset_size_mismatch")
+            }
+            hash <- checksum_file(part)
+            if (!file.rename(part, target)) {
+                reanalysis_transfer__abort("asset_publish_failed")
+            }
+            e$ledger$requests[[i]]$raw_asset <- list(
+                bytes = size,
+                sha256 = hash
+            )
+            e$ledger$requests[[i]]$state <- "downloaded"
+            e$ledger$requests[[i]]$error <- NULL
+            reanalysis_transfer__save(e)
+            NULL
+        },
+        error = function(error) {
+            if (inherits(error, "epwshiftr_transfer_error")) {
+                error$code
+            } else {
+                "transport_failed"
+            }
+        },
+        interrupt = function(error) "interrupted"
+    )
+    if (!is.null(failure)) {
+        state <- if (e$ledger$requests[[i]]$state == "submitting") {
+            "ambiguous"
+        } else if (grepl("budget|timeout", failure)) {
+            "budget_exhausted"
+        } else {
+            "failed"
+        }
+        e$ledger$requests[[i]]$state <- state
+        e$ledger$requests[[i]]$error <- failure
+        reanalysis_transfer__save(e)
+        return(FALSE)
+    }
+    TRUE
+}
 
 # Validate the per-invocation contract independently of any provider calls.
 reanalysis_transfer__limits <- function(limits) {

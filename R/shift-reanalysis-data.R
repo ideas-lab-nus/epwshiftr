@@ -160,23 +160,17 @@ shift_reanalysis_data <- function(
         result
     }
     normalized_receipt <- file.path(dir, "normalization.rds")
-    previous <- if (file.exists(normalized_receipt)) {
-        tryCatch(readRDS(normalized_receipt), error = function(e) e)
-    } else {
-        NULL
+    checked <- reanalysis_data__verify_receipt(
+        normalized_receipt,
+        validate = function(x) reanalysis_data__descriptor_valid(x, dir),
+        asset_path = function(x) x$path,
+        invalid_code = "invalid_normalization_receipt",
+        changed_code = "normalized_asset_changed"
+    )
+    if (!is.null(checked$error)) {
+        return(finish(checked$error))
     }
-    if (
-        !is.null(previous) && !reanalysis_data__descriptor_valid(previous, dir)
-    ) {
-        return(finish("invalid_normalization_receipt"))
-    }
-    if (
-        !is.null(previous) &&
-            (!file.exists(previous$path) ||
-                !identical(checksum_file(previous$path), previous$sha256))
-    ) {
-        return(finish("normalized_asset_changed"))
-    }
+    previous <- checked$receipt
     if (!local) {
         transfer <- shift_download_reanalysis(
             plan,
@@ -236,24 +230,20 @@ shift_reanalysis_data <- function(
             hash <- checksum_file(files[[i]])
             expected_hash[[i]] <- hash
             if (file.exists(receipt)) {
-                saved <- tryCatch(readRDS(receipt), error = function(e) e)
-                if (
-                    inherits(saved, "error") ||
-                        !is.list(saved) ||
-                        !identical(saved$schema_version, 1L) ||
-                        !identical(saved$request_id, names(owned)[[i]]) ||
-                        !identical(saved$origin, "local")
-                ) {
-                    return(finish("invalid_raw_receipt"))
-                }
-                if (!identical(hash, saved$sha256)) {
-                    return(finish("local_source_changed"))
-                }
-                if (
-                    !file.exists(owned[[i]]) ||
-                        !identical(checksum_file(owned[[i]]), saved$sha256)
-                ) {
-                    return(finish("raw_asset_changed"))
+                checked <- reanalysis_data__verify_receipt(
+                    receipt,
+                    validate = function(x) {
+                        identical(x$request_id, names(owned)[[i]]) &&
+                            identical(x$origin, "local")
+                    },
+                    asset_path = owned[[i]],
+                    invalid_code = "invalid_raw_receipt",
+                    changed_code = "raw_asset_changed",
+                    source_hash = hash,
+                    source_changed_code = "local_source_changed"
+                )
+                if (!is.null(checked$error)) {
+                    return(finish(checked$error))
                 }
             } else {
                 part <- paste0(owned[[i]], ".part")
@@ -401,19 +391,7 @@ shift_reanalysis_data <- function(
     if (!is.null(previous) && identical(previous$normalization_id, identity)) {
         # A valid payload hash alone does not authenticate descriptor metadata.
         # Derive its row count, location and versions from the current read.
-        expected <- c(
-            list(
-                path = path,
-                format = "rds",
-                rows = nrow(read$data),
-                sha256 = checksum_file(path)
-            ),
-            schema[c(
-                "schema_version",
-                "normalization_version",
-                "normalization_id"
-            )]
-        )
+        expected <- reanalysis_data__descriptor(path, nrow(read$data), schema)
         if (!identical(previous, expected)) {
             return(finish("invalid_normalization_receipt"))
         }
@@ -421,18 +399,10 @@ shift_reanalysis_data <- function(
         result$data <- previous
     } else {
         reanalysis_data__write(read$data, path)
-        result$data <- c(
-            list(
-                path = path,
-                format = "rds",
-                rows = nrow(read$data),
-                sha256 = checksum_file(path)
-            ),
-            schema[c(
-                "schema_version",
-                "normalization_version",
-                "normalization_id"
-            )]
+        result$data <- reanalysis_data__descriptor(
+            path,
+            nrow(read$data),
+            schema
         )
         reanalysis_data__write(result$data, normalized_receipt)
     }
@@ -451,6 +421,57 @@ reanalysis_data__write <- function(value, path) {
     if (!file.rename(temporary, path)) {
         cli::cli_abort("Cannot publish reanalysis result.")
     }
+}
+
+# Build the normalized payload descriptor from the persisted file and schema.
+reanalysis_data__descriptor <- function(path, rows, schema) {
+    c(
+        list(
+            path = path,
+            format = "rds",
+            rows = rows,
+            sha256 = checksum_file(path)
+        ),
+        schema[c(
+            "schema_version",
+            "normalization_version",
+            "normalization_id"
+        )]
+    )
+}
+
+# Read and validate a persisted RDS receipt plus its referenced file's SHA-256.
+reanalysis_data__verify_receipt <- function(
+    path,
+    validate,
+    asset_path,
+    invalid_code,
+    changed_code,
+    source_hash = NULL,
+    source_changed_code = NULL
+) {
+    if (!file.exists(path)) {
+        return(list(receipt = NULL, error = NULL))
+    }
+    saved <- tryCatch(readRDS(path), error = function(e) e)
+    if (
+        inherits(saved, "error") ||
+            !is.list(saved) ||
+            !identical(saved$schema_version, 1L) ||
+            !isTRUE(validate(saved))
+    ) {
+        return(list(receipt = NULL, error = invalid_code))
+    }
+    if (!is.null(source_hash) && !identical(source_hash, saved$sha256)) {
+        return(list(receipt = NULL, error = source_changed_code))
+    }
+    target <- if (is.function(asset_path)) asset_path(saved) else asset_path
+    if (
+        !file.exists(target) || !identical(checksum_file(target), saved$sha256)
+    ) {
+        return(list(receipt = NULL, error = changed_code))
+    }
+    list(receipt = saved, error = NULL)
 }
 
 # Validate the disk descriptor before using its paths or counters. A corrupted
