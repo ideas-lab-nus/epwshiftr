@@ -646,6 +646,9 @@ shift_download <- S7::new_generic(
         ui = NULL,
         ...
     ) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
         if (is.null(shift_run__current_reporter())) {
             options <- list(...)
             args <- list(
@@ -697,6 +700,9 @@ shift_extract <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
         if (is.null(shift_run__current_reporter())) {
             args <- list(
                 site = site,
@@ -751,6 +757,9 @@ shift_morph <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
         if (is.null(shift_run__current_reporter())) {
             transform__validate_execution_inputs(
                 transform,
@@ -789,8 +798,10 @@ shift_morph <- S7::new_generic(
 
 #' @rdname shift_api
 #' @param dir In [shift_epw_future()], the user-facing delivery directory. In
-#'   [shift_epw_write()], an output directory inside the store root; relative paths
-#'   are resolved under the store root.
+#'   [shift_epw_write()], an output directory inside the store root when writing
+#'   from a `ShiftMorphed` stage (relative paths are resolved under the store
+#'   root), or the user-facing export directory when exporting an existing
+#'   `ShiftOutputs` stage.
 #' @param separate Whether to create separate output directories per morphing case.
 #' @param export_dir Optional directory outside or inside the store where EPW
 #'   files should also be copied for user-facing delivery.
@@ -807,7 +818,11 @@ shift_epw_write <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
         if (is.null(shift_run__current_reporter())) {
+            is_export <- S7::S7_inherits(x, ShiftOutputs)
             args <- list(
                 dir = dir,
                 separate = separate,
@@ -815,13 +830,23 @@ shift_epw_write <- S7::new_generic(
                 overwrite = overwrite,
                 resume = resume
             )
+            spec <- args
+            if (isTRUE(is_export)) {
+                target_dir <- shift_export__resolve_target_dir(dir, export_dir)
+                spec$dir <- normalizePath(
+                    path.expand(target_dir),
+                    winslash = "/",
+                    mustWork = FALSE
+                )
+            }
             return(shift_stage__run_if_top(
-                "write_epw",
+                if (isTRUE(is_export)) "export_epw" else "write_epw",
                 x,
                 shift_epw_write,
                 args = args,
                 ui = ui,
-                auto_complete = !is.null(export_dir)
+                spec = spec,
+                auto_complete = isTRUE(is_export) || !is.null(export_dir)
             ))
         }
         S7::S7_dispatch()

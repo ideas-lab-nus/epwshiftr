@@ -68,6 +68,40 @@ shift_epw_export <- function(
 }
 # }}}
 
+# Resolve and validate the target export directory for ShiftOutputs export.
+# shift_export__resolve_target_dir {{{
+shift_export__resolve_target_dir <- function(dir = NULL, export_dir = NULL) {
+    checkmate::assert_string(dir, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(export_dir, min.chars = 1L, null.ok = TRUE)
+    if (is.null(dir) && is.null(export_dir)) {
+        cli::cli_abort(c(
+            "Exporting a {.cls ShiftOutputs} stage with {.fn shift_epw_write} requires a target directory.",
+            "i" = "Supply `dir` or `export_dir`."
+        ))
+    }
+    if (!is.null(dir) && !is.null(export_dir)) {
+        norm_dir <- normalizePath(
+            path.expand(dir),
+            winslash = "/",
+            mustWork = FALSE
+        )
+        norm_export <- normalizePath(
+            path.expand(export_dir),
+            winslash = "/",
+            mustWork = FALSE
+        )
+        if (!identical(norm_dir, norm_export)) {
+            cli::cli_abort(c(
+                "Supply only one of `dir` or `export_dir` when exporting a {.cls ShiftOutputs} stage.",
+                "x" = "`dir` ({.path {dir}}) and `export_dir` ({.path {export_dir}}) differ."
+            ))
+        }
+        return(export_dir)
+    }
+    shift_stage__coalesce(export_dir, dir)
+}
+# }}}
+
 # Compute the user-facing export path for one generated EPW row.
 # shift_export__export_target_path {{{
 shift_export__export_target_path <- function(row, dir, separate = TRUE) {

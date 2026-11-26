@@ -516,4 +516,177 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     expect_true(sum(calls$values %in% "File") >= 2L)
 })
 
+test_that("ShiftRun handles continue directly across manual stage APIs", {
+    skip_on_cran()
+
+    nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
+    on.exit(unlink(nc), add = TRUE)
+    docs <- stage_test__file_docs(c(tas = nc), prefix = "run-pipe")
+    calls <- stage_test__calls()
+    shift_test__mock_collect(docs, calls)
+
+    req <- shift_request(
+        project = "CMIP6",
+        experiment = "ssp585",
+        variables = "tas",
+        frequency = "day"
+    )
+    site <- stage_test__site()
+    store_path <- tempfile("shift-run-pipe-store-")
+    export_dir <- tempfile("shift-run-pipe-export-")
+    on.exit(unlink(c(store_path, export_dir), recursive = TRUE), add = TRUE)
+
+    files <- shift_collect(req, store = store_path, ui = shift_ui("none"))
+    run_id <- files@ids$run_id
+    run_files <- shift_run_get(run_id, store = store_path)
+
+    expect_error(
+        shift_morph(
+            run_files,
+            transform = daily_transform("epwshiftr"),
+            strict = FALSE,
+            ui = shift_ui("none")
+        ),
+        "currently at stage.*files.*ShiftFiles"
+    )
+
+    climate <- run_files |>
+        shift_extract(
+            site = site,
+            periods = epw_morph_periods(`2060s` = 2060L),
+            time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+            ui = shift_ui("none")
+        )
+    expect_true(S7::S7_inherits(climate, ShiftClimate))
+    expect_identical(climate@ids$run_id, run_id)
+
+    morphed <- shift_run_get(run_id, store = store_path) |>
+        shift_morph(
+            transform = daily_transform("epwshiftr"),
+            reference = climate,
+            strict = FALSE,
+            ui = shift_ui("none")
+        )
+    expect_true(S7::S7_inherits(morphed, ShiftMorphed))
+    expect_identical(morphed@ids$run_id, run_id)
+
+    epws <- shift_run_get(run_id, store = store_path) |>
+        shift_epw_write(dir = "shift-epw", ui = shift_ui("none"))
+    expect_true(S7::S7_inherits(epws, ShiftOutputs))
+    expect_identical(epws@ids$run_id, run_id)
+    expect_identical(
+        shift_status(shift_run_get(run_id, store = store_path)),
+        "waiting"
+    )
+
+    exported <- shift_run_get(run_id, store = store_path) |>
+        shift_epw_write(dir = export_dir, ui = shift_ui("none"))
+    expect_true(S7::S7_inherits(exported, ShiftOutputs))
+    expect_identical(exported@ids$run_id, run_id)
+    expect_true(all(file.exists(shift_outputs(exported)$export_path)))
+    expect_identical(
+        shift_status(shift_run_get(run_id, store = store_path)),
+        "completed"
+    )
+
+    # ShiftRun also bridges shift_download() -> shift_extract() via ShiftDownload.
+    store_dl <- tempfile("shift-run-dl-store-")
+    on.exit(unlink(store_dl, recursive = TRUE), add = TRUE)
+    files_dl <- shift_collect(req, store = store_dl, ui = shift_ui("none"))
+    dl_run_id <- files_dl@ids$run_id
+    dl <- shift_run_get(dl_run_id, store = store_dl) |>
+        shift_download(run = FALSE, probe = FALSE, ui = shift_ui("none"))
+    expect_true(S7::S7_inherits(dl, ShiftDownload))
+    expect_identical(dl@ids$run_id, dl_run_id)
+    climate_dl <- shift_run_get(dl_run_id, store = store_dl) |>
+        shift_extract(
+            site = site,
+            periods = epw_morph_periods(`2060s` = 2060L),
+            time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+            ui = shift_ui("none")
+        )
+    expect_true(S7::S7_inherits(climate_dl, ShiftClimate))
+    expect_identical(climate_dl@ids$run_id, dl_run_id)
+})
+
+test_that("shift_epw_write() exports ShiftOutputs without rewriting store EPWs", {
+    skip_on_cran()
+
+    nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
+    on.exit(unlink(nc), add = TRUE)
+    docs <- stage_test__file_docs(c(tas = nc), prefix = "export-outputs")
+    calls <- stage_test__calls()
+    shift_test__mock_collect(docs, calls)
+
+    req <- shift_request(
+        project = "CMIP6",
+        experiment = "ssp585",
+        variables = "tas",
+        frequency = "day"
+    )
+    site <- stage_test__site()
+    store_path <- tempfile("shift-export-store-")
+    export_dir <- tempfile("shift-export-dir-")
+    export_dir2 <- tempfile("shift-export-dir2-")
+    on.exit(
+        unlink(c(store_path, export_dir, export_dir2), recursive = TRUE),
+        add = TRUE
+    )
+
+    climate <- shift_collect(req, store = store_path, ui = shift_ui("none")) |>
+        shift_extract(
+            site = site,
+            periods = epw_morph_periods(`2060s` = 2060L),
+            time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+            ui = shift_ui("none")
+        )
+    morphed <- shift_morph(
+        climate,
+        transform = daily_transform("epwshiftr"),
+        reference = climate,
+        strict = FALSE,
+        ui = shift_ui("none")
+    )
+    epws <- shift_epw_write(morphed, dir = "shift-epw", ui = shift_ui("none"))
+    store_files <- file.path(store_path, shift_outputs(epws)$path)
+    expect_true(all(file.exists(store_files)))
+
+    expect_error(
+        shift_epw_write(epws, ui = shift_ui("none")),
+        "requires a target directory"
+    )
+    expect_error(
+        shift_epw_write(
+            epws,
+            dir = export_dir,
+            export_dir = export_dir2,
+            ui = shift_ui("none")
+        ),
+        "only one of `dir` or `export_dir`"
+    )
+
+    testthat::local_mocked_bindings(
+        epw_morpher = function(...) stop("Store EPWs should not be rewritten")
+    )
+    exported <- shift_epw_write(epws, dir = export_dir, ui = shift_ui("none"))
+    expect_true(S7::S7_inherits(exported, ShiftOutputs))
+    expect_true(all(file.exists(shift_outputs(exported)$export_path)))
+    expect_identical(
+        normalizePath(
+            exported@meta$export_dir,
+            winslash = "/",
+            mustWork = TRUE
+        ),
+        normalizePath(export_dir, winslash = "/", mustWork = TRUE)
+    )
+    expect_identical(shift_status(shift_run_get(exported)), "completed")
+
+    exported2 <- shift_epw_write(
+        epws,
+        export_dir = export_dir2,
+        ui = shift_ui("none")
+    )
+    expect_true(all(file.exists(shift_outputs(exported2)$export_path)))
+})
+
 # vim: fdm=marker :

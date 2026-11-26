@@ -3183,15 +3183,233 @@ S7::method(shift_epw_write, ShiftMorphed) <- function(
         diagnostics = shift_stage__diagnostics_empty()
     )
     if (!is.null(export_dir)) {
-        stage <- shift_epw_export(
+        stage <- shift_export__export_outputs(
             stage,
             dir = export_dir,
             separate = separate,
             overwrite = overwrite,
-            resume = resume
+            resume = resume,
+            reporter = reporter
         )
     }
     stage
+}
+# }}}
+
+# S7::method(shift_epw_write, ShiftOutputs) {{{
+S7::method(shift_epw_write, ShiftOutputs) <- function(
+    x,
+    dir = NULL,
+    separate = TRUE,
+    export_dir = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    ui = NULL
+) {
+    target_dir <- shift_export__resolve_target_dir(dir, export_dir)
+    checkmate::assert_flag(separate)
+    checkmate::assert_flag(overwrite)
+    checkmate::assert_flag(resume)
+    shift_export__export_outputs(
+        x,
+        dir = target_dir,
+        separate = separate,
+        overwrite = overwrite,
+        resume = resume,
+        reporter = shift_run__current_reporter()
+    )
+}
+# }}}
+
+# Unwrap a persisted ShiftRun to its latest completed stage and validate that
+# the stage matches what the target continuation function accepts.
+# shift_run__unwrap_stage {{{
+shift_run__unwrap_stage <- function(x, expected, fn) {
+    run <- shift_refresh(x)
+    status <- shift_status(run, refresh = FALSE)
+    current_stage <- store__chr1(run@meta$run$current_stage[[1L]])
+    if (is.na(current_stage) || !nzchar(current_stage)) {
+        current_stage <- "unknown"
+    }
+    if (status %in% c("queued", "running", "stopping")) {
+        cli::cli_abort(c(
+            "Shift run {.val {run@ids$run_id}} is currently {.val {status}} at stage {.val {current_stage}} and cannot be passed to {.fn {fn}} yet.",
+            "i" = "Wait for the run to finish with {.fn shift_watch} before continuing."
+        ))
+    }
+    stage <- tryCatch(
+        shift_inspect__result(run),
+        error = function(e) e
+    )
+    if (inherits(stage, "error")) {
+        cli::cli_abort(c(
+            "Shift run {.val {run@ids$run_id}} has no completed stage to pass to {.fn {fn}}.",
+            "i" = "Current status is {.val {status}} at stage {.val {current_stage}}.",
+            "x" = conditionMessage(stage)
+        ))
+    }
+    matched <- any(vapply(
+        expected,
+        function(cls) S7::S7_inherits(stage, cls),
+        logical(1L)
+    ))
+    if (!isTRUE(matched)) {
+        stage_name <- if (S7::S7_inherits(stage, ShiftStage)) {
+            stage@stage
+        } else {
+            current_stage
+        }
+        stage_class <- class(stage)[[1L]]
+        expected_labels <- paste(
+            sprintf(
+                "<%s>",
+                vapply(expected, function(cls) cls@name, character(1L))
+            ),
+            collapse = " or "
+        )
+        next_hint <- if (S7::S7_inherits(stage, ShiftFiles)) {
+            "Continue with {.fn shift_download} or {.fn shift_extract}."
+        } else if (S7::S7_inherits(stage, ShiftDownload)) {
+            "Continue with {.fn shift_extract}."
+        } else if (S7::S7_inherits(stage, ShiftClimate)) {
+            "Continue with {.fn shift_morph}."
+        } else if (S7::S7_inherits(stage, ShiftMorphed)) {
+            "Continue with {.fn shift_epw_write}."
+        } else if (S7::S7_inherits(stage, ShiftOutputs)) {
+            "Export with {.fn shift_epw_write} or inspect with {.fn shift_outputs}."
+        } else {
+            NULL
+        }
+        bullets <- c(
+            "Shift run {.val {run@ids$run_id}} is currently at stage {.val {stage_name}} ({.cls {stage_class}}), which cannot be passed to {.fn {fn}}.",
+            "i" = "{.fn {fn}} expects {expected_labels}."
+        )
+        if (!is.null(next_hint)) {
+            bullets <- c(bullets, "i" = next_hint)
+        }
+        cli::cli_abort(bullets)
+    }
+    stage
+}
+# }}}
+
+# S7::method(shift_download, ShiftRun) {{{
+S7::method(shift_download, ShiftRun) <- function(
+    x,
+    downloader = NULL,
+    run = TRUE,
+    background = FALSE,
+    resume = TRUE,
+    overwrite = FALSE,
+    session_label = NULL,
+    ui = NULL,
+    ...
+) {
+    stage <- shift_run__unwrap_stage(x, list(ShiftFiles), "shift_download")
+    shift_download(
+        stage,
+        downloader = downloader,
+        run = run,
+        background = background,
+        resume = resume,
+        overwrite = overwrite,
+        session_label = session_label,
+        ui = ui,
+        ...
+    )
+}
+# }}}
+
+# S7::method(shift_extract, ShiftRun) {{{
+S7::method(shift_extract, ShiftRun) <- function(
+    x,
+    site = NULL,
+    periods = NULL,
+    variables = NULL,
+    time = NULL,
+    filters = list(),
+    method = "nearest",
+    fallback = c("auto", "error"),
+    overwrite = FALSE,
+    resume = TRUE,
+    ui = NULL
+) {
+    stage <- shift_run__unwrap_stage(
+        x,
+        list(ShiftFiles, ShiftDownload),
+        "shift_extract"
+    )
+    shift_extract(
+        stage,
+        site = site,
+        periods = periods,
+        variables = variables,
+        time = time,
+        filters = filters,
+        method = method,
+        fallback = fallback,
+        overwrite = overwrite,
+        resume = resume,
+        ui = ui
+    )
+}
+# }}}
+
+# S7::method(shift_morph, ShiftRun) {{{
+S7::method(shift_morph, ShiftRun) <- function(
+    x,
+    baseline = NULL,
+    transform,
+    reference = NULL,
+    observed_reference = NULL,
+    strict = TRUE,
+    complete_only = TRUE,
+    by = c("source_id", "experiment_id", "variant_label", "period"),
+    overwrite = FALSE,
+    resume = TRUE,
+    ui = NULL
+) {
+    stage <- shift_run__unwrap_stage(x, list(ShiftClimate), "shift_morph")
+    shift_morph(
+        stage,
+        baseline = baseline,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed_reference,
+        strict = strict,
+        complete_only = complete_only,
+        by = by,
+        overwrite = overwrite,
+        resume = resume,
+        ui = ui
+    )
+}
+# }}}
+
+# S7::method(shift_epw_write, ShiftRun) {{{
+S7::method(shift_epw_write, ShiftRun) <- function(
+    x,
+    dir = NULL,
+    separate = TRUE,
+    export_dir = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    ui = NULL
+) {
+    stage <- shift_run__unwrap_stage(
+        x,
+        list(ShiftMorphed, ShiftOutputs),
+        "shift_epw_write"
+    )
+    shift_epw_write(
+        stage,
+        dir = dir,
+        separate = separate,
+        export_dir = export_dir,
+        overwrite = overwrite,
+        resume = resume,
+        ui = ui
+    )
 }
 # }}}
 

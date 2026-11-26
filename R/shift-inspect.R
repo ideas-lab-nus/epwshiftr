@@ -1541,11 +1541,26 @@ shift_run_get <- function(run_id, store = NULL) {
 
 # Reconstruct the latest completed standalone result from its persisted stage
 # reference. Future EPW runs continue to return their existing output stage
-# when it is available on the in-process handle.
+# when it is available on the in-process handle, or rebuild ShiftOutputs from
+# persisted epw_output rows after reopening.
 #' @rdname shift_api
 #' @export
 # shift_result {{{
 shift_result <- function(x, store = NULL) {
+    shift_inspect__result(x, store = store)
+}
+# }}}
+
+# shift_inspect__result {{{
+shift_inspect__result <- function(x, store = NULL) {
+    output_stage <- if (
+        S7::S7_inherits(x, ShiftRun) &&
+            S7::S7_inherits(x@meta$output_stage, ShiftStage)
+    ) {
+        x@meta$output_stage
+    } else {
+        NULL
+    }
     run <- if (S7::S7_inherits(x, ShiftRun)) {
         shift_refresh(x)
     } else {
@@ -1554,9 +1569,41 @@ shift_result <- function(x, store = NULL) {
     if (S7::S7_inherits(run@meta$output_stage, ShiftStage)) {
         return(shift_run__datasets_unwrap(run@meta$output_stage))
     }
+    if (S7::S7_inherits(output_stage, ShiftStage)) {
+        return(shift_run__datasets_unwrap(output_stage))
+    }
     stage <- shift_inspect__with_store(run, function(opened) {
         step <- shift_job__latest_step(opened, run@ids$run_id, completed = TRUE)
         if (!nrow(step)) {
+            morph_id <- store__chr1(run@ids$morph_id)
+            if (
+                identical(
+                    as.character(run@meta$run$task[[1L]]),
+                    "future_epw"
+                ) &&
+                    !is.na(morph_id) &&
+                    nzchar(morph_id)
+            ) {
+                outputs <- shift_inspect__epw_output_rows(opened, morph_id)
+                if (nrow(outputs)) {
+                    export_dir <- store__chr1(run@meta$run$output_dir[[1L]])
+                    if (is.na(export_dir) || !nzchar(export_dir)) {
+                        export_dir <- NULL
+                    }
+                    return(shift_stage__new(
+                        ShiftOutputs,
+                        "outputs",
+                        store_path = run@store_path,
+                        ids = run@ids,
+                        meta = list(
+                            format = "epw",
+                            outputs = outputs,
+                            paths = outputs$path,
+                            export_dir = export_dir
+                        )
+                    ))
+                }
+            }
             cli::cli_abort(
                 "Shift run {.val {run@ids$run_id}} has no completed stage result."
             )
