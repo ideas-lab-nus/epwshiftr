@@ -20,33 +20,26 @@ shift_epw_export <- function(
 
     reporter <- shift_run__current_reporter()
     if (is.null(reporter)) {
-        return(shift_run__task_execute(
+        args <- list(
+            dir = dir,
+            separate = separate,
+            overwrite = overwrite,
+            resume = resume
+        )
+        spec <- args
+        spec$dir <- normalizePath(
+            path.expand(dir),
+            winslash = "/",
+            mustWork = FALSE
+        )
+        return(shift_stage__run_if_top(
             "export_epw",
             x,
+            shift_epw_export,
+            args = args,
             ui = ui,
-            spec = list(
-                dir = normalizePath(
-                    path.expand(dir),
-                    winslash = "/",
-                    mustWork = FALSE
-                ),
-                separate = separate,
-                overwrite = overwrite,
-                resume = resume
-            ),
-            auto_complete = TRUE,
-            code = function(reporter, task_store) {
-                shift_run__with_reporter(
-                    reporter,
-                    shift_epw_export(
-                        x,
-                        dir = dir,
-                        separate = separate,
-                        overwrite = overwrite,
-                        resume = resume
-                    )
-                )
-            }
+            spec = spec,
+            auto_complete = TRUE
         ))
     }
 
@@ -121,7 +114,7 @@ shift_export__export_outputs <- function(
     if (!nrow(outputs)) {
         return(x)
     }
-    store <- shift_store(x)
+    store_path <- shift_inspect__with_store(x, function(store) store$path)
     export_path <- character(nrow(outputs))
     for (i in seq_len(nrow(outputs))) {
         if (!is.null(reporter)) {
@@ -143,7 +136,7 @@ shift_export__export_outputs <- function(
                 )
             )
         }
-        source <- store_abs_path(outputs$path[[i]], root = store$path)
+        source <- store_abs_path(outputs$path[[i]], root = store_path)
         target <- shift_export__export_target_path(
             outputs[i],
             dir = dir,
@@ -191,7 +184,7 @@ shift_export__export_outputs <- function(
             }
         }
     }
-    outputs[, export_path := export_path]
+    data.table::set(outputs, j = "export_path", value = export_path)
     x@meta$outputs <- outputs
     x@meta$export_dir <- dir
     x@meta$paths <- outputs$path

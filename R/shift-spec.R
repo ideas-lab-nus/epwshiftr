@@ -255,34 +255,30 @@ shift_spec__expected_cases <- function(request, periods) {
     )
     # Keep the exact requested year set as a list column because coverage is a
     # case-level contract, not just a min/max time filter.
-    cases[,
-        years := lapply(period, function(value) {
-            as.integer(periods[periods[["period"]] == value, year])
-        })
-    ]
-    cases[,
-        case_id := vapply(
-            seq_len(.N),
-            function(i) {
-                store__hash(
-                    source_id[[i]],
-                    experiment_id[[i]],
-                    variant_label[[i]],
-                    grid_label[[i]],
-                    period[[i]],
-                    years[[i]]
-                )
-            },
-            character(1L)
-        )
-    ]
-    cases[, `:=`(
-        required = TRUE,
-        status = "planned",
-        output_id = NA_character_,
-        export_path = NA_character_,
-        missing_reason = NA_character_
-    )]
+    years_col <- lapply(cases$period, function(value) {
+        as.integer(periods[periods[["period"]] == value, year])
+    })
+    case_ids <- vapply(
+        seq_len(nrow(cases)),
+        function(i) {
+            store__hash(
+                cases$source_id[[i]],
+                cases$experiment_id[[i]],
+                cases$variant_label[[i]],
+                cases$grid_label[[i]],
+                cases$period[[i]],
+                years_col[[i]]
+            )
+        },
+        character(1L)
+    )
+    data.table::set(cases, j = "years", value = years_col)
+    data.table::set(cases, j = "case_id", value = case_ids)
+    data.table::set(cases, j = "required", value = TRUE)
+    data.table::set(cases, j = "status", value = "planned")
+    data.table::set(cases, j = "output_id", value = NA_character_)
+    data.table::set(cases, j = "export_path", value = NA_character_)
+    data.table::set(cases, j = "missing_reason", value = NA_character_)
     data.table::setcolorder(
         cases,
         c(
@@ -321,58 +317,69 @@ shift_spec__cmip6_table_id <- function(frequency) {
 }
 # }}}
 
-# Validate scalar and variable-specific CMIP6 frequency specifications without
-# discarding names that are needed after a broad multi-frequency ESGF query.
-# shift_spec__cmip6_frequency_spec {{{
-shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
-    if (is.list(frequency)) {
-        if (
-            is.null(names(frequency)) ||
-                anyNA(names(frequency)) ||
-                any(!nzchar(names(frequency)))
-        ) {
-            cli::cli_abort(
-                "A list supplied as `frequency` must name every variable."
-            )
+# Validate a scalar or fully named variable mapping shared by CMIP6 frequency
+# and table specifications, preserving mapping names across list/vector input.
+# shift_spec__named_mapping {{{
+shift_spec__named_mapping <- function(
+    value,
+    list_msg,
+    unnamed_msg,
+    empty_name_msg,
+    dup_name_msg = empty_name_msg,
+    na_name_msg = empty_name_msg
+) {
+    if (is.list(value)) {
+        nms <- names(value)
+        if (is.null(nms) || anyNA(nms) || any(!nzchar(nms))) {
+            cli::cli_abort(list_msg)
         }
-        frequency <- vapply(
-            frequency,
-            function(value) {
-                checkmate::assert_string(value, min.chars = 1L)
-                value
+        value <- vapply(
+            value,
+            function(item) {
+                checkmate::assert_string(item, min.chars = 1L)
+                item
             },
             character(1L)
         )
     }
-    checkmate::assert_character(
+    checkmate::assert_character(value, any.missing = FALSE, min.len = 1L)
+    nms <- names(value)
+    value <- as.character(value)
+    names(value) <- nms
+    if (!is.null(nms) && anyNA(nms)) {
+        cli::cli_abort(na_name_msg)
+    }
+    named <- !is.null(nms) && any(nzchar(nms))
+    if (!isTRUE(named)) {
+        if (length(value) != 1L) {
+            cli::cli_abort(unnamed_msg)
+        }
+        names(value) <- NULL
+        return(value)
+    }
+    if (any(!nzchar(nms))) {
+        cli::cli_abort(empty_name_msg)
+    }
+    if (anyDuplicated(nms)) {
+        cli::cli_abort(dup_name_msg)
+    }
+    value
+}
+# }}}
+
+# Validate scalar and variable-specific CMIP6 frequency specifications without
+# discarding names that are needed after a broad multi-frequency ESGF query.
+# shift_spec__cmip6_frequency_spec {{{
+shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
+    frequency <- shift_spec__named_mapping(
         frequency,
-        any.missing = FALSE,
-        min.len = 1L
+        list_msg = "A list supplied as `frequency` must name every variable.",
+        unnamed_msg = "An unnamed `frequency` value must contain one CMIP6 frequency.",
+        empty_name_msg = "A variable-specific `frequency` vector must have unique, non-empty variable names.",
+        na_name_msg = "A variable-specific `frequency` vector cannot have missing names."
     )
     frequency_names <- names(frequency)
-    frequency <- as.character(frequency)
-    names(frequency) <- frequency_names
-    if (!is.null(frequency_names) && anyNA(frequency_names)) {
-        cli::cli_abort(
-            "A variable-specific `frequency` vector cannot have missing names."
-        )
-    }
-    named <- !is.null(frequency_names) && any(nzchar(frequency_names))
-    if (!isTRUE(named)) {
-        if (length(frequency) != 1L) {
-            cli::cli_abort(
-                "An unnamed `frequency` value must contain one CMIP6 frequency."
-            )
-        }
-        names(frequency) <- NULL
-        return(frequency)
-    }
-    if (any(!nzchar(frequency_names)) || anyDuplicated(frequency_names)) {
-        cli::cli_abort(
-            "A variable-specific `frequency` vector must have unique, non-empty variable names."
-        )
-    }
-    if (!is.null(variables)) {
+    if (!is.null(frequency_names) && !is.null(variables)) {
         variables <- unique(as.character(variables))
         unknown <- setdiff(frequency_names, variables)
         missing <- setdiff(variables, frequency_names)
@@ -424,36 +431,13 @@ shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
         }
         cli::cli_abort("`table` cannot be `NULL` here.")
     }
-    if (is.list(table)) {
-        if (is.null(names(table)) || any(!nzchar(names(table)))) {
-            cli::cli_abort(
-                "A list supplied as `table` must have one name for every variable override."
-            )
-        }
-        table <- vapply(
-            table,
-            function(value) {
-                checkmate::assert_string(value, min.chars = 1L)
-                value
-            },
-            character(1L)
-        )
-    }
-    checkmate::assert_character(table, any.missing = FALSE, min.len = 1L)
-    table_names <- names(table)
-    table <- as.character(table)
-    names(table) <- table_names
-    named <- !is.null(names(table)) && any(nzchar(names(table)))
-    if (isTRUE(named) && any(!nzchar(names(table)))) {
-        cli::cli_abort("A named `table` vector must name every element.")
-    }
-    if (!isTRUE(named) && length(table) != 1L) {
-        cli::cli_abort("An unnamed `table` value must be a single table ID.")
-    }
-    if (isTRUE(named) && anyDuplicated(names(table))) {
-        cli::cli_abort("Variable names in `table` must be unique.")
-    }
-    table
+    shift_spec__named_mapping(
+        table,
+        list_msg = "A list supplied as `table` must have one name for every variable override.",
+        unnamed_msg = "An unnamed `table` value must be a single table ID.",
+        empty_name_msg = "A named `table` vector must name every element.",
+        dup_name_msg = "Variable names in `table` must be unique."
+    )
 }
 # }}}
 

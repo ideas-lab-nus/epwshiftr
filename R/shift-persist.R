@@ -1,6 +1,42 @@
 #' @include shift-stage.R
 NULL
 
+# Primitive persistence helpers shared across plan and stage envelopes.
+# shift_persist__periods_value {{{
+shift_persist__periods_value <- function(periods) {
+    if (is.null(periods)) {
+        return(NULL)
+    }
+    split(as.integer(periods$year), periods$period)
+}
+# }}}
+
+# shift_persist__periods_or_null {{{
+shift_persist__periods_or_null <- function(x) {
+    if (is.null(x)) NULL else shift_spec__periods_from_input(x)
+}
+# }}}
+
+# shift_persist__chr_or_null {{{
+shift_persist__chr_or_null <- function(x) {
+    if (is.null(x)) NULL else as.character(x)
+}
+# }}}
+
+# shift_persist__chr_vec {{{
+shift_persist__chr_vec <- function(x) {
+    as.character(unlist(x, use.names = FALSE))
+}
+# }}}
+
+# Preserve variable names across JSON round-trips because jsonlite serializes
+# named atomic vectors as arrays when auto_unbox = TRUE.
+# shift_persist__named_value {{{
+shift_persist__named_value <- function(x) {
+    if (!is.null(names(x))) as.list(x) else x
+}
+# }}}
+
 # Serialize an explicit workflow reference with the role assigned by its
 # execution argument. ShiftClimate stages do not otherwise carry enough
 # provenance to distinguish model output from observations.
@@ -23,10 +59,7 @@ shift_persist__reference_spec_value <- function(reference, role) {
             mode = "plan",
             role = role,
             plan_id = shift_ids(reference)$plan_id,
-            periods = split(
-                as.integer(reference@meta$periods$year),
-                reference@meta$periods$period
-            )
+            periods = shift_persist__periods_value(reference@meta$periods)
         ))
     }
     if (!S7::S7_inherits(reference, ShiftReferenceSpec)) {
@@ -41,10 +74,7 @@ shift_persist__reference_spec_value <- function(reference, role) {
         mode = reference@mode,
         role = reference@role,
         plan_id = reference@plan_id,
-        periods = split(
-            as.integer(reference@periods$year),
-            reference@periods$period
-        ),
+        periods = shift_persist__periods_value(reference@periods),
         experiment = reference@experiment,
         activity = reference@activity,
         match = reference@match,
@@ -127,20 +157,8 @@ shift_persist__climate_spec_value <- function(climate) {
         scenarios = climate@scenarios,
         member = climate@member,
         grid = climate@grid,
-        # Preserve variable names across JSON round-trips for mixed-frequency
-        # climate specifications.
-        frequency = if (!is.null(names(climate@frequency))) {
-            as.list(climate@frequency)
-        } else {
-            climate@frequency
-        },
-        # JSON objects preserve variable names; named atomic vectors do not
-        # when `auto_unbox = TRUE`, so overrides are persisted as a named list.
-        table = if (!is.null(names(climate@table))) {
-            as.list(climate@table)
-        } else {
-            climate@table
-        },
+        frequency = shift_persist__named_value(climate@frequency),
+        table = shift_persist__named_value(climate@table),
         activity = climate@activity,
         index_nodes = climate@index_nodes,
         data_node = climate@data_node,
@@ -172,7 +190,7 @@ shift_persist__climate_from_spec <- function(spec) {
     # argument without reintroducing `n_models` into the user API.
     arguments <- spec[setdiff(names(spec), c("provider", "n_models"))]
     model <- if (!is.null(spec$model)) {
-        as.character(unlist(spec$model, use.names = FALSE))
+        shift_persist__chr_vec(spec$model)
     } else if (!is.null(spec$n_models)) {
         as.integer(unlist(spec$n_models, use.names = FALSE))
     } else {
@@ -193,9 +211,7 @@ shift_persist__request_spec_value <- function(request) {
         return(NULL)
     }
     out <- request@meta
-    if (!is.null(names(out$frequency))) {
-        out$frequency <- as.list(out$frequency)
-    }
+    out$frequency <- shift_persist__named_value(out$frequency)
     out
 }
 # }}}
@@ -256,7 +272,7 @@ shift_persist__plan_spec <- function(x) {
             metadata = meta$site@metadata,
             identity = meta$epw_identity
         ),
-        periods = split(as.integer(meta$periods$year), meta$periods$period),
+        periods = shift_persist__periods_value(meta$periods),
         transform = transform__spec_value(transform),
         reference = shift_persist__reference_spec_value(
             meta$reference,
@@ -352,8 +368,8 @@ shift_persist__site_from_ref <- function(ref) {
         id = as.character(ref$id),
         lon = as.numeric(ref$lon),
         lat = as.numeric(ref$lat),
-        label = if (is.null(ref$label)) NULL else as.character(ref$label),
-        epw = if (is.null(ref$epw)) NULL else as.character(ref$epw),
+        label = shift_persist__chr_or_null(ref$label),
+        epw = shift_persist__chr_or_null(ref$epw),
         metadata = shift_stage__coalesce(ref$metadata, list())
     )
 }
@@ -366,14 +382,7 @@ shift_persist__site_from_ref <- function(ref) {
 shift_persist__extract_spec <- function(args) {
     args[c("site", "periods")] <- list(
         shift_persist__site_ref(args$site),
-        if (is.null(args$periods)) {
-            NULL
-        } else {
-            split(
-                as.integer(args$periods$year),
-                args$periods$period
-            )
-        }
+        shift_persist__periods_value(args$periods)
     )
     args
 }
@@ -386,11 +395,7 @@ shift_persist__extract_args <- function(spec) {
     list(
         site = shift_persist__site_from_ref(spec$site),
         periods = shift_spec__periods_from_input(spec$periods),
-        variables = if (is.null(spec$variables)) {
-            NULL
-        } else {
-            as.character(spec$variables)
-        },
+        variables = shift_persist__chr_or_null(spec$variables),
         time = spec$time,
         filters = shift_stage__coalesce(spec$filters, list()),
         method = as.character(spec$method),
@@ -427,11 +432,7 @@ shift_persist__morph_spec <- function(args) {
 # shift_persist__morph_args {{{
 shift_persist__morph_args <- function(spec) {
     list(
-        baseline = if (is.null(spec$baseline)) {
-            NULL
-        } else {
-            as.character(spec$baseline)
-        },
+        baseline = shift_persist__chr_or_null(spec$baseline),
         transform = transform__from_spec(spec$transform),
         reference = shift_persist__reference_from_spec(spec$reference),
         observed_reference = shift_persist__reference_from_spec(
@@ -446,6 +447,34 @@ shift_persist__morph_args <- function(spec) {
 }
 # }}}
 
+# Pack and unpack the common stage persistence envelope shared by every stage
+# reference round-trip.
+# shift_persist__stage_envelope {{{
+shift_persist__stage_envelope <- function(x, meta = list()) {
+    list(
+        version = 1L,
+        class = class(x)[[1L]],
+        stage = x@stage,
+        store_path = x@store_path,
+        ids = x@ids,
+        meta = meta
+    )
+}
+# }}}
+
+# shift_persist__stage_unpack {{{
+shift_persist__stage_unpack <- function(ref) {
+    list(
+        stage = as.character(ref$stage),
+        store_path = shift_persist__chr_or_null(ref$store_path),
+        ids = lapply(shift_stage__coalesce(ref$ids, list()), function(value) {
+            unlist(value, use.names = FALSE)
+        }),
+        meta = shift_stage__coalesce(ref$meta, list())
+    )
+}
+# }}}
+
 # Reduce a stage to stable store IDs plus the minimum scientific metadata
 # required to continue the normal collect-to-export chain in another session.
 # shift_persist__stage_ref {{{
@@ -454,13 +483,6 @@ shift_persist__stage_ref <- function(x) {
         return(NULL)
     }
     shift_stage__assert_stage(x)
-    base <- list(
-        version = 1L,
-        class = class(x)[[1L]],
-        stage = x@stage,
-        store_path = x@store_path,
-        ids = x@ids
-    )
     meta <- if (S7::S7_inherits(x, ShiftRequest)) {
         x@meta
     } else if (S7::S7_inherits(x, ShiftDatasets)) {
@@ -484,10 +506,7 @@ shift_persist__stage_ref <- function(x) {
         list(
             upstream = shift_persist__stage_ref(upstream),
             site = shift_persist__site_ref(x@meta$site),
-            periods = split(
-                as.integer(x@meta$periods$year),
-                x@meta$periods$period
-            ),
+            periods = shift_persist__periods_value(x@meta$periods),
             variables = x@meta$variables
         )
     } else if (S7::S7_inherits(x, ShiftMorphed)) {
@@ -524,23 +543,13 @@ shift_persist__stage_ref <- function(x) {
                 role = "observed_reference"
             ),
             reference_plan_id = x@meta$reference_plan_id,
-            reference_periods = if (is.null(x@meta$reference_periods)) {
-                NULL
-            } else {
-                split(
-                    as.integer(x@meta$reference_periods$year),
-                    x@meta$reference_periods$period
-                )
-            },
+            reference_periods = shift_persist__periods_value(
+                x@meta$reference_periods
+            ),
             observed_plan_id = x@meta$observed_plan_id,
-            observed_periods = if (is.null(x@meta$observed_periods)) {
-                NULL
-            } else {
-                split(
-                    as.integer(x@meta$observed_periods$year),
-                    x@meta$observed_periods$period
-                )
-            }
+            observed_periods = shift_persist__periods_value(
+                x@meta$observed_periods
+            )
         )
     } else if (S7::S7_inherits(x, ShiftOutputs)) {
         outputs <- data.table::as.data.table(shift_stage__coalesce(
@@ -565,8 +574,7 @@ shift_persist__stage_ref <- function(x) {
     } else {
         list()
     }
-    base$meta <- meta
-    base
+    shift_persist__stage_envelope(x, meta)
 }
 # }}}
 
@@ -578,202 +586,167 @@ shift_persist__stage_from_ref <- function(ref) {
     if (is.null(ref)) {
         return(NULL)
     }
-    stage <- as.character(ref$stage)
-    store_path <- if (is.null(ref$store_path)) {
-        NULL
-    } else {
-        as.character(ref$store_path)
+    env <- shift_persist__stage_unpack(ref)
+    meta <- env$meta
+    build <- function(class, stage_meta) {
+        shift_stage__new(
+            class,
+            env$stage,
+            store_path = env$store_path,
+            ids = env$ids,
+            meta = stage_meta
+        )
     }
-    ids <- lapply(shift_stage__coalesce(ref$ids, list()), function(value) {
-        unlist(value, use.names = FALSE)
-    })
-    meta <- shift_stage__coalesce(ref$meta, list())
-    if (identical(stage, "request")) {
-        # Standalone resume intentionally decodes nested stage JSON without
-        # simplification. Restore the request's atomic-vector fields before
-        # calling its public validator, retaining NULL and any mapping names.
-        for (field in c(
-            "source",
-            "experiment",
-            "variant",
-            "variables",
-            "frequency",
-            "time"
-        )) {
-            if (is.list(meta[[field]])) {
-                meta[[field]] <- unlist(meta[[field]], recursive = FALSE)
+    switch(
+        env$stage,
+        request = {
+            # Standalone resume intentionally decodes nested stage JSON without
+            # simplification. Restore the request's atomic-vector fields before
+            # calling its public validator, retaining NULL and any mapping names.
+            for (field in c(
+                "source",
+                "experiment",
+                "variant",
+                "variables",
+                "frequency",
+                "time"
+            )) {
+                if (is.list(meta[[field]])) {
+                    meta[[field]] <- unlist(meta[[field]], recursive = FALSE)
+                }
             }
-        }
-        return(do.call(shift_request, meta))
-    }
-    if (identical(stage, "datasets")) {
-        request <- shift_persist__stage_from_ref(meta$request)
-        return(shift_stage__new(
+            do.call(shift_request, meta)
+        },
+        datasets = build(
             ShiftDatasets,
-            "datasets",
-            store_path = store_path,
-            ids = ids,
-            meta = list(
-                request = request,
+            list(
+                request = shift_persist__stage_from_ref(meta$request),
                 dataset_count = as.integer(meta$dataset_count),
                 result_path = as.character(meta$result_path)
             )
-        ))
-    }
-    if (identical(stage, "files")) {
-        request <- shift_persist__stage_from_ref(meta$request)
-        return(shift_stage__new(
+        ),
+        files = build(
             ShiftFiles,
-            "files",
-            store_path = store_path,
-            ids = ids,
-            meta = list(
-                request = request,
+            list(
+                request = shift_persist__stage_from_ref(meta$request),
                 dataset_count = as.integer(meta$dataset_count),
                 file_count = as.integer(meta$file_count),
-                variables = as.character(unlist(
-                    meta$variables,
-                    use.names = FALSE
-                )),
-                fields = as.character(unlist(meta$fields, use.names = FALSE))
+                variables = shift_persist__chr_vec(meta$variables),
+                fields = shift_persist__chr_vec(meta$fields)
             )
-        ))
-    }
-    if (identical(stage, "download")) {
-        files <- shift_persist__stage_from_ref(meta$files)
-        return(shift_stage__new(
+        ),
+        download = build(
             ShiftDownload,
-            "download",
-            store_path = store_path,
-            ids = ids,
-            meta = list(files = files, session = NULL)
-        ))
-    }
-    if (identical(stage, "climate")) {
-        upstream <- shift_persist__stage_from_ref(meta$upstream)
-        site <- shift_persist__site_from_ref(meta$site)
-        periods <- shift_spec__periods_from_input(meta$periods)
-        upstream_name <- if (S7::S7_inherits(upstream, ShiftDownload)) {
-            "download"
-        } else {
-            "files"
-        }
-        store <- shift_store(store_path, create = FALSE)
-        on.exit(try(store$close(), silent = TRUE), add = TRUE)
-        # Coverage is a computed store view rather than a persisted table. Use
-        # the public store boundary so stage restoration stays aligned with the
-        # extraction schema.
-        coverage <- store$coverage(plan_id = ids$plan_id)
-        return(shift_stage__new(
-            ShiftClimate,
-            "climate",
-            store_path = store_path,
-            ids = ids,
-            meta = c(
-                stats::setNames(list(upstream), upstream_name),
-                list(
-                    site = site,
-                    periods = periods,
-                    variables = as.character(unlist(
-                        meta$variables,
-                        use.names = FALSE
-                    )),
-                    coverage = coverage
+            list(
+                files = shift_persist__stage_from_ref(meta$files),
+                session = NULL
+            )
+        ),
+        climate = {
+            upstream <- shift_persist__stage_from_ref(meta$upstream)
+            upstream_name <- if (S7::S7_inherits(upstream, ShiftDownload)) {
+                "download"
+            } else {
+                "files"
+            }
+            # Coverage is a computed store view rather than a persisted table.
+            # Use the public store boundary so stage restoration stays aligned
+            # with the extraction schema.
+            coverage <- shift_inspect__with_store(
+                env$store_path,
+                function(store) store$coverage(plan_id = env$ids$plan_id)
+            )
+            build(
+                ShiftClimate,
+                c(
+                    stats::setNames(list(upstream), upstream_name),
+                    list(
+                        site = shift_persist__site_from_ref(meta$site),
+                        periods = shift_spec__periods_from_input(meta$periods),
+                        variables = shift_persist__chr_vec(meta$variables),
+                        coverage = coverage
+                    )
                 )
             )
-        ))
-    }
-    if (identical(stage, "morphed")) {
-        climate <- shift_persist__stage_from_ref(meta$climate)
-        transform <- transform__from_spec(meta$transform)
-        baseline <- if (is.null(meta$baseline)) {
-            shift_target(climate)
-        } else if (identical(as.character(meta$baseline$type), "site")) {
-            shift_persist__site_from_ref(meta$baseline$value)
-        } else {
-            as.character(meta$baseline$value)
-        }
-        return(shift_stage__new(
-            ShiftMorphed,
-            "morphed",
-            store_path = store_path,
-            ids = ids,
-            meta = list(
-                climate = climate,
-                baseline = baseline,
-                transform = transform,
-                recipe = transform__recipe(transform),
-                reference = shift_persist__reference_from_spec(meta$reference),
-                observed_reference = shift_persist__reference_from_spec(
-                    meta$observed_reference
-                ),
-                reference_plan_id = unlist(
-                    meta$reference_plan_id,
-                    use.names = FALSE
-                ),
-                reference_periods = if (is.null(meta$reference_periods)) {
-                    NULL
-                } else {
-                    shift_spec__periods_from_input(meta$reference_periods)
-                },
-                observed_plan_id = unlist(
-                    meta$observed_plan_id,
-                    use.names = FALSE
-                ),
-                observed_periods = if (is.null(meta$observed_periods)) {
-                    NULL
-                } else {
-                    shift_spec__periods_from_input(meta$observed_periods)
+        },
+        morphed = {
+            climate <- shift_persist__stage_from_ref(meta$climate)
+            transform <- transform__from_spec(meta$transform)
+            baseline <- if (is.null(meta$baseline)) {
+                shift_target(climate)
+            } else if (identical(as.character(meta$baseline$type), "site")) {
+                shift_persist__site_from_ref(meta$baseline$value)
+            } else {
+                as.character(meta$baseline$value)
+            }
+            build(
+                ShiftMorphed,
+                list(
+                    climate = climate,
+                    baseline = baseline,
+                    transform = transform,
+                    recipe = transform__recipe(transform),
+                    reference = shift_persist__reference_from_spec(
+                        meta$reference
+                    ),
+                    observed_reference = shift_persist__reference_from_spec(
+                        meta$observed_reference
+                    ),
+                    reference_plan_id = unlist(
+                        meta$reference_plan_id,
+                        use.names = FALSE
+                    ),
+                    reference_periods = shift_persist__periods_or_null(
+                        meta$reference_periods
+                    ),
+                    observed_plan_id = unlist(
+                        meta$observed_plan_id,
+                        use.names = FALSE
+                    ),
+                    observed_periods = shift_persist__periods_or_null(
+                        meta$observed_periods
+                    )
+                )
+            )
+        },
+        outputs = {
+            outputs <- shift_inspect__with_store(
+                env$store_path,
+                function(store) {
+                    shift_inspect__epw_output_rows(store, env$ids$morph_id)
                 }
             )
-        ))
-    }
-    if (identical(stage, "outputs")) {
-        morphed <- shift_persist__stage_from_ref(meta$morphed)
-        store <- shift_store(store_path, create = FALSE)
-        on.exit(try(store$close(), silent = TRUE), add = TRUE)
-        outputs <- shift_inspect__epw_output_rows(store, ids$morph_id)
-        if (!is.null(meta$exports)) {
-            exports <- data.table::data.table(
-                output_id = as.character(unlist(
-                    meta$exports$output_id,
-                    use.names = FALSE
-                )),
-                export_path = as.character(unlist(
-                    meta$exports$export_path,
-                    use.names = FALSE
-                ))
+            if (!is.null(meta$exports)) {
+                exports <- data.table::data.table(
+                    output_id = shift_persist__chr_vec(meta$exports$output_id),
+                    export_path = shift_persist__chr_vec(
+                        meta$exports$export_path
+                    )
+                )
+                outputs <- merge(
+                    outputs,
+                    exports,
+                    by = "output_id",
+                    all.x = TRUE,
+                    sort = FALSE
+                )
+            }
+            build(
+                ShiftOutputs,
+                list(
+                    morphed = shift_persist__stage_from_ref(meta$morphed),
+                    format = as.character(shift_stage__coalesce(
+                        meta$format,
+                        "epw"
+                    )),
+                    outputs = outputs,
+                    paths = shift_persist__chr_vec(meta$paths),
+                    export_dir = shift_persist__chr_or_null(meta$export_dir)
+                )
             )
-            outputs <- merge(
-                outputs,
-                exports,
-                by = "output_id",
-                all.x = TRUE,
-                sort = FALSE
-            )
-        }
-        return(shift_stage__new(
-            ShiftOutputs,
-            "outputs",
-            store_path = store_path,
-            ids = ids,
-            meta = list(
-                morphed = morphed,
-                format = as.character(shift_stage__coalesce(
-                    meta$format,
-                    "epw"
-                )),
-                outputs = outputs,
-                paths = as.character(unlist(meta$paths, use.names = FALSE)),
-                export_dir = if (is.null(meta$export_dir)) {
-                    NULL
-                } else {
-                    as.character(meta$export_dir)
-                }
-            )
-        ))
-    }
-    cli::cli_abort("Unsupported persisted shift stage: {.val {stage}}.")
+        },
+        cli::cli_abort("Unsupported persisted shift stage: {.val {env$stage}}.")
+    )
 }
 # }}}
 
@@ -794,18 +767,7 @@ shift_persist__plan_from_spec <- function(spec, store = NULL) {
             "This run cannot be resumed across sessions because its baseline EPW was not persisted as a file path."
         )
     }
-    site <- shift_site(
-        id = as.character(site_spec$id),
-        lon = as.numeric(site_spec$lon),
-        lat = as.numeric(site_spec$lat),
-        label = if (is.null(site_spec$label)) {
-            NULL
-        } else {
-            as.character(site_spec$label)
-        },
-        epw = as.character(site_spec$epw),
-        metadata = shift_stage__coalesce(site_spec$metadata, list())
-    )
+    site <- shift_persist__site_from_ref(site_spec)
     transform <- transform__from_spec(spec$transform)
     reference <- shift_persist__reference_from_spec(spec$reference)
     observed_reference <- shift_persist__reference_from_spec(
@@ -819,31 +781,13 @@ shift_persist__plan_from_spec <- function(spec, store = NULL) {
             shift_request,
             list(
                 provider = as.character(request_spec$provider),
-                project = if (is.null(request_spec$project)) {
-                    NULL
-                } else {
-                    as.character(request_spec$project)
-                },
-                source = if (is.null(request_spec$source)) {
-                    NULL
-                } else {
-                    as.character(request_spec$source)
-                },
-                experiment = if (is.null(request_spec$experiment)) {
-                    NULL
-                } else {
-                    as.character(request_spec$experiment)
-                },
-                variant = if (is.null(request_spec$variant)) {
-                    NULL
-                } else {
-                    as.character(request_spec$variant)
-                },
-                variables = if (is.null(request_spec$variables)) {
-                    NULL
-                } else {
-                    as.character(request_spec$variables)
-                },
+                project = shift_persist__chr_or_null(request_spec$project),
+                source = shift_persist__chr_or_null(request_spec$source),
+                experiment = shift_persist__chr_or_null(
+                    request_spec$experiment
+                ),
+                variant = shift_persist__chr_or_null(request_spec$variant),
+                variables = shift_persist__chr_or_null(request_spec$variables),
                 frequency = shift_persist__request_frequency_from_spec(
                     request_spec$frequency
                 ),

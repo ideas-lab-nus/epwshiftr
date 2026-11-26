@@ -44,7 +44,7 @@ shift_path__canonical_workflow_path <- function(path) {
 # }}}
 
 # Flip one alphabetic character in a basename so the containing filesystem can
-# be probed for case-sensitive path identity without creating probe files.
+# be checked for case-sensitive path identity without creating check files.
 # shift_path__path_case_variant {{{
 shift_path__path_case_variant <- function(path) {
     name <- basename(path)

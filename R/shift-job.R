@@ -3,6 +3,57 @@ NULL
 
 # Manage persisted jobs and their background execution, observation and recovery.
 
+# Decode one persisted JSON string or sidecar path with consistent empty/error
+# handling across durable manifest rows and live snapshots.
+# shift_job__decode_json {{{
+shift_job__decode_json <- function(
+    x,
+    default = list(),
+    simplify = TRUE,
+    simplify_df = simplify,
+    strict = FALSE
+) {
+    if (
+        is.null(x) ||
+            !length(x) ||
+            is.na(x[[1L]]) ||
+            !nzchar(as.character(x[[1L]]))
+    ) {
+        return(default)
+    }
+    parse <- function() {
+        jsonlite::fromJSON(
+            as.character(x[[1L]]),
+            simplifyVector = simplify,
+            simplifyDataFrame = simplify_df
+        )
+    }
+    if (isTRUE(strict)) {
+        return(parse())
+    }
+    tryCatch(parse(), error = function(e) default)
+}
+# }}}
+
+# Rebuild a persisted future-weather plan along with any immutable resolved
+# CMIP6 selection stored alongside the run row.
+# shift_job__plan_from_run_row {{{
+shift_job__plan_from_run_row <- function(row, store_path) {
+    spec <- shift_job__decode_json(row$spec_json, strict = TRUE)
+    plan <- shift_persist__plan_from_spec(spec, store = store_path)
+    resolved <- shift_job__decode_json(
+        row$resolved_spec_json,
+        default = NULL,
+        strict = TRUE
+    )
+    if (!is.null(resolved)) {
+        # Resolved member/grid/node choices are immutable across resume.
+        plan@meta$resolved <- resolved
+    }
+    plan
+}
+# }}}
+
 # Rebuild one failed, cancelled, or partial standalone step from its immutable
 # input and scientific spec. UI choices are supplied by the new attempt and are
 # intentionally absent from the persisted step hash.
@@ -10,28 +61,29 @@ NULL
 shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
     # The public resume path checks resumability and the saved input before
     # changing run state; this executor only restores that accepted request.
-    input_ref <- jsonlite::fromJSON(
-        step$input_stage_json[[1L]],
-        simplifyVector = FALSE
+    input_ref <- shift_job__decode_json(
+        step$input_stage_json,
+        simplify = FALSE,
+        strict = TRUE
     )
     input <- shift_persist__stage_from_ref(input_ref)
-    spec <- jsonlite::fromJSON(step$spec_json[[1L]], simplifyVector = TRUE)
+    spec <- shift_job__decode_json(step$spec_json, strict = TRUE)
     task <- as.character(step$task[[1L]])
     # A queued download is a durable checkpoint even when transfer never
     # returned. Carry its session into the next attempt instead of enqueueing
     # new task IDs whose partial-file names would no longer match.
-    if (
-        identical(task, "download") &&
-            !is.na(step$output_stage_json[[1L]]) &&
-            nzchar(step$output_stage_json[[1L]])
-    ) {
-        checkpoint <- jsonlite::fromJSON(
-            step$output_stage_json[[1L]],
-            simplifyVector = FALSE
+    if (identical(task, "download")) {
+        checkpoint <- shift_job__decode_json(
+            step$output_stage_json,
+            default = NULL,
+            simplify = FALSE,
+            strict = TRUE
         )
-        session_id <- store__chr1(unlist(checkpoint$ids$session_id))
-        if (!is.na(session_id) && nzchar(session_id)) {
-            input@ids$session_id <- session_id
+        if (!is.null(checkpoint)) {
+            session_id <- store__chr1(unlist(checkpoint$ids$session_id))
+            if (!is.na(session_id) && nzchar(session_id)) {
+                input@ids$session_id <- session_id
+            }
         }
     }
     if (isTRUE(background) && !identical(task, "download")) {
@@ -253,18 +305,9 @@ shift_job__resume_one <- function(
             }
         ))
     }
-    spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
-    plan <- shift_persist__plan_from_spec(spec, store = run@store_path)
+    plan <- shift_job__plan_from_run_row(row, run@store_path)
     if (!is.null(run@meta$shared_inputs)) {
         plan@meta$shared_inputs <- run@meta$shared_inputs
-    }
-    resolved <- row$resolved_spec_json[[1L]]
-    if (!is.na(resolved) && nzchar(resolved)) {
-        # Resolved member/grid/node choices are immutable across resume.
-        plan@meta$resolved <- jsonlite::fromJSON(
-            resolved,
-            simplifyVector = TRUE
-        )
     }
     if (isTRUE(background)) {
         shift_job__validate_background_plan(plan)
@@ -507,59 +550,67 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         return(run)
     }
     if (status %in% c("running", "stopping")) {
-        download_store <- shift_store(run)
-        download_context <- shift_job__background_download_context(
-            download_store,
-            run@ids$run_id
-        )
-        if (!is.null(download_context)) {
-            on.exit(try(download_store$close(), silent = TRUE), add = TRUE)
-            downloader_job_id <- if (nrow(download_context$jobs)) {
-                as.character(download_context$jobs$job_id[[
-                    nrow(download_context$jobs)
-                ]])
-            } else {
-                NA_character_
-            }
-            # Stop the owning Downloader job first, then mark any queued or
-            # active tasks so its session reaches a deterministic terminal
-            # state that the shared run reconciler can observe.
-            if (!is.na(downloader_job_id) && nzchar(downloader_job_id)) {
-                download_context$downloader$stop_job(
-                    downloader_job_id,
-                    force = force
+        cancelled_download <- shift_inspect__with_store(
+            run,
+            function(
+                download_store
+            ) {
+                download_context <- shift_job__background_download_context(
+                    download_store,
+                    run@ids$run_id
                 )
-            }
-            download_context$downloader$cancel(
-                session_id = download_context$session_id
-            )
-            shift_job__publish_result(
-                download_store,
-                run@ids$run_id,
-                run = list(
-                    status = "stopping",
-                    last_error = "Cancelled by user."
-                ),
-                event = list(
-                    stage = "download",
-                    status = "stopping",
-                    message = "Background download cancellation requested.",
-                    details = list(
-                        step_id = download_context$step$step_id[[1L]],
-                        session_id = download_context$session_id,
-                        downloader_job_id = downloader_job_id,
+                if (is.null(download_context)) {
+                    return(NULL)
+                }
+                downloader_job_id <- if (nrow(download_context$jobs)) {
+                    as.character(download_context$jobs$job_id[[
+                        nrow(download_context$jobs)
+                    ]])
+                } else {
+                    NA_character_
+                }
+                # Stop the owning Downloader job first, then mark any queued or
+                # active tasks so its session reaches a deterministic terminal
+                # state that the shared run reconciler can observe.
+                if (!is.na(downloader_job_id) && nzchar(downloader_job_id)) {
+                    download_context$downloader$stop_job(
+                        downloader_job_id,
                         force = force
-                    ),
-                    step_id = download_context$step$step_id[[1L]]
+                    )
+                }
+                download_context$downloader$cancel(
+                    session_id = download_context$session_id
                 )
-            )
-            shift_job__reconcile_background_download(
-                download_store,
-                run@ids$run_id
-            )
-            return(shift_job__run_handle(download_store, run@ids$run_id))
+                shift_job__publish_result(
+                    download_store,
+                    run@ids$run_id,
+                    run = list(
+                        status = "stopping",
+                        last_error = "Cancelled by user."
+                    ),
+                    event = list(
+                        stage = "download",
+                        status = "stopping",
+                        message = "Background download cancellation requested.",
+                        details = list(
+                            step_id = download_context$step$step_id[[1L]],
+                            session_id = download_context$session_id,
+                            downloader_job_id = downloader_job_id,
+                            force = force
+                        ),
+                        step_id = download_context$step$step_id[[1L]]
+                    )
+                )
+                shift_job__reconcile_background_download(
+                    download_store,
+                    run@ids$run_id
+                )
+                shift_job__run_handle(download_store, run@ids$run_id)
+            }
+        )
+        if (!is.null(cancelled_download)) {
+            return(cancelled_download)
         }
-        try(download_store$close(), silent = TRUE)
     }
     if (identical(status, "waiting")) {
         # No process is active between object-carried stages. Cancelling here
@@ -700,10 +751,7 @@ shift_job__unpublished_download <- function(store, run_id, step) {
     ) {
         return(FALSE)
     }
-    spec <- tryCatch(
-        jsonlite::fromJSON(step$spec_json[[1L]], simplifyVector = TRUE),
-        error = function(e) NULL
-    )
+    spec <- shift_job__decode_json(step$spec_json, default = NULL)
     is.list(spec) && isTRUE(spec$background)
 }
 # }}}
@@ -736,12 +784,10 @@ shift_job__background_download_context <- function(
     ) {
         return(NULL)
     }
-    ref <- tryCatch(
-        jsonlite::fromJSON(
-            step$output_stage_json[[1L]],
-            simplifyVector = FALSE
-        ),
-        error = function(e) NULL
+    ref <- shift_job__decode_json(
+        step$output_stage_json,
+        default = NULL,
+        simplify = FALSE
     )
     if (is.null(ref)) {
         return(NULL)
@@ -1147,6 +1193,51 @@ shift_job__job_create <- function(
 }
 # }}}
 
+# Validate and update one keyed manifest record in place, then refresh the
+# sidecar snapshot when requested.
+# shift_job__table_update {{{
+shift_job__table_update <- function(
+    store,
+    table,
+    key,
+    id,
+    label,
+    updates,
+    snapshot = TRUE,
+    ui_state = NULL,
+    urgent = FALSE
+) {
+    row <- shift_inspect__rows(store, table, key, id)
+    if (!nrow(row)) {
+        cli::cli_abort("Shift {label} {.val {id}} was not found.")
+    }
+    unknown <- setdiff(names(updates), names(row))
+    if (length(unknown)) {
+        cli::cli_abort("Unknown shift {label} field(s): {.field {unknown}}.")
+    }
+    for (name in names(updates)) {
+        data.table::set(row, j = name, value = updates[[name]])
+    }
+    data.table::set(row, j = "updated_at", value = store__now())
+    shift_job__update_row(
+        store,
+        table,
+        key,
+        row,
+        unique(c(names(updates), "updated_at"))
+    )
+    if (isTRUE(snapshot)) {
+        shift_job__live_snapshot(
+            store,
+            row$run_id[[1L]],
+            ui_state = ui_state,
+            urgent = isTRUE(urgent) || "status" %in% names(updates)
+        )
+    }
+    invisible(row)
+}
+# }}}
+
 # Update a job row after a process/status transition while preserving the
 # immutable run, attempt, and job identities.
 # shift_job__job_update {{{
@@ -1158,37 +1249,17 @@ shift_job__job_update <- function(
     .ui_state = NULL,
     .urgent = FALSE
 ) {
-    wanted_job_id <- job_id
-    row <- shift_inspect__rows(store, "shift_run_job", "job_id", wanted_job_id)
-    if (!nrow(row)) {
-        cli::cli_abort("Shift job {.val {job_id}} was not found.")
-    }
-    updates <- list(...)
-    unknown <- setdiff(names(updates), names(row))
-    if (length(unknown)) {
-        cli::cli_abort("Unknown shift job field(s): {.field {unknown}}.")
-    }
-    for (name in names(updates)) {
-        data.table::set(row, j = name, value = updates[[name]])
-    }
-    data.table::set(row, j = "updated_at", value = store__now())
-    shift_job__update_row(
+    shift_job__table_update(
         store,
         "shift_run_job",
         "job_id",
-        row,
-        unique(c(names(updates), "updated_at"))
+        job_id,
+        "job",
+        list(...),
+        snapshot = .snapshot,
+        ui_state = .ui_state,
+        urgent = .urgent
     )
-    if (isTRUE(.snapshot)) {
-        # Heartbeat-only updates coalesce; any status change writes at once.
-        shift_job__live_snapshot(
-            store,
-            row$run_id[[1L]],
-            ui_state = .ui_state,
-            urgent = isTRUE(.urgent) || "status" %in% names(updates)
-        )
-    }
-    invisible(row)
 }
 # }}}
 
@@ -1448,7 +1519,7 @@ shift_job__job_main <- function(store_path, run_id, job_id) {
     if (!nrow(job)) {
         cli::cli_abort("Background shift job {.val {job_id}} was not found.")
     }
-    ui_spec <- jsonlite::fromJSON(job$ui_json[[1L]], simplifyVector = TRUE)
+    ui_spec <- shift_job__decode_json(job$ui_json, strict = TRUE)
     ui <- shift_ui(
         # Detached workers use stable logs for every visible mode, while an
         # explicit none setting remains completely quiet.
@@ -1474,16 +1545,7 @@ shift_job__job_main <- function(store_path, run_id, job_id) {
     if (!nrow(row)) {
         cli::cli_abort("Background shift run {.val {run_id}} was not found.")
     }
-    spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
-    plan <- shift_persist__plan_from_spec(spec, store = store_path)
-    resolved <- row$resolved_spec_json[[1L]]
-    if (!is.na(resolved) && nzchar(resolved)) {
-        # Resume always reuses the first successful node/member/grid selection.
-        plan@meta$resolved <- jsonlite::fromJSON(
-            resolved,
-            simplifyVector = TRUE
-        )
-    }
+    plan <- shift_job__plan_from_run_row(row, store_path)
     context <- shift_execution__context(store_path, job, store)
     reporter <- shift_reporter__reporter(
         ui,
@@ -1513,35 +1575,15 @@ shift_job__job_main <- function(store_path, run_id, job_id) {
 # and unique run identity unchanged.
 # shift_job__run_update {{{
 shift_job__run_update <- function(store, run_id, ..., snapshot = TRUE) {
-    wanted_run_id <- run_id
-    row <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
-    if (!nrow(row)) {
-        cli::cli_abort("Shift run {.val {run_id}} was not found.")
-    }
-    updates <- list(...)
-    unknown <- setdiff(names(updates), names(row))
-    if (length(unknown)) {
-        cli::cli_abort("Unknown shift run field(s): {.field {unknown}}.")
-    }
-    for (name in names(updates)) {
-        data.table::set(row, j = name, value = updates[[name]])
-    }
-    data.table::set(row, j = "updated_at", value = store__now())
-    shift_job__update_row(
+    shift_job__table_update(
         store,
         "shift_run",
         "run_id",
-        row,
-        unique(c(names(updates), "updated_at"))
+        run_id,
+        "run",
+        list(...),
+        snapshot = snapshot
     )
-    if (isTRUE(snapshot)) {
-        shift_job__live_snapshot(
-            store,
-            run_id,
-            urgent = "status" %in% names(updates)
-        )
-    }
-    invisible(row)
 }
 # }}}
 
@@ -1777,40 +1819,15 @@ shift_job__step_create <- function(
 # Update mutable step state while preserving its stable task specification.
 # shift_job__step_update {{{
 shift_job__step_update <- function(store, step_id, ..., snapshot = TRUE) {
-    wanted_step_id <- step_id
-    row <- shift_inspect__rows(
+    shift_job__table_update(
         store,
         "shift_run_step",
         "step_id",
-        wanted_step_id
+        step_id,
+        "step",
+        list(...),
+        snapshot = snapshot
     )
-    if (!nrow(row)) {
-        cli::cli_abort("Shift step {.val {step_id}} was not found.")
-    }
-    updates <- list(...)
-    unknown <- setdiff(names(updates), names(row))
-    if (length(unknown)) {
-        cli::cli_abort("Unknown shift step field(s): {.field {unknown}}.")
-    }
-    for (name in names(updates)) {
-        data.table::set(row, j = name, value = updates[[name]])
-    }
-    data.table::set(row, j = "updated_at", value = store__now())
-    shift_job__update_row(
-        store,
-        "shift_run_step",
-        "step_id",
-        row,
-        unique(c(names(updates), "updated_at"))
-    )
-    if (isTRUE(snapshot)) {
-        shift_job__live_snapshot(
-            store,
-            row$run_id[[1L]],
-            urgent = "status" %in% names(updates)
-        )
-    }
-    invisible(row)
 }
 # }}}
 
@@ -1894,18 +1911,7 @@ shift_job__run_completion_status <- function(store, run_id) {
 # later-stage errors retain resume as the recovery action.
 # shift_job__run_event_diagnostic {{{
 shift_job__run_event_diagnostic <- function(event, run_id, store_path) {
-    details <- if (
-        length(event$details_json) &&
-            !is.na(event$details_json[[1L]]) &&
-            nzchar(event$details_json[[1L]])
-    ) {
-        tryCatch(
-            jsonlite::fromJSON(event$details_json[[1L]], simplifyVector = TRUE),
-            error = function(e) list()
-        )
-    } else {
-        list()
-    }
+    details <- shift_job__decode_json(event$details_json, default = list())
     if (identical(as.character(details$kind), "scientific_diagnostic")) {
         field <- function(name) store__chr1(details[[name]])
         return(shift_stage__diagnostic(
@@ -2000,6 +2006,54 @@ shift_job__run_diagnostics <- function(events, run_id, store_path) {
 }
 # }}}
 
+# Assemble one lightweight ShiftRun handle from either DuckDB rows or a live
+# sidecar snapshot so both channels keep identical IDs, metadata and years.
+# shift_job__build_run_handle {{{
+shift_job__build_run_handle <- function(
+    store_path,
+    run_id,
+    row,
+    cases,
+    events,
+    jobs,
+    steps,
+    extra_meta = list()
+) {
+    if (nrow(cases) && "years_json" %in% names(cases)) {
+        years <- lapply(cases$years_json, function(value) {
+            as.integer(shift_job__decode_json(
+                value,
+                default = integer(),
+                strict = TRUE
+            ))
+        })
+        data.table::set(cases, j = "years", value = years)
+    }
+    shift_stage__new(
+        ShiftRun,
+        "run",
+        store_path = store_path,
+        ids = list(
+            run_id = run_id,
+            query_id = store__chr1(row$query_id[[1L]]),
+            reference_query_id = store__chr1(row$reference_query_id[[1L]]),
+            morph_id = store__chr1(row$morph_id[[1L]])
+        ),
+        meta = c(
+            list(
+                run = row[1L],
+                cases = cases,
+                events = events,
+                jobs = jobs,
+                steps = steps
+            ),
+            extra_meta
+        ),
+        diagnostics = shift_job__run_diagnostics(events, run_id, store_path)
+    )
+}
+# }}}
+
 # Materialize a lightweight ShiftRun handle from persisted tables.
 # shift_job__run_handle {{{
 shift_job__run_handle <- function(
@@ -2021,13 +2075,6 @@ shift_job__run_handle <- function(
         "run_id",
         wanted_run_id
     )
-    if (nrow(cases)) {
-        cases[,
-            years := lapply(years_json, function(value) {
-                as.integer(jsonlite::fromJSON(value, simplifyVector = TRUE))
-            })
-        ]
-    }
     events <- shift_inspect__rows(
         store,
         "shift_run_event",
@@ -2043,26 +2090,15 @@ shift_job__run_handle <- function(
         wanted_run_id
     )
     steps <- steps[order(steps[["ordinal"]])]
-    shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = store$path,
-        ids = list(
-            run_id = run_id,
-            query_id = store__chr1(row$query_id[[1L]]),
-            reference_query_id = store__chr1(row$reference_query_id[[1L]]),
-            morph_id = store__chr1(row$morph_id[[1L]])
-        ),
-        meta = list(
-            run = row[1L],
-            cases = cases,
-            events = events,
-            jobs = jobs,
-            steps = steps,
-            output_stage = output_stage,
-            plan = plan
-        ),
-        diagnostics = shift_job__run_diagnostics(events, run_id, store$path)
+    shift_job__build_run_handle(
+        store$path,
+        run_id,
+        row,
+        cases,
+        events,
+        jobs,
+        steps,
+        extra_meta = list(output_stage = output_stage, plan = plan)
     )
 }
 # }}}
@@ -2094,6 +2130,22 @@ shift_job__manifest_locked <- function(error) {
             ignore.case = TRUE,
             perl = TRUE
         )
+}
+# }}}
+
+# Persist a live sidecar payload with consistent JSON serialization options.
+# shift_job__write_live_json {{{
+shift_job__write_live_json <- function(payload, path) {
+    store_write_json_atomic(
+        payload,
+        path,
+        auto_unbox = TRUE,
+        dataframe = "rows",
+        null = "null",
+        na = "null",
+        POSIXt = "ISO8601",
+        digits = 15
+    )
 }
 # }}}
 
@@ -2154,15 +2206,9 @@ shift_job__live_snapshot_write <- function(
         outputs = outputs,
         ui_state = ui_state
     )
-    store_write_json_atomic(
+    shift_job__write_live_json(
         payload,
-        shift_job__live_path(store$path, run_id),
-        auto_unbox = TRUE,
-        dataframe = "rows",
-        null = "null",
-        na = "null",
-        POSIXt = "ISO8601",
-        digits = 15
+        shift_job__live_path(store$path, run_id)
     )
     invisible(payload)
 }
@@ -2301,7 +2347,11 @@ shift_job__live_table <- function(x) {
         names(out)
     )
     for (name in time_columns) {
-        out[[name]] <- shift_job__live_time(out[[name]])
+        data.table::set(
+            out,
+            j = name,
+            value = shift_job__live_time(out[[name]])
+        )
     }
     out
 }
@@ -2315,56 +2365,29 @@ shift_job__live_run_get <- function(run_id, store_path) {
     if (!file.exists(path)) {
         return(NULL)
     }
-    snapshot <- tryCatch(
-        jsonlite::fromJSON(
-            path,
-            simplifyVector = TRUE,
-            simplifyDataFrame = TRUE
-        ),
-        error = function(e) NULL
-    )
+    snapshot <- shift_job__decode_json(path, default = NULL)
     if (
         is.null(snapshot) || !identical(as.character(snapshot$run_id), run_id)
     ) {
         return(NULL)
     }
     row <- shift_job__live_table(snapshot$run)
-    cases <- shift_job__live_table(snapshot$cases)
-    events <- shift_job__live_table(snapshot$events)
-    jobs <- shift_job__live_table(snapshot$jobs)
-    steps <- shift_job__live_table(snapshot$steps)
-    outputs <- shift_job__live_table(snapshot$outputs)
-    ui_state <- shift_stage__coalesce(snapshot$ui_state, list())
     if (!nrow(row)) {
         return(NULL)
     }
-    if (nrow(cases) && "years_json" %in% names(cases)) {
-        years <- lapply(cases$years_json, function(value) {
-            as.integer(jsonlite::fromJSON(value, simplifyVector = TRUE))
-        })
-        data.table::set(cases, j = "years", value = years)
-    }
-    shift_stage__new(
-        ShiftRun,
-        "run",
-        store_path = store_path,
-        ids = list(
-            run_id = run_id,
-            query_id = store__chr1(row$query_id[[1L]]),
-            reference_query_id = store__chr1(row$reference_query_id[[1L]]),
-            morph_id = store__chr1(row$morph_id[[1L]])
-        ),
-        meta = list(
-            run = row[1L],
-            cases = cases,
-            events = events,
-            jobs = jobs,
-            steps = steps,
-            outputs = outputs,
-            ui_state = ui_state,
+    shift_job__build_run_handle(
+        store_path,
+        run_id,
+        row,
+        cases = shift_job__live_table(snapshot$cases),
+        events = shift_job__live_table(snapshot$events),
+        jobs = shift_job__live_table(snapshot$jobs),
+        steps = shift_job__live_table(snapshot$steps),
+        extra_meta = list(
+            outputs = shift_job__live_table(snapshot$outputs),
+            ui_state = shift_stage__coalesce(snapshot$ui_state, list()),
             live = TRUE
-        ),
-        diagnostics = shift_job__run_diagnostics(events, run_id, store_path)
+        )
     )
 }
 # }}}
@@ -2434,10 +2457,7 @@ shift_job__cancel_request_write <- function(
 # shift_job__live_cancel_mark {{{
 shift_job__live_cancel_mark <- function(store_path, run_id, job_id, status) {
     path <- shift_job__live_path(store_path, run_id)
-    snapshot <- tryCatch(
-        jsonlite::fromJSON(path, simplifyDataFrame = TRUE),
-        error = function(e) NULL
-    )
+    snapshot <- shift_job__decode_json(path, default = NULL)
     if (is.null(snapshot)) {
         return(NULL)
     }
@@ -2446,33 +2466,17 @@ shift_job__live_cancel_mark <- function(store_path, run_id, job_id, status) {
     if (length(snapshot$ui_state)) {
         snapshot$ui_state$status <- status
     }
+    now_iso <- format(store__now(), "%Y-%m-%dT%H:%M:%OSZ", tz = "UTC")
     if (!is.null(snapshot$jobs) && nrow(snapshot$jobs)) {
         hit <- which(snapshot$jobs$job_id %in% job_id)
         if (length(hit)) {
             snapshot$jobs$status[hit] <- status
             snapshot$jobs$last_error[hit] <- "Cancellation requested by user."
-            snapshot$jobs$cancel_requested_at[hit] <- format(
-                store__now(),
-                "%Y-%m-%dT%H:%M:%OSZ",
-                tz = "UTC"
-            )
+            snapshot$jobs$cancel_requested_at[hit] <- now_iso
         }
     }
-    snapshot$written_at <- format(
-        store__now(),
-        "%Y-%m-%dT%H:%M:%OSZ",
-        tz = "UTC"
-    )
-    store_write_json_atomic(
-        snapshot,
-        path,
-        auto_unbox = TRUE,
-        dataframe = "rows",
-        null = "null",
-        na = "null",
-        POSIXt = "ISO8601",
-        digits = 15
-    )
+    snapshot$written_at <- now_iso
+    shift_job__write_live_json(snapshot, path)
     shift_job__live_run_get(run_id, store_path)
 }
 # }}}
@@ -2485,10 +2489,7 @@ shift_job__cancel_request_exists <- function(store_path, run_id, job_id) {
     if (!file.exists(path)) {
         return(FALSE)
     }
-    request <- tryCatch(
-        jsonlite::fromJSON(path, simplifyVector = TRUE),
-        error = function(e) NULL
-    )
+    request <- shift_job__decode_json(path, default = NULL)
     !is.null(request) &&
         identical(as.character(request$job_id), as.character(job_id))
 }
