@@ -474,6 +474,24 @@ test_that("EsgStore$new(), metadata, and close lifecycle", {
         fixed = TRUE
     )[[1L]]
     expect_setequal(ddb_list_tables(priv(store)$conn), expected_tables)
+    for (table in c(
+        "artifact",
+        "esg_file",
+        "file_catalog",
+        "extraction_plan",
+        "epw_source",
+        "epw_output",
+        "shift_run",
+        "shift_run_event"
+    )) {
+        rows <- ddb_read_table(priv(store)$conn, table)
+        expect_identical(nrow(rows), 0L)
+        expect_gt(ncol(rows), 0L)
+    }
+    expect_true(
+        "provenance_json" %in%
+            names(ddb_read_table(priv(store)$conn, "epw_output"))
+    )
 
     expect_null(store$get_meta("active_cmip6_index_artifact_id"))
     expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
@@ -3164,6 +3182,7 @@ store_test__drain_fallback <- function(pool, tickets, limit = 25) {
 # A failed remote read must recover inside its own reader, while another reader
 # completes independently and only the owner writes the extraction manifests.
 test_that("persistent extraction recovers 504 through HTTP without blocking peers", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     path <- tempfile(fileext = ".nc")
     peer_path <- tempfile(fileext = ".nc")
@@ -3249,6 +3268,7 @@ test_that("persistent extraction recovers 504 through HTTP without blocking peer
 
 # A valid HTTP status cannot publish a corrupted source as a completed plan.
 test_that("persistent HTTP fallback retains checksum failures", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
@@ -3280,6 +3300,7 @@ test_that("persistent HTTP fallback retains checksum failures", {
 # The HTTP response is a valid NetCDF with the declared size and hash, but
 # its contents cannot satisfy the requested variable after the file opens.
 test_that("both Store recovery modes retain remote and local read failures", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     root <- withr::local_tempdir()
     path <- file.path(root, "source.nc")
@@ -3320,6 +3341,7 @@ test_that("both Store recovery modes retain remote and local read failures", {
 # A real worker deadline leaves the original task/session and seeded partial
 # bytes recoverable. The next worker resumes Range bytes without reopening DAP.
 test_that("HTTP fallback resumes one retained session after a reader deadline", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
@@ -3455,5 +3477,234 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     expect_identical(repeated$dods, counts$dods)
     expect_error(source_pool(1L, download_dir = TRUE), "download_dir")
 })
+
+# append_new_rows() {{{
+# append_new_rows() inserts only rows whose key is not yet stored. It must keep
+# its earlier behavior while asking DuckDB only about the keys being inserted
+# instead of reading the whole key column back into R.
+store_append_test__store <- function(env = parent.frame()) {
+    store <- store_test__new(env = env)
+    ddb_exec(
+        priv(store)$conn,
+        "CREATE TABLE append_t (k VARCHAR PRIMARY KEY, v VARCHAR, n INTEGER)"
+    )
+    store
+}
+
+store_append_test__rows <- function(keys, v = "new") {
+    data.frame(
+        k = keys,
+        v = v,
+        n = seq_along(keys),
+        stringsAsFactors = FALSE
+    )
+}
+
+# Read all persisted fields in key order to check insertion outcomes.
+store_append_test__state <- function(store) {
+    out <- ddb_query(priv(store)$conn, "SELECT k, v, n FROM append_t")
+    out[order(out$k), , drop = FALSE]
+}
+
+test_that("append_new_rows preserves stored values and inserts only new keys", {
+    store <- store_append_test__store()
+    seed <- store_append_test__rows(c("a", "b", "c"), v = "seed")
+    ddb_append_table(priv(store)$conn, "append_t", seed)
+    batch <- store_append_test__rows(c("b", "d", "e", "a"), v = "batch")
+    priv(store)$append_new_rows("append_t", batch, "k")
+    state <- store_append_test__state(store)
+    expect_identical(state$k, c("a", "b", "c", "d", "e"))
+    expect_identical(state$v, c("seed", "seed", "seed", "batch", "batch"))
+    expect_identical(state$n, c(1L, 2L, 3L, 2L, 3L))
+
+    # Replaying the batch or submitting no rows must preserve every field.
+    priv(store)$append_new_rows("append_t", batch, "k")
+    priv(store)$append_new_rows("append_t", batch[0, ], "k")
+    expect_identical(store_append_test__state(store), state)
+    empty <- store_append_test__store()
+    priv(empty)$append_new_rows(
+        "append_t",
+        store_append_test__rows("first"),
+        "k"
+    )
+    expect_identical(store_append_test__state(empty)$k, "first")
+})
+
+test_that("append_new_rows rejects bad keys without partial insertion", {
+    store <- store_append_test__store()
+    dup <- store_append_test__rows(c("x", "x"))
+    expect_error(priv(store)$append_new_rows("append_t", dup, "k"))
+    expect_identical(nrow(store_append_test__state(store)), 0L)
+    missing <- store_append_test__rows(c("y", NA))
+    expect_error(priv(store)$append_new_rows("append_t", missing, "k"))
+    expect_identical(nrow(store_append_test__state(store)), 0L)
+})
+
+test_that("append_new_rows handles factor keys and keys that need quoting", {
+    store <- store_append_test__store()
+    odd <- c(
+        "it's",
+        "semi;colon",
+        "quote\"d",
+        "CaSe",
+        "case",
+        "tab\tkey",
+        "ünï"
+    )
+    ddb_append_table(
+        priv(store)$conn,
+        "append_t",
+        store_append_test__rows(odd[1:4], v = "seed")
+    )
+    batch <- store_append_test__rows(odd)
+    batch$k <- factor(batch$k, levels = odd)
+    priv(store)$append_new_rows("append_t", batch, "k")
+    state <- store_append_test__state(store)
+    expect_setequal(state$k, odd)
+    expect_identical(sum(state$v == "seed"), 4L)
+})
+
+test_that("append_new_rows preserves results across multiple batches", {
+    store <- store_append_test__store()
+    stored <- sprintf("k%06d", seq(1L, 9000L, by = 2L))
+    ddb_append_table(
+        priv(store)$conn,
+        "append_t",
+        store_append_test__rows(stored, v = "seed")
+    )
+    # 4500 keys span three chunks; half of them already exist.
+    keys <- sprintf("k%06d", 1:4500)
+    priv(store)$append_new_rows("append_t", store_append_test__rows(keys), "k")
+    state <- store_append_test__state(store)
+    expected <- sort(union(stored, keys))
+    expect_identical(state$k, expected)
+    # Pre-existing rows were not overwritten; new ones carry the batch value.
+    expect_identical(
+        state$v[state$k %in% stored],
+        rep("seed", length(stored))
+    )
+    expect_true(all(state$v[!state$k %in% stored] == "new"))
+})
+# }}}
+
+# Schema initialization and repair {{{
+# Reopening preserves stored data and the schema.
+test_that("current store reopen preserves rows and schema", {
+    path <- tempfile("store-schema-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    store$set_meta("sentinel", "keep")
+    before <- ddb_query(
+        priv(store)$conn,
+        "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, ordinal_position"
+    )
+    store$close()
+    store <- EsgStore$new(path, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+    expect_identical(store$get_meta("sentinel"), "keep")
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+    expect_identical(
+        ddb_query(
+            priv(store)$conn,
+            "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, ordinal_position"
+        ),
+        before
+    )
+})
+
+# A same-version manifest can lose a table or an additive column between opens.
+# Verify recovery against a fresh complete catalog, including persisted rows.
+test_that("current store repairs missing tables and additive columns", {
+    path <- tempfile("store-schema-repair-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    on.exit(store$close(), add = TRUE)
+    store$set_meta("sentinel", "keep")
+    catalog <- ddb_query(
+        priv(store)$conn,
+        "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, column_name"
+    )
+    ddb_exec(priv(store)$conn, "DROP TABLE shift_run_event")
+    ddb_exec(
+        priv(store)$conn,
+        "ALTER TABLE epw_output DROP COLUMN provenance_json"
+    )
+    ddb_exec(priv(store)$conn, "ALTER TABLE file_catalog DROP COLUMN latest")
+    store$close()
+    store <- EsgStore$new(path, create = FALSE)
+    expect_identical(
+        ddb_query(
+            priv(store)$conn,
+            "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, column_name"
+        ),
+        catalog
+    )
+    expect_identical(store$get_meta("sentinel"), "keep")
+})
+
+# Checking a valid store once must not authorize later opens after its version
+# or metadata has changed; no connection/path-level success cache is allowed.
+test_that("reopening still rejects changed or missing schema versions", {
+    path <- tempfile("store-schema-version-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    store$close()
+    for (version in c("2.6.0", "newer", NA_character_)) {
+        conn <- ddb_connect(file.path(path, "manifest.duckdb"))
+        ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
+        if (!is.na(version)) {
+            ddb_exec(
+                conn,
+                sprintf(
+                    "INSERT INTO store_meta VALUES ('schema_version', '%s', NULL)",
+                    version
+                )
+            )
+        }
+        ddb_exec(conn, "DROP TABLE IF EXISTS shift_run_event")
+        ddb_disconnect(conn)
+        message <- if (is.na(version)) {
+            "Store schema version .*missing"
+        } else {
+            "store_reset"
+        }
+        expect_error(EsgStore$new(path, create = FALSE), message)
+        conn <- ddb_connect(file.path(path, "manifest.duckdb"))
+        expect_false("shift_run_event" %in% ddb_list_tables(conn))
+        stored <- ddb_query(
+            conn,
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        )
+        expect_identical(stored$value, version[!is.na(version)])
+        ddb_disconnect(conn)
+    }
+})
+
+# An interrupted additive repair must be retried from the database state. The
+# original live instance owns the connection so cleanup remains deterministic.
+test_that("schema repair retries after a failed DDL statement", {
+    path <- tempfile("store-schema-retry-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    on.exit(store$close(), add = TRUE)
+    ddb_exec(priv(store)$conn, "DROP TABLE shift_run_event")
+    original <- ddb_exec
+    attempts <- 0L
+    local_mocked_bindings(
+        ddb_exec = function(conn, sql) {
+            if (grepl("CREATE TABLE IF NOT EXISTS shift_run_event", sql)) {
+                attempts <<- attempts + 1L
+                if (attempts == 1L) stop("interrupted schema repair")
+            }
+            original(conn, sql)
+        },
+        .package = "epwshiftr"
+    )
+    expect_error(priv(store)$init_schema(), "interrupted schema repair")
+    expect_false("shift_run_event" %in% ddb_list_tables(priv(store)$conn))
+    priv(store)$init_schema()
+    expect_true("shift_run_event" %in% ddb_list_tables(priv(store)$conn))
+})
+# }}}
 
 # vim: fdm=marker :

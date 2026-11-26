@@ -38,6 +38,6 @@ jobs:
         shell: Rscript {0}
         run: |
           devtools::test(
-            filter = "service-live-esgf",
+            filter = "^query-result$",
             stop_on_failure = TRUE
           )

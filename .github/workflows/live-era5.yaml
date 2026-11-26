@@ -45,4 +45,4 @@ jobs:
       - name: Run the live ERA5 workflow
         shell: Rscript {0}
         run: |
-          devtools::test(filter = "era5-live", stop_on_failure = TRUE)
+          devtools::test(filter = "^era5-epw$", stop_on_failure = TRUE)
