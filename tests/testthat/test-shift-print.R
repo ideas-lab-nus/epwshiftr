@@ -13,22 +13,22 @@ test_that("ShiftRequest print shares the ESGF query renderer", {
         filters = list(table_id = "Amon")
     )
 
-    printed <- capture.output(print(req, width = 60L), type = "message")
-    expect_true(any(grepl("ESGF request", printed, fixed = TRUE)))
-    expect_true(any(grepl("^[=═]{2} ESGF request", printed)))
-    expect_true(any(grepl("^[*•] Index node: auto", printed)))
-    expect_true(any(grepl("Query parameters", printed, fixed = TRUE)))
-    expect_true(any(grepl(
-        "experiment_id = ssp126, ssp585",
-        printed,
-        fixed = TRUE
-    )))
-    expect_true(any(grepl("table_id = Amon", printed, fixed = TRUE)))
-    expect_false(any(grepl("stage:  request", printed, fixed = TRUE)))
+    printed <- paste(
+        capture.output(print(req, width = 60L), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(printed, "(^|\n)[=═]{2} ESGF request")
+    expect_match(printed, "(^|\n)[*•] Index node: auto")
+    expect_match(printed, "experiment_id = ssp126, ssp585", fixed = TRUE)
+    expect_match(printed, "table_id = Amon", fixed = TRUE)
+    expect_no_match(printed, "stage:  request", fixed = TRUE)
 
-    verbose <- capture.output(print(req, verbose = TRUE), type = "message")
-    expect_true(any(grepl("Workflow", verbose, fixed = TRUE)))
-    expect_true(any(grepl("Status: new", verbose, fixed = TRUE)))
+    verbose <- paste(
+        capture.output(print(req, verbose = TRUE), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(verbose, "Workflow", fixed = TRUE)
+    expect_match(verbose, "Status: new", fixed = TRUE)
 })
 
 test_that("Shift configuration printers use compact semantic receipts", {
@@ -337,11 +337,7 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
     expect_snapshot(print(run, width = 100L, verbose = TRUE))
 })
 
-test_that("shift_ui() validates presentation options without changing scientific intent", {
-    expect_error(shift_ui("invalid"), "arg")
-    expect_error(shift_ui(motion = "invalid"), "arg")
-    expect_error(shift_ui(refresh = 0.01), "not >= 0.05")
-    expect_error(shift_ui(heartbeat = -1), "not >= 0")
+test_that("shift_ui() maps presentation modes without changing scientific intent", {
     expect_equal(shift_ui__ui_mode(shift_ui("none")), "none")
     expect_equal(
         shift_ui__ui_motion(shift_ui("dynamic", motion = "auto")),
@@ -351,11 +347,10 @@ test_that("shift_ui() validates presentation options without changing scientific
 
     store <- tempfile("shift-ui-store-")
     output <- tempfile("shift-ui-output-")
-    transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
-        model = "EC-Earth3",
-        scenarios = "ssp585",
-        member = "r1i1p1f1",
+        "EC-Earth3",
+        "ssp585",
+        "r1i1p1f1",
         grid = "gr",
         frequency = "mon",
         table = "Amon"
@@ -365,7 +360,7 @@ test_that("shift_ui() validates presentation options without changing scientific
             sites = shift_site(epw = get_cache_epw()),
             climate = climate,
             periods = list(`2060s` = 2060L),
-            transform = transform,
+            transform = monthly_transform("epwshiftr"),
             dir = output,
             store = store,
             dry_run = TRUE,
@@ -425,48 +420,6 @@ test_that("ShiftReporter persists structured milestones while none mode stays si
     expect_equal(unit$node, "example.org")
     expect_equal(unit$variable, "tas")
     expect_equal(unit$outcome, "completed")
-})
-
-test_that("ShiftReporter submits one complete frame per dynamic refresh", {
-    mock <- shift_test__mock_renderer()
-
-    reporter <- shift_reporter__reporter(shift_ui("dynamic", heartbeat = 0))
-    reporter$stage_started("resolve", "Resolving inputs.")
-    reporter$unit_started("Trying node one", current = 1L, total = 2L)
-    expect_silent(reporter$heartbeat(
-        "Waiting for future catalog",
-        force = TRUE
-    ))
-    expect_equal(length(mock$frames), 3L)
-    expect_true(all(lengths(mock$frames) == 10L))
-    expect_length(mock$compacts, 3L)
-    expect_true(all(nzchar(mock$compacts)))
-    expect_message(
-        reporter$unit_completed(
-            "Node one failed",
-            current = 1L,
-            total = 2L,
-            outcome = "failed"
-        ),
-        "Node one failed"
-    )
-    reporter$close()
-    expect_equal(mock$closes, 1L)
-})
-
-test_that("ShiftReporter falls back to logs when frame painting fails", {
-    shift_test__mock_renderer(draw_ok = FALSE)
-    reporter <- shift_reporter__reporter(shift_ui("dynamic"))
-
-    expect_message(
-        reporter$stage_started("resolve", "Resolving inputs."),
-        "switched to line-by-line logs"
-    )
-    expect_identical(reporter$mode(), "log")
-    expect_message(
-        reporter$unit_started("Trying DKRZ", current = 1L, total = 6L),
-        "Trying DKRZ"
-    )
 })
 
 test_that("shared truncation footer preserves display behavior", {

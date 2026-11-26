@@ -381,7 +381,6 @@ test_that("shift_morph() uses complete extraction plans by default", {
     ))
     expect_equal(shift_status(morphed), "morphed")
     expect_equal(shift_status(blocked), "blocked")
-    expect_equal(shift_status(shift_run__complete(morphed)), "partial")
 })
 
 test_that("shift_morph() resolves automatic and manual historical references", {

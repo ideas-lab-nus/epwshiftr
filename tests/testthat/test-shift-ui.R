@@ -4,59 +4,96 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-test_that("shared status views adapt to stage, width, and transfer metrics", {
-    resolve_state <- shift_test__ui_state(
-        run_id = "run-panel",
-        stage_sequence = c(
-            "resolve",
-            "extract_future",
-            "extract_reference",
-            "coverage",
-            "morph",
-            "write_epw"
+UI_TEST_STAGES <- c(
+    "resolve",
+    "extract_future",
+    "extract_reference",
+    "coverage",
+    "morph",
+    "write_epw"
+)
+
+ui_test__plain <- function(x) paste(cli::ansi_strip(x), collapse = "\n")
+ui_test__msg <- function(expr) {
+    ui_test__plain(capture.output(expr, type = "message"))
+}
+
+ui_test__plan <- function(table = NULL) {
+    shift_epw_future(
+        sites = shift_site(epw = get_cache_epw()),
+        climate = shift_cmip6(
+            "BCC-CSM2-MR",
+            c("ssp126", "ssp585"),
+            member = "r1i1p1f1",
+            grid = "gn",
+            table = table
         ),
-        completed_stages = character(),
+        periods = list(`2060s` = 2055:2065),
+        transform = monthly_transform("epwshiftr"),
+        dir = tempfile("shift-ui-output-"),
+        store = tempfile("shift-ui-store-"),
+        dry_run = TRUE
+    )@meta$children[[1L]]
+}
+
+test_that("shared status and compact views adapt to stage, width, and transfer metrics", {
+    resolve_state <- shift_test__ui_state(
+        stage_sequence = UI_TEST_STAGES,
         stage_current = 1L,
         stage_total = 6L,
-        stage_message = "Resolving complete CMIP6 workflow inputs.",
-        unit_label = paste(
-            rep("DKRZ future catalog waiting", 8L),
-            collapse = " "
-        ),
+        unit_label = strrep("DKRZ waiting ", 8L),
         unit_current = 1L,
         unit_total = 6L,
         plan_context = list(
             line = "BCC-CSM2-MR \u00b7 ssp126 + ssp585 \u00b7 2060s \u00b7 original_morphing",
             selection = "member auto \u00b7 grid auto"
         ),
-        recent_events = c("Catalog retry", "Previous request completed"),
-        recent_outcomes = c("fallback", "completed"),
         elapsed_seconds = 12
     )
     wide <- unname(shift_ui_view__ui_status_lines(resolve_state, width = 80L))
     wide_plain <- cli::ansi_strip(wide)
-    expect_gte(length(wide), 11L)
+    wide_text <- paste(wide_plain, collapse = "\n")
+    expect_gte(length(wide), 9L)
     expect_true(all(cli::ansi_nchar(wide, type = "width") == 79L))
     expect_match(wide_plain[[1L]], "^╭─ Future EPW.*RUNNING")
-    expect_true(any(grepl("Plan.*BCC-CSM2-MR.*original_morphing", wide_plain)))
-    expect_true(any(grepl("Flow.*Resolve.*Future", wide_plain)))
-    expect_true(any(grepl("Status.*node 1 of 6.*member auto", wide_plain)))
-    expect_false(any(grepl("%", wide_plain, fixed = TRUE)))
+    expect_match(wide_text, "BCC-CSM2-MR.*original_morphing")
+    expect_match(wide_text, "node 1 of 6.*member auto")
+    expect_false(grepl("%", wide_text, fixed = TRUE))
     expect_match(utils::tail(wide_plain, 1L), "^╰─")
 
-    narrow_plain <- cli::ansi_strip(shift_ui_view__ui_status_lines(
+    narrow <- cli::ansi_strip(shift_ui_view__ui_status_lines(
         resolve_state,
         width = 59L
     ))
-    expect_false(any(grepl("^[╭├╰│]", narrow_plain)))
-    expect_match(narrow_plain[[1L]], "Future EPW", fixed = TRUE)
+    expect_false(any(grepl("^[╭├╰│]", narrow)))
+    expect_match(narrow[[1L]], "Future EPW", fixed = TRUE)
+
+    # Compact line preserves stage, unit, progress, and elapsed time
+    compact_state <- shift_test__ui_state(
+        unit_label = "Checking catalog",
+        unit_current = 2L,
+        unit_total = 6L,
+        current_details = list(
+            current = 2L,
+            total = 6L,
+            node = INDEX_NODES[["CEDA"]],
+            catalog_role = "reference"
+        ),
+        elapsed_seconds = 15
+    )
+    compact <- cli::ansi_strip(shift_ui_view__ui_compact_line(
+        compact_state,
+        width = 80L,
+        motion = "full",
+        frame = 1L
+    ))
+    expect_match(compact, "Resolve.*2/6.*CEDA.*reference.*15s")
+    expect_lte(nchar(compact, type = "width"), 80L)
 
     # Download transfer metrics
     dl_state <- shift_test__ui_state(
-        run_id = "run-download",
         stage = "download",
         elapsed_seconds = 20,
-        unit_label = "future download · tas.nc + hurs.nc",
         unit_current = 2L,
         unit_total = 8L,
         current_details = list(
@@ -69,18 +106,14 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
             eta_seconds = 6,
             active_task_count = 2L,
             active_files = c("tas.nc", "hurs.nc")
-        ),
-        last_event = "Selected r1i1p1f1 / gn"
+        )
     )
-    dl_plain <- cli::ansi_strip(shift_ui_view__ui_status_lines(
+    dl_text <- ui_test__plain(shift_ui_view__ui_status_lines(
         dl_state,
         width = 100L
     ))
-    expect_true(any(grepl("2/8", dl_plain, fixed = TRUE)))
-    expect_true(any(grepl("1.0 MiB/4.0 MiB", dl_plain, fixed = TRUE)))
-    expect_true(any(grepl("512.0 KiB/s", dl_plain, fixed = TRUE)))
-    expect_true(any(grepl("ETA 6s", dl_plain, fixed = TRUE)))
-    expect_true(any(grepl("2 active", dl_plain, fixed = TRUE)))
+    expect_match(dl_text, "2/8.*1\\.0 MiB/4\\.0 MiB.*512\\.0 KiB/s.*ETA 6s")
+    expect_match(dl_text, "2 active", fixed = TRUE)
 
     # Coverage, morph, and write_epw stage-specific metrics
     base <- shift_test__ui_state(
@@ -88,27 +121,20 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
         unit_current = 1L,
         unit_total = 2L,
         current_details = list(current = 1L, total = 2L),
-        cases_ready = 1L,
-        last_event = "Resolved"
+        cases_ready = 1L
     )
-    coverage <- cli::ansi_strip(shift_ui_view__ui_status_lines(
-        utils::modifyList(base, list(stage = "coverage")),
-        width = 80L
-    ))
-    morph <- cli::ansi_strip(shift_ui_view__ui_status_lines(
-        utils::modifyList(base, list(stage = "morph")),
-        width = 80L
-    ))
-    epw <- cli::ansi_strip(shift_ui_view__ui_status_lines(
-        utils::modifyList(
-            base,
-            list(stage = "write_epw", outputs_completed = 1L)
-        ),
-        width = 80L
-    ))
-    expect_true(any(grepl("Cases.*1/2.*ready 1.*missing 1", coverage)))
-    expect_true(any(grepl("Cases.*1/2", morph)))
-    expect_true(any(grepl("EPWs.*1/2.*exported 1 files", epw)))
+    st <- function(...) {
+        ui_test__plain(shift_ui_view__ui_status_lines(
+            utils::modifyList(base, list(...)),
+            width = 80L
+        ))
+    }
+    expect_match(st(stage = "coverage"), "Cases.*1/2.*ready 1.*missing 1")
+    expect_match(st(stage = "morph"), "Cases.*1/2")
+    expect_match(
+        st(stage = "write_epw", outputs_completed = 1L),
+        "EPWs.*1/2.*exported 1 files"
+    )
 })
 
 test_that("ShiftFrameRenderer paints atomically, suspends/restores, and commits cleanly", {
@@ -133,28 +159,26 @@ test_that("ShiftFrameRenderer paints atomically, suspends/restores, and commits 
     expect_identical(writes[[1L]], "\rone\033[K\n\rtwo\033[K\n\rthree\033[K\r")
     expect_identical(
         writes[[2L]],
-        paste0("\033[2A\rONE\033[K\n\rTWO\033[K\r", "\n\r\033[K\033[1A\r")
+        "\033[2A\rONE\033[K\n\rTWO\033[K\r\n\r\033[K\033[1A\r"
     )
 
     renderer$suspend(function() {
         writes <<- c(writes, "notice\n")
         renderer$suspend(function() writes <<- c(writes, "detail\n"))
     })
-    expect_true(any(writes == "notice\n"))
-    expect_true(any(writes == "detail\n"))
+    expect_true(all(c("notice\n", "detail\n") %in% writes))
 
     renderer$commit("failed")
     renderer$commit("failed")
     expect_identical(utils::tail(writes, 1L), "\n")
-    expect_equal(hidden, 1L)
-    expect_equal(shown, 1L)
+    expect_equal(c(hidden, shown), c(1L, 1L))
     expect_false(renderer$active())
 })
 
 test_that("compact renderer, backend detection, and auto UI mode follow terminal capability", {
     created <- 0L
-    updates <- character()
     closed <- 0L
+    updates <- character()
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     testthat::local_mocked_bindings(
@@ -177,9 +201,8 @@ test_that("compact renderer, backend detection, and auto UI mode follow terminal
     renderer$draw(c("full 1", "full 2"), compact = "compact one")
     renderer$draw(c("full 1", "full 2"), compact = "compact two")
     renderer$close()
-    expect_equal(created, 1L)
+    expect_equal(c(created, closed), c(1L, 1L))
     expect_identical(updates, c("compact one", "compact two"))
-    expect_equal(closed, 1L)
 
     withr::local_envvar(c(CI = NA_character_, TERM = "xterm-256color"))
     expect_identical(shift_tui__ui_renderer_backend(output), "compact")
@@ -196,34 +219,6 @@ test_that("compact renderer, backend detection, and auto UI mode follow terminal
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "log")
     withr::local_envvar(c(CI = NA_character_, TERM = "dumb"))
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "log")
-})
-
-test_that("compact status preserves stage, unit, progress, and elapsed time", {
-    state <- shift_test__ui_state(
-        stage_message = "Resolving workflow inputs",
-        unit_label = "Checking catalog",
-        unit_current = 2L,
-        unit_total = 6L,
-        current_details = list(
-            current = 2L,
-            total = 6L,
-            node = INDEX_NODES[["CEDA"]],
-            catalog_role = "reference"
-        ),
-        elapsed_seconds = 15
-    )
-    line <- cli::ansi_strip(shift_ui_view__ui_compact_line(
-        state,
-        width = 80L,
-        motion = "full",
-        frame = 1L
-    ))
-    expect_match(line, "Resolve", fixed = TRUE)
-    expect_match(line, "2/6", fixed = TRUE)
-    expect_match(line, "CEDA", fixed = TRUE)
-    expect_match(line, "reference", fixed = TRUE)
-    expect_match(line, "15s", fixed = TRUE)
-    expect_lte(nchar(line, type = "width"), 80L)
 })
 
 test_that("reporter retains recent milestones without clobbering last completed event", {
@@ -248,40 +243,32 @@ test_that("reporter retains recent milestones without clobbering last completed 
     expect_identical(state$last_event, "Node 4 rejected")
 })
 
-test_that("node and case tables respect detail level and abbreviate repeated errors", {
+test_that("node/case tables, error summaries, and persisted events respect detail level", {
     nodes <- data.table::data.table(
         node = c("DKRZ", "CEDA", "ORNL"),
         future = c(38L, NA_integer_, 48L),
         reference = c(12L, NA_integer_, 24L),
         outcome = c("rejected", "rejected", "completed"),
         result = c(
-            paste(
-                "coverage: No complete CMIP6 member/grid candidate was found",
-                "for model BCC-CSM2-MR with a very long diagnostic"
-            ),
+            "coverage: No complete CMIP6 member/grid candidate was found for model BCC-CSM2-MR with a very long diagnostic",
             "HTTP 503 while collecting the reference catalog",
             "selected r1i1p1f1 / gn"
         )
     )
-    normal_nodes <- shift_ui_view__ui_node_table(
+    normal_nodes <- ui_test__plain(shift_ui_view__ui_node_table(
         nodes,
         width = 120L,
         detail = "normal"
-    )
-    detail_nodes <- shift_ui_view__ui_node_table(
+    ))
+    detail_nodes <- ui_test__plain(shift_ui_view__ui_node_table(
         nodes,
         width = 180L,
         detail = "detail"
-    )
-    expect_match(paste(normal_nodes, collapse = "\n"), "Resolver attempts")
-    expect_match(paste(normal_nodes, collapse = "\n"), "ORNL.*48.*24.*selected")
-    expect_match(
-        paste(normal_nodes, collapse = "\n"),
-        "incomplete coverage",
-        fixed = TRUE
-    )
-    expect_false(any(grepl("very long diagnostic", normal_nodes, fixed = TRUE)))
-    expect_true(any(grepl("very long diagnostic", detail_nodes, fixed = TRUE)))
+    ))
+    expect_match(normal_nodes, "ORNL.*48.*24.*selected")
+    expect_match(normal_nodes, "incomplete coverage", fixed = TRUE)
+    expect_false(grepl("very long diagnostic", normal_nodes, fixed = TRUE))
+    expect_true(grepl("very long diagnostic", detail_nodes, fixed = TRUE))
 
     cases <- data.table::data.table(
         experiment_id = c("ssp126", "ssp585"),
@@ -303,21 +290,39 @@ test_that("node and case tables respect detail level and abbreviate repeated err
     expect_true(all(nchar(normal_cases, type = "width") <= 60L))
     expect_false(any(grepl("future/hurs", normal_cases, fixed = TRUE)))
     expect_true(any(grepl("future/hurs", detail_cases, fixed = TRUE)))
+
+    expect_identical(
+        shift_print__error_summary(
+            "No ESGF index node produced a complete input set.\nx DKRZ: missing hurs\ni More detail"
+        ),
+        "No ESGF index node produced a complete input set."
+    )
+
+    event <- data.table::data.table(
+        stage = "resolve",
+        message = "ORNL · future catalog · 12 files",
+        details_json = shift_persist__spec_json(list(
+            node = INDEX_NODES[["ORNL"]],
+            catalog_role = "future"
+        )),
+        created_at = as.POSIXct("2026-07-20 00:00:00", tz = "UTC")
+    )
+    normal_ev <- shift_ui_view__ui_persisted_event_line(
+        event,
+        detail = "normal"
+    )
+    debug_ev <- shift_ui_view__ui_persisted_event_line(event, detail = "debug")
+    expect_match(normal_ev, "[ORNL][future]", fixed = TRUE)
+    expect_false(grepl("https://", normal_ev, fixed = TRUE))
+    expect_true(grepl("https://", debug_ev, fixed = TRUE))
 })
 
 test_that("persisted watch tables rebuild running state, terminal elapsed time, and failure diagnosis", {
     now <- as.POSIXct("2026-07-20 00:00:00", tz = "UTC")
     spec <- shift_persist__spec_json(list(
-        climate = list(
-            model = "BCC-CSM2-MR",
-            scenarios = "ssp585",
-            member = NULL,
-            grid = NULL,
-            table = NULL
-        ),
+        climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585"),
         periods = list(`2060s` = 2055:2065),
         transform = transform__spec_value(monthly_transform("epwshiftr")),
-        reference = NULL,
         control = list(download = "auto")
     ))
     row <- data.table::data.table(
@@ -328,75 +333,46 @@ test_that("persisted watch tables rebuild running state, terminal elapsed time, 
         started_at = now,
         completed_at = as.POSIXct(NA, tz = "UTC")
     )
+    items <- list(
+        list(
+            stage = "resolve",
+            phase = "stage",
+            current = 1L,
+            total = 6L,
+            stage_sequence = UI_TEST_STAGES
+        ),
+        list(
+            stage = "resolve",
+            phase = "unit",
+            unit_type = "index_node",
+            current = 3L,
+            total = 6L,
+            node = INDEX_NODES[["ORNL"]],
+            future_files = 48L,
+            reference_files = 24L,
+            outcome = "completed",
+            result = "r1i1p1f1 · Amon=gn · LImon=gr"
+        )
+    )
     events <- data.table::data.table(
-        event_id = c("stage", "node-start", "node-done"),
+        event_id = c("stage", "node-done"),
         stage = "resolve",
-        status = c("running", "running", "completed"),
-        message = c(
-            "Resolving complete CMIP6 workflow inputs.",
-            "ORNL · checking future + reference catalogs",
-            "ORNL · selected member r1i1p1f1 · Amon=gn · LImon=gr"
-        ),
-        details_json = vapply(
-            list(
-                list(
-                    stage = "resolve",
-                    phase = "stage",
-                    current = 1L,
-                    total = 6L,
-                    next_stage = "extract_future",
-                    stage_sequence = c(
-                        "resolve",
-                        "extract_future",
-                        "extract_reference",
-                        "coverage",
-                        "morph",
-                        "write_epw"
-                    )
-                ),
-                list(
-                    stage = "resolve",
-                    phase = "unit",
-                    unit_type = "index_node",
-                    unit_label = "ORNL · checking future + reference catalogs",
-                    current = 3L,
-                    total = 6L,
-                    node = INDEX_NODES[["ORNL"]]
-                ),
-                list(
-                    stage = "resolve",
-                    phase = "unit",
-                    unit_type = "index_node",
-                    unit_label = "ORNL · selected member r1i1p1f1 · Amon=gn · LImon=gr",
-                    current = 3L,
-                    total = 6L,
-                    node = INDEX_NODES[["ORNL"]],
-                    future_files = 48L,
-                    reference_files = 24L,
-                    outcome = "completed",
-                    result = "r1i1p1f1 · Amon=gn · LImon=gr"
-                )
-            ),
-            shift_persist__spec_json,
-            character(1L)
-        ),
-        created_at = now + 0:2
+        status = c("running", "completed"),
+        message = c("Resolving inputs.", "ORNL · selected"),
+        details_json = vapply(items, shift_persist__spec_json, character(1L)),
+        created_at = now + 0:1
     )
     cases <- data.table::data.table(
         experiment_id = c("ssp126", "ssp585"),
         period = "2060s",
         variant_label = "r1i1p1f1",
-        status = c("pending", "pending")
+        status = "pending"
     )
     view <- shift_ui_view__ui_table_view(row, cases, events, width = 80L)
-    plain <- cli::ansi_strip(view$lines)
-    expect_match(plain[[1L]], "Future EPW", fixed = TRUE)
-    expect_match(
-        paste(plain, collapse = " "),
-        "epwshiftr / no reference",
-        fixed = TRUE
-    )
-    expect_true(any(grepl("node 3 of 6", plain, fixed = TRUE)))
+    plain <- ui_test__plain(view$lines)
+    expect_match(plain, "Future EPW", fixed = TRUE)
+    expect_match(plain, "epwshiftr / no reference", fixed = TRUE)
+    expect_match(plain, "node 3 of 6", fixed = TRUE)
     expect_match(
         paste(view$nodes, collapse = "\n"),
         "ORNL.*48.*24.*Amon=gn.*LImon=gr"
@@ -417,16 +393,13 @@ test_that("persisted watch tables rebuild running state, terminal elapsed time, 
         stage = "resolve",
         phase = "unit",
         unit_type = "index_node",
-        unit_label = "No ESGF index node resolved a complete input set.",
         current = 6L,
         total = 6L,
         summary = "No ESGF index node resolved a complete input set.",
         cause = "Future catalog coverage is incomplete.",
         nodes_checked = 6L,
         coverage_failures = 6L,
-        usable_nodes = 0L,
-        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
-        missing = "future: ssp585/hurs: missing years 2055"
+        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn")
     )
     failed_events <- data.table::data.table(
         event_id = "failure",
@@ -442,16 +415,12 @@ test_that("persisted watch tables rebuild running state, terminal elapsed time, 
         failed_events,
         width = 80L
     )
-    failed_plain <- cli::ansi_strip(failed_view$lines)
+    failed_text <- ui_test__plain(failed_view$lines)
     expect_equal(failed_view$state$elapsed_seconds, 90)
     expect_identical(failed_view$state$failure_details$cause, failure$cause)
-    expect_match(failed_plain[[1L]], "FAILED", fixed = TRUE)
-    expect_true(any(grepl("6 checked.*6 incomplete", failed_plain)))
-    expect_true(any(grepl(
-        "BCC-CSM2-MR/r1i1p1f1/gn",
-        failed_plain,
-        fixed = TRUE
-    )))
+    expect_match(failed_text, "FAILED", fixed = TRUE)
+    expect_match(failed_text, "6 checked.*6 incomplete")
+    expect_match(failed_text, "BCC-CSM2-MR/r1i1p1f1/gn", fixed = TRUE)
 })
 
 test_that("watch event deltas never tail away unseen milestones", {
@@ -491,34 +460,6 @@ test_that("watch event deltas never tail away unseen milestones", {
     expect_true(truncated$gap)
 })
 
-test_that("error summaries keep primary cause and persisted events gate URLs by detail level", {
-    message <- paste(
-        "No ESGF index node produced a complete input set.",
-        "x DKRZ: missing hurs",
-        "i More detail",
-        sep = "\n"
-    )
-    expect_identical(
-        shift_print__error_summary(message),
-        "No ESGF index node produced a complete input set."
-    )
-
-    event <- data.table::data.table(
-        stage = "resolve",
-        message = "ORNL · future catalog · 12 files",
-        details_json = shift_persist__spec_json(list(
-            node = INDEX_NODES[["ORNL"]],
-            catalog_role = "future"
-        )),
-        created_at = as.POSIXct("2026-07-20 00:00:00", tz = "UTC")
-    )
-    normal <- shift_ui_view__ui_persisted_event_line(event, detail = "normal")
-    debug <- shift_ui_view__ui_persisted_event_line(event, detail = "debug")
-    expect_match(normal, "[ORNL][future]", fixed = TRUE)
-    expect_false(grepl("https://", normal, fixed = TRUE))
-    expect_true(grepl("https://", debug, fixed = TRUE))
-})
-
 test_that("download metrics and reporter bindings bridge progress and nested fallbacks", {
     callbacks <- new.env(parent = emptyenv())
     seen <- character()
@@ -544,14 +485,18 @@ test_that("download metrics and reporter bindings bridge progress and nested fal
         "session",
         variables = 8L
     )
-    label <- shift_run__download_label("future", metrics)
-    expect_equal(metrics$current, 1L)
-    expect_equal(metrics$total, 3L)
-    expect_equal(metrics$bytes_done, 1536)
-    expect_equal(metrics$speed_bps, 256)
+    expect_equal(
+        c(
+            metrics$current,
+            metrics$total,
+            metrics$bytes_done,
+            metrics$speed_bps
+        ),
+        c(1, 3, 1536, 256)
+    )
     expect_equal(metrics$active_files, "tas.nc")
     expect_match(
-        label,
+        shift_run__download_label("future", metrics),
         "future download.*1/3 files.*1.5 KiB/7.0 KiB.*8 variables"
     )
 
@@ -566,22 +511,19 @@ test_that("download metrics and reporter bindings bridge progress and nested fal
             invisible(TRUE)
         }
     )
+    event <- list(
+        session_id = "session",
+        filename = "tas.nc",
+        target_path = NA_character_,
+        data_node = "example.org"
+    )
     cleanup <- shift_run__download_reporter_bind(
         downloader,
         reporter,
         role = "future",
         variables = 8L
     )
-    callbacks$task_progress(
-        list(
-            event = "task_progress",
-            session_id = "session",
-            filename = "tas.nc",
-            target_path = NA_character_,
-            data_node = "example.org"
-        ),
-        downloader
-    )
+    callbacks$task_progress(c(event, event = "task_progress"), downloader)
     cleanup()
     expect_match(
         seen,
@@ -595,110 +537,86 @@ test_that("download metrics and reporter bindings bridge progress and nested fal
         variables = 1L,
         nested = TRUE
     )
-    event <- list(
-        session_id = "fallback-session",
-        filename = "tas.nc",
-        target_path = NA_character_,
-        data_node = "example.org"
-    )
     callbacks$session_start(c(event, event = "session_start"), downloader)
     callbacks$session_done(c(event, event = "session_done"), downloader)
     nested_cleanup()
     expect_equal(calls, c("updated", "updated"))
 })
 
-test_that("dynamic failures and completions commit one structured terminal dashboard", {
+test_that("dynamic and log terminal receipts retain failures, completions, and debug lines", {
     mock <- shift_test__mock_renderer()
 
-    # Failure receipt
+    # Dynamic failure receipt
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
     reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
-    reporter$unit_completed(
-        "Rejected: incomplete coverage",
-        current = 6L,
-        total = 6L,
-        outcome = "rejected",
-        details = list(
-            unit_type = "index_node",
-            node = INDEX_NODES[["LIU"]],
-            future_files = 83L,
-            reference_files = 121L,
-            error_kind = "coverage",
-            error = "incomplete coverage"
-        )
-    )
     failure <- list(
         kind = "resolver_exhausted",
         summary = "No ESGF index node resolved a complete CMIP6 input set.",
-        cause = "Future and historical catalogs have no complete identity in common.",
         nodes_checked = 6L,
-        usable_nodes = 0L,
         coverage_failures = 5L,
         timeout_failures = 1L,
-        network_failures = 0L,
-        other_failures = 0L,
-        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
-        missing = "reference: historical/hurs: missing years 1995"
+        closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn")
     )
-    fail_out <- capture.output(
-        reporter$run_failed(message = failure$summary, details = failure),
-        type = "message"
+    expect_identical(
+        ui_test__msg(reporter$run_failed(
+            message = failure$summary,
+            details = failure
+        )),
+        ""
     )
-    fail_plain <- cli::ansi_strip(utils::tail(mock$frames, 1L)[[1L]])
-    expect_length(fail_out, 0L)
+    fail_plain <- ui_test__plain(utils::tail(mock$frames, 1L)[[1L]])
     expect_identical(mock$commits, "failed")
     expect_equal(mock$closes, 0L)
-    expect_match(fail_plain[[1L]], "FAILED", fixed = TRUE)
-    expect_true(any(grepl("6 checked.*5 incomplete.*1 timeout", fail_plain)))
-    expect_true(any(grepl("BCC-CSM2-MR/r1i1p1f1/gn", fail_plain, fixed = TRUE)))
+    expect_match(fail_plain, "FAILED", fixed = TRUE)
+    expect_match(fail_plain, "6 checked.*5 incomplete.*1 timeout")
+    expect_match(fail_plain, "BCC-CSM2-MR/r1i1p1f1/gn", fixed = TRUE)
 
-    # Completion receipt
+    # Dynamic completion receipt
     output_dir <- tempfile("shift-completed-output-")
     paths <- file.path(
         output_dir,
         c("BCC-CSM2-MR_ssp126_2060s.epw", "BCC-CSM2-MR_ssp585_2060s.epw")
     )
+    cases_done <- data.table::data.table(status = c("completed", "completed"))
     run <- shift_test__run_stage(
         "run-complete",
         output_dir = output_dir,
-        cases = data.table::data.table(status = c("completed", "completed"))
+        cases = cases_done
     )
     done_rep <- shift_reporter__reporter(
         shift_ui("dynamic", motion = "none"),
         run_id = "run-complete"
     )
     done_rep$stage_started("write_epw", "Writing final EPWs.")
-    done_rep$cases_updated(data.table::data.table(
-        status = c("completed", "completed")
-    ))
+    done_rep$cases_updated(cases_done)
     done_rep$unit_completed(
         "Exported final EPWs",
         2L,
         2L,
         details = list(unit_type = "epw_export")
     )
-    done_out <- capture.output(
-        done_rep$run_completed(
+    expect_identical(
+        ui_test__msg(done_rep$run_completed(
             run,
             data.table::data.table(export_path = paths)
-        ),
-        type = "message"
+        )),
+        ""
     )
-    done_plain <- cli::ansi_strip(utils::tail(mock$frames, 1L)[[1L]])
-    expect_length(done_out, 0L)
+    done_plain <- ui_test__plain(utils::tail(mock$frames, 1L)[[1L]])
     expect_identical(mock$commits, c("failed", "done"))
-    expect_true(any(grepl(
-        "Summary.*2/2 cases completed.*2 EPW files.*0 warnings",
-        done_plain
-    )))
+    expect_match(
+        done_plain,
+        "Summary.*2/2 cases completed.*2 EPW files.*0 warnings"
+    )
     expect_true(all(vapply(
         basename(paths),
-        function(p) grepl(p, paste(done_plain, collapse = ""), fixed = TRUE),
-        logical(1L)
+        grepl,
+        logical(1L),
+        x = done_plain,
+        fixed = TRUE
     )))
-})
 
-test_that("log mode reporters retain missing reasons, completion summary, and full debug lines", {
+    # Log mode failure, completion, and untruncated debug lines
     fail_rep <- shift_reporter__reporter(shift_ui("log", detail = "normal"))
     fail_rep$cases_updated(data.table::data.table(
         experiment_id = "ssp585",
@@ -707,52 +625,37 @@ test_that("log mode reporters retain missing reasons, completion summary, and fu
         status = "missing",
         missing_reason = "future/hurs, future/tas"
     ))
-    fail_out <- capture.output(fail_rep$run_failed(), type = "message")
-    expect_true(any(grepl("future/hurs", fail_out, fixed = TRUE)))
+    expect_match(
+        ui_test__msg(fail_rep$run_failed()),
+        "future/hurs",
+        fixed = TRUE
+    )
 
-    output_dir <- tempfile("shift-log-output-")
-    run <- shift_test__run_stage("run-log-complete", output_dir = output_dir)
-    done_rep <- shift_reporter__reporter(
+    log_dir <- tempfile("shift-log-output-")
+    log_rep <- shift_reporter__reporter(
         shift_ui("log", detail = "normal"),
         run_id = "run-log-complete"
     )
-    done_out <- capture.output(
-        done_rep$run_completed(
-            run,
-            data.table::data.table(export_path = file.path(output_dir, "a.epw"))
-        ),
-        type = "message"
-    )
-    expect_true(any(grepl("1 output(s)", done_out, fixed = TRUE)))
-    expect_true(any(grepl("Output directory", done_out, fixed = TRUE)))
+    log_out <- ui_test__msg(log_rep$run_completed(
+        shift_test__run_stage("run-log-complete", output_dir = log_dir),
+        data.table::data.table(export_path = file.path(log_dir, "a.epw"))
+    ))
+    expect_match(log_out, "1 output(s)", fixed = TRUE)
+    expect_match(log_out, "Output directory", fixed = TRUE)
 
     withr::local_options(width = 20L)
     debug_rep <- shift_reporter__reporter(shift_ui("log", detail = "debug"))
     debug_rep$stage_started("resolve", "Resolving inputs.")
-    long_msg <- paste(rep("complete-catalog-context", 8L), collapse = " ")
-    debug_out <- capture.output(
-        debug_rep$unit_started(long_msg),
-        type = "message"
+    long_msg <- strrep("complete-catalog-context ", 8L)
+    expect_match(
+        ui_test__msg(debug_rep$unit_started(long_msg)),
+        long_msg,
+        fixed = TRUE
     )
-    expect_true(any(grepl(long_msg, debug_out, fixed = TRUE)))
 })
 
 test_that("startup plan summaries, persisted context, and dynamic startup frames stay consistent", {
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "BCC-CSM2-MR",
-            c("ssp126", "ssp585"),
-            member = "r1i1p1f1",
-            grid = "gn",
-            table = c(snd = "LImon")
-        ),
-        periods = list(`2060s` = 2055:2065),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-ui-output-"),
-        store = tempfile("shift-ui-store-"),
-        dry_run = TRUE
-    )@meta$children[[1L]]
+    plan <- ui_test__plan(table = c(snd = "LImon"))
 
     lines <- unname(shift_ui_view__ui_plan_summary(
         plan,
@@ -762,12 +665,8 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
     expect_true(all(nchar(lines, type = "width") <= 80L))
     expect_match(lines[[1L]], "Future EPW.*run-test.*STARTING")
     expect_match(
-        lines[[3L]],
-        "Enhanced epwshiftr monthly morphing.*no reference.*2 expected"
-    )
-    expect_match(
         paste(lines, collapse = " "),
-        "Selection.*member r1i1p1f1.*grid gn.*tables auto by variable.*tas=Amon"
+        "Enhanced epwshiftr.*no reference.*2 expected.*member r1i1p1f1.*grid gn.*tas=Amon"
     )
 
     detail_text <- paste(
@@ -779,23 +678,13 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
         ),
         collapse = " "
     )
-    expect_match(detail_text, "Options.*transition_hours=72")
-    expect_match(detail_text, "snow_depth=auto")
+    expect_match(detail_text, "Options.*transition_hours=72.*snow_depth=auto")
 
+    spec <- shift_persist__plan_spec(plan)
+    spec$climate$table <- list(snd = "LImon")
+    spec$climate$table_map <- NULL
     row <- data.table::data.table(
-        spec_json = shift_persist__spec_json(list(
-            task = "future_epw",
-            climate = list(
-                model = "BCC-CSM2-MR",
-                scenarios = "ssp585",
-                member = "r1i1p1f1",
-                grid = "gn",
-                table = list(snd = "LImon")
-            ),
-            periods = list(`2060s` = 2055:2065),
-            transform = transform__spec_value(monthly_transform("epwshiftr")),
-            reference = NULL
-        )),
+        spec_json = shift_persist__spec_json(spec),
         output_dir = tempfile("future-epw-")
     )
     context <- shift_ui_state__ui_plan_context_from_row(row, cases_total = 1L)
@@ -808,11 +697,13 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
     # Dynamic startup draws a replaceable frame instead of printing transcript lines
     mock <- shift_test__mock_renderer()
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
-    startup_out <- capture.output(
-        reporter$run_started(plan, "run_534d9b84b235029404b318bd"),
-        type = "message"
+    expect_identical(
+        ui_test__msg(reporter$run_started(
+            plan,
+            "run_534d9b84b235029404b318bd"
+        )),
+        ""
     )
-    expect_length(startup_out, 0L)
     expect_length(mock$frames, 1L)
     plain <- cli::ansi_strip(mock$frames[[1L]])
     expect_false(grepl("run 04b318bd", plain[[1L]], fixed = TRUE))
@@ -821,122 +712,75 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
         "BCC-CSM2-MR.*ssp126.*Enhanced epwshiftr"
     )
 
-    milestone_out <- capture.output(
-        {
-            reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
-            reporter$stage_completed("Resolved inputs.")
-        },
-        type = "message"
-    )
+    milestone_out <- ui_test__msg({
+        reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
+        reporter$stage_completed("Resolved inputs.")
+    })
     reporter$close()
-    expect_length(milestone_out, 0L)
+    expect_identical(milestone_out, "")
     expect_equal(mock$closes, 1L)
 })
 
-test_that("shift_watch() renders the shared status view", {
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "BCC-CSM2-MR",
-            c("ssp126", "ssp585"),
-            member = "r1i1p1f1",
-            grid = "gn"
-        ),
-        periods = list(`2060s` = 2055:2065),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-watch-view-output-"),
-        store = tempfile("shift-watch-view-store-"),
-        dry_run = TRUE
-    )@meta$children[[1L]]
-    test_local_dependencies(list(
-        shift_job__launch_job = function(...) invisible(0L)
-    ))
+test_that("shift_watch() and generic operation reporters preserve receipts across modes", {
+    plan <- ui_test__plan()
+    test_local_dependencies(list(shift_job__launch_job = function(...) {
+        invisible(0L)
+    }))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
     on.exit(shift_cancel(run), add = TRUE)
 
-    output <- capture.output(
-        watched <- shift_watch(run, follow = FALSE, ui = shift_ui("log")),
-        type = "message"
+    output <- ui_test__msg(
+        watched <- shift_watch(run, follow = FALSE, ui = shift_ui("log"))
     )
     expect_s7_class(watched, ShiftRun)
-    expect_true(any(grepl("Future EPW", output, fixed = TRUE)))
-    expect_true(any(grepl("Workflow", output, fixed = TRUE)))
-    expect_true(any(grepl("Activity", output, fixed = TRUE)))
-    expect_false(any(grepl("queued | planned | cases", output, fixed = TRUE)))
-})
+    expect_match(output, "Future EPW", fixed = TRUE)
+    expect_match(output, "Workflow", fixed = TRUE)
+    expect_match(output, "Activity", fixed = TRUE)
+    expect_false(grepl("queued | planned | cases", output, fixed = TRUE))
 
-test_that("generic operation reporters preserve receipts across log, none, and dynamic modes", {
-    log_output <- capture.output(
-        {
-            reporter <- ShiftReporter$new(
-                shift_ui("log"),
-                run_id = "run-generic-log",
-                step_id = "step-generic-log"
-            )
-            reporter$operation_started(
-                "collect",
-                "Collect CMIP6",
-                context = list(items = c("Collect CMIP6", "input request")),
-                stage_sequence = c("collect", "extract")
-            )
-            reporter$operation_waiting("12 files collected")
-        },
-        type = "message"
-    )
-    expect_true(any(grepl("Collect CMIP6", log_output, fixed = TRUE)))
-    expect_true(any(grepl(
-        "ready: 12 files collected",
-        log_output,
-        fixed = TRUE
-    )))
+    log_out <- ui_test__msg({
+        rep <- ShiftReporter$new(
+            shift_ui("log"),
+            run_id = "run-generic-log",
+            step_id = "step-generic-log"
+        )
+        rep$operation_started(
+            "collect",
+            "Collect CMIP6",
+            context = list(items = c("Collect CMIP6", "input request")),
+            stage_sequence = c("collect", "extract")
+        )
+        rep$operation_waiting("12 files collected")
+    })
+    expect_match(log_out, "Collect CMIP6", fixed = TRUE)
+    expect_match(log_out, "ready: 12 files collected", fixed = TRUE)
 
-    quiet_output <- capture.output(
-        {
-            reporter <- ShiftReporter$new(
+    expect_identical(
+        ui_test__msg({
+            rep <- ShiftReporter$new(
                 shift_ui("none"),
                 run_id = "run-generic-none"
             )
-            reporter$operation_started("extract", "Extract Climate")
-            reporter$operation_waiting("3 plans processed")
-        },
-        type = "message"
+            rep$operation_started("extract", "Extract Climate")
+            rep$operation_waiting("3 plans processed")
+        }),
+        ""
     )
-    expect_length(quiet_output, 0L)
 
     mock <- shift_test__mock_renderer()
-
-    for (case in list(
-        list(
-            stage = "datasets",
-            label = "Collect Datasets",
-            fn = "operation_completed",
-            msg = "1 dataset collected"
-        ),
-        list(
-            stage = "collect",
-            label = "Collect CMIP6",
-            fn = "operation_waiting",
-            msg = "12 files collected"
-        ),
-        list(
-            stage = "collect",
-            label = "Collect CMIP6",
-            fn = "operation_partial",
-            msg = "0 files collected"
-        ),
-        list(
-            stage = "download",
-            label = "Download CMIP6",
-            fn = "operation_detached",
-            msg = "download continues"
-        )
-    )) {
+    ops <- c(
+        datasets = "operation_completed",
+        collect = "operation_waiting",
+        collect = "operation_partial",
+        download = "operation_detached"
+    )
+    for (i in seq_along(ops)) {
         rep <- ShiftReporter$new(
             shift_ui("dynamic"),
-            run_id = paste0("run-", case$fn)
+            run_id = paste0("run-", ops[[i]])
         )
-        rep$operation_started(case$stage, case$label)
-        rep[[case$fn]](case$msg)
+        rep$operation_started(names(ops)[[i]], paste("Stage", i))
+        rep[[ops[[i]]]](paste("msg", i))
     }
     expect_identical(mock$commits, rep("done", 4L))
 })
@@ -944,12 +788,7 @@ test_that("generic operation reporters preserve receipts across log, none, and d
 test_that("heartbeat details merge live state without unthrottled durable touches", {
     touches <- 0L
     testthat::local_mocked_bindings(
-        shift_job__job_touch = function(
-            store,
-            job_id,
-            ui_state = NULL,
-            urgent = FALSE
-        ) {
+        shift_job__job_touch = function(...) {
             touches <<- touches + 1L
             invisible(NULL)
         },

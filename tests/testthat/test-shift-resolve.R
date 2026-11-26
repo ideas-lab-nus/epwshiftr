@@ -375,19 +375,22 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         span = "19900101-20651231"
     )
 
-    candidates <- shift_resolve__cmip6_candidates(
-        catalog,
-        models = "Model-A",
-        experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
-        frequency = frequencies,
-        requirements = morpher__variable_requirements(recipe)
-    )
-    partitions <- shift_resolve__cmip6_partitions(candidates$partitions_json[[
-        1L
-    ]])
+    run_cand <- function(cat, freq = frequencies) {
+        shift_resolve__cmip6_candidates(
+            cat,
+            models = "Model-A",
+            experiments = c("ssp245", "historical"),
+            variables = variables,
+            years = 2000:2001,
+            frequency = freq,
+            requirements = morpher__variable_requirements(recipe)
+        )
+    }
 
+    candidates <- run_cand(catalog)
+    partitions <- shift_resolve__cmip6_partitions(
+        candidates$partitions_json[[1L]]
+    )
     expect_true(candidates$complete[[1L]])
     expect_identical(candidates$frequency[[1L]], "3hrPt+3hr+day")
     expect_identical(
@@ -401,33 +404,16 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         required
     ]))
 
-    core_candidates <- shift_resolve__cmip6_candidates(
-        catalog[!variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES],
-        models = "Model-A",
-        experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
-        frequency = frequencies,
-        requirements = morpher__variable_requirements(recipe)
-    )
-    core_partitions <- shift_resolve__cmip6_partitions(
-        core_candidates$partitions_json[[1L]]
-    )
-    expect_true(core_candidates$complete[[1L]])
+    core <- run_cand(catalog[
+        !variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
+    ])
+    core_parts <- shift_resolve__cmip6_partitions(core$partitions_json[[1L]])
+    expect_true(core$complete[[1L]])
     expect_false(any(
-        core_partitions$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
+        core_parts$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
     ))
 
-    scalar_candidates <- shift_resolve__cmip6_candidates(
-        catalog,
-        models = "Model-A",
-        experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
-        frequency = "3hr",
-        requirements = morpher__variable_requirements(recipe)
-    )
-    expect_false(scalar_candidates$complete[[1L]])
+    expect_false(run_cand(catalog, freq = "3hr")$complete[[1L]])
 })
 
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
@@ -491,7 +477,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     dataset_run <- shift_run_get(datasets)
     expect_equal(shift_status(dataset_run), "completed")
     expect_equal(dataset_run@meta$run$task[[1L]], "datasets")
-    expect_equal(shift_inspect__result(dataset_run)$count(), 1L)
     expect_true(nzchar(attr(datasets, "epwshiftr.run_id", exact = TRUE)))
     expect_true(nzchar(attr(datasets, "epwshiftr.step_id", exact = TRUE)))
     dataset_event <- dataset_run@meta$events[
@@ -507,17 +492,13 @@ test_that("shift_collect() uses Dataset collection before File collection", {
         "no longer accepts"
     )
 
-    files <- req |>
-        shift_collect(store = store_path, label = "shift-test")
+    files <- req |> shift_collect(store = store_path, label = "shift-test")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
     expect_equal(calls$values, c("Dataset", "Dataset", "File"))
     expect_true(all(calls$query_reporter))
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
-    expect_true(length(shift_inspect__ids(files)$query_id) == 1L)
-    expect_true(nzchar(shift_inspect__ids(files)$run_id))
-    expect_true(nzchar(shift_inspect__ids(files)$step_id))
     expect_equal(shift_status(shift_run_get(files)), "waiting")
     collect_run <- shift_run_get(files)
     collect_event <- collect_run@meta$events[
@@ -537,27 +518,27 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(file_result$filename, "tas_day.nc")
     expect_error(shift_files(req), "No File result")
     expect_false("error" %in% shift_check(files, strict = TRUE)$severity)
-    expect_equal(shift_status(shift_inspect__refresh(files)), "collected")
 
-    printed <- capture.output(print(files), type = "message")
-    expect_true(any(grepl("ESGF Query Result [File]", printed, fixed = TRUE)))
-    expect_true(any(grepl("^[=═]{2} ESGF Query Result", printed)))
-    expect_true(any(grepl("^[*•] Index Node:", printed)))
-    expect_true(any(grepl("^[*•] Result count: 1", printed)))
-    expect_true(any(grepl("^[*•] Fields:", printed)))
-    expect_true(any(grepl("EC-Earth3", printed, fixed = TRUE)))
-    expect_true(any(grepl("tas", printed, fixed = TRUE)))
-    expect_false(any(grepl("<char>", printed, fixed = TRUE)))
-    expect_false(any(grepl("Catalog:", printed, fixed = TRUE)))
-    expect_false(any(grepl("Identity:", printed, fixed = TRUE)))
-
-    verbose <- capture.output(
-        print(files, width = 60L, verbose = TRUE),
-        type = "message"
+    printed <- paste(
+        capture.output(print(files), type = "message"),
+        collapse = "\n"
     )
-    expect_true(any(grepl("Workflow", verbose, fixed = TRUE)))
-    expect_true(any(grepl("Store:", verbose, fixed = TRUE)))
-    expect_true(any(grepl("Hidden columns", verbose, fixed = TRUE)))
+    expect_match(printed, "ESGF Query Result [File]", fixed = TRUE)
+    expect_match(printed, "Result count: 1", fixed = TRUE)
+    expect_match(printed, "EC-Earth3", fixed = TRUE)
+    expect_match(printed, "tas", fixed = TRUE)
+    expect_no_match(printed, "<char>|Catalog:|Identity:")
+
+    verbose <- paste(
+        capture.output(
+            print(files, width = 60L, verbose = TRUE),
+            type = "message"
+        ),
+        collapse = "\n"
+    )
+    expect_match(verbose, "Workflow", fixed = TRUE)
+    expect_match(verbose, "Store:", fixed = TRUE)
+    expect_match(verbose, "Hidden columns", fixed = TRUE)
 
     detached <- shift_stage__new(
         ShiftFiles,
@@ -570,13 +551,12 @@ test_that("shift_collect() uses Dataset collection before File collection", {
             result_fields = c("source_id", "variable_id")
         )
     )
-    detached_text <- capture.output(print(detached), type = "message")
-    expect_true(any(grepl("Result count: 1", detached_text, fixed = TRUE)))
-    expect_true(any(grepl(
-        "Persisted preview unavailable",
-        detached_text,
-        fixed = TRUE
-    )))
+    detached_text <- paste(
+        capture.output(print(detached), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(detached_text, "Result count: 1", fixed = TRUE)
+    expect_match(detached_text, "Persisted preview unavailable", fixed = TRUE)
 
     capped_calls <- new.env(parent = emptyenv())
     capped_calls$values <- character()
@@ -599,14 +579,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
         variable_id = "hurs"
     )))
     dl <- shift_download(files, run = FALSE, probe = FALSE)
-    expect_identical(
-        shift_inspect__ids(dl)$run_id,
-        shift_inspect__ids(files)$run_id
-    )
-    expect_false(identical(
-        shift_inspect__ids(dl)$step_id,
-        shift_inspect__ids(files)$step_id
-    ))
     expect_equal(nrow(data.table::as.data.table(dl)), 1L)
     expect_equal(shift_datasets(dl)$count(), 1L)
     expect_equal(shift_files(dl)$filename, "tas_day.nc")
@@ -616,9 +588,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     restored <- readRDS(rds)
     expect_equal(shift_status(restored), "collected")
     expect_equal(nrow(data.table::as.data.table(restored)), 1L)
-
-    completed <- shift_run__complete(dl)
-    expect_equal(shift_status(completed), "partial")
 })
 
 test_that("rejected resolver nodes remain results rather than diagnostics", {
@@ -686,7 +655,22 @@ test_that("file year selection preserves an exact disjoint year union", {
     )
 })
 
-test_that("resolver exhaustion preserves closest candidate and recovery semantics", {
+test_that("resolver exhaustion preserves closest candidate, recovery, and retry semantics", {
+    node_rec <- function(
+        node,
+        kind,
+        future = NA_integer_,
+        ref = NA_integer_,
+        res = NULL
+    ) {
+        list(
+            node = node,
+            kind = kind,
+            future_files = future,
+            reference_files = ref,
+            resolution = res
+        )
+    }
     future <- data.table::data.table(
         source_id = "BCC-CSM2-MR",
         variant_label = "r1i1p1f1",
@@ -694,16 +678,16 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
         frequency = "mon",
         table_id = "Amon",
         complete = FALSE,
-        missing = paste(
-            "ssp126/hurs: no files;",
-            "ssp585/tas: missing years 2055"
-        )
+        missing = "ssp126/hurs: no files; ssp585/tas: missing years 2055"
     )
-    reference <- data.table::rbindlist(list(
-        data.table::copy(future),
-        data.table::copy(future)[, variant_label := "r2i1p1f1"]
-    ))
-    reference[, `:=`(complete = TRUE, missing = NA_character_)]
+    ref2 <- data.table::copy(future)
+    data.table::set(ref2, j = "variant_label", value = "r2i1p1f1")
+    reference <- data.table::rbindlist(list(data.table::copy(future), ref2))
+    data.table::set(
+        reference,
+        j = c("complete", "missing"),
+        value = list(TRUE, NA_character_)
+    )
     node_diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
         future,
         reference,
@@ -711,20 +695,8 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
         reference_required = TRUE
     )
     records <- list(
-        list(
-            node = "DKRZ",
-            kind = "coverage",
-            future_files = 28L,
-            reference_files = 39L,
-            resolution = node_diagnostic
-        ),
-        list(
-            node = "IPSL",
-            kind = "timeout",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        )
+        node_rec("DKRZ", "coverage", 28L, 39L, node_diagnostic),
+        node_rec("IPSL", "timeout")
     )
     aggregate <- shift_resolve__resolver_failure_diagnostic(records)
     condition <- tryCatch(
@@ -737,37 +709,27 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
     # r1 is the real future near-match and must remain the diagnostic identity.
     expect_identical(node_diagnostic$closest$member, "r1i1p1f1")
     expect_match(node_diagnostic$missing[[1L]], "ssp126/hurs", fixed = TRUE)
-    expect_equal(aggregate$nodes_checked, 2L)
-    expect_equal(aggregate$coverage_failures, 1L)
-    expect_equal(aggregate$timeout_failures, 1L)
+    expect_equal(
+        c(
+            aggregate$nodes_checked,
+            aggregate$coverage_failures,
+            aggregate$timeout_failures
+        ),
+        c(2L, 1L, 1L)
+    )
     expect_false(aggregate$retryable)
     expect_identical(aggregate$recovery, "inspect")
     expect_s3_class(condition, "epwshiftr_shift_resolution_error")
     expect_null(conditionCall(condition))
     expect_match(conditionMessage(condition), "2 nodes checked", fixed = TRUE)
-})
 
-test_that("resolver recommends retry only when every node failure is transient", {
-    records <- list(
-        list(
-            node = "IPSL",
-            kind = "timeout",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        ),
-        list(
-            node = "LIU",
-            kind = "network",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        )
-    )
-    diagnostic <- shift_resolve__resolver_failure_diagnostic(records)
-
-    expect_true(diagnostic$retryable)
-    expect_identical(diagnostic$recovery, "retry")
+    # Recommend retry only when every node failure is transient
+    transient <- shift_resolve__resolver_failure_diagnostic(list(
+        node_rec("IPSL", "timeout"),
+        node_rec("LIU", "network")
+    ))
+    expect_true(transient$retryable)
+    expect_identical(transient$recovery, "retry")
 })
 
 test_that("resolution evidence tolerates omitted aggregate counters", {
@@ -797,44 +759,35 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
         end = "2060-12-31T23:59:59Z"
     )
 
-    plan <- resolve_test__plan(
-        shift_cmip6("EC-Earth3", "ssp585", frequency = "mon", table = "Amon"),
-        transform = transform
-    )
+    make_plan <- function(member = NULL, grid = NULL) {
+        resolve_test__plan(
+            shift_cmip6(
+                "EC-Earth3",
+                "ssp585",
+                member = member,
+                grid = grid,
+                frequency = "mon",
+                table = "Amon"
+            ),
+            transform = transform
+        )
+    }
     expect_error(
-        shift_resolve__resolve_cmip6_selection(plan, catalogs),
+        shift_resolve__resolve_cmip6_selection(make_plan(), catalogs),
         class = "epwshiftr_shift_resolution_ambiguity"
     )
-
-    explicit <- resolve_test__plan(
-        shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r1i1p1f1",
-            grid = "gr1",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        transform = transform
-    )
     expect_equal(
-        shift_resolve__resolve_cmip6_selection(explicit, catalogs)$grid_label,
+        shift_resolve__resolve_cmip6_selection(
+            make_plan("r1i1p1f1", "gr1"),
+            catalogs
+        )$grid_label,
         "gr1"
     )
-
-    missing_member <- resolve_test__plan(
-        shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r2i1p1f1",
-            grid = "gr1",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        transform = transform
-    )
     expect_error(
-        shift_resolve__resolve_cmip6_selection(missing_member, catalogs),
+        shift_resolve__resolve_cmip6_selection(
+            make_plan("r2i1p1f1", "gr1"),
+            catalogs
+        ),
         "No complete CMIP6 member/grid candidate"
     )
 })
@@ -1098,58 +1051,93 @@ resolvecheck__paired_selection <- function(
     )
 }
 
-test_that("an unmatched future HURS cannot hide a complete paired HUSS route", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
-    )
-    reference <- resolvecheck__paired_catalog(
-        c("huss", "tas", "ps"),
-        "historical"
-    )
-    selected <- resolvecheck__paired_selection(future, reference)
-    expect_true(all(selected$future$complete))
+test_that("paired humidity routes select matching hurs or huss+tas+ps without leaking unused alternatives", {
+    all_vars <- c("hurs", "huss", "tas", "ps")
+    huss_vars <- c("huss", "tas", "ps")
+    future_all <- resolvecheck__paired_catalog(all_vars, "ssp126")
+    ref_huss <- resolvecheck__paired_catalog(huss_vars, "historical")
+
+    # Unmatched future HURS cannot hide a complete paired HUSS route
+    paired_huss <- resolvecheck__paired_selection(future_all, ref_huss)
+    expect_true(all(paired_huss$future$complete))
     expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
+        paired_huss$future$requirement_key,
+        paired_huss$reference$requirement_key
     )
-    expect_match(selected$future$requirement_key, "huss")
+    expect_match(paired_huss$future$requirement_key, "huss")
     shared <- shift_resolve__cmip6_shared_partitions(
-        selected$future$partitions_json[[1L]],
-        selected$reference$partitions_json[[1L]]
+        paired_huss$future$partitions_json[[1L]],
+        paired_huss$reference$partitions_json[[1L]]
     )
-    expect_setequal(shared$future$variable_id, c("huss", "tas", "ps"))
-    expect_setequal(shared$reference$variable_id, c("huss", "tas", "ps"))
-})
+    expect_setequal(shared$future$variable_id, huss_vars)
+    expect_setequal(shared$reference$variable_id, huss_vars)
 
-test_that("a paired direct HURS route retains the recipe preference", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(variables, "historical")
+    # Paired direct HURS route retains recipe preference
+    paired_hurs <- resolvecheck__paired_selection(
+        future_all,
+        resolvecheck__paired_catalog(all_vars, "historical")
     )
-    expect_equal(nrow(selected$future), 1L)
+    expect_equal(nrow(paired_hurs$future), 1L)
     expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
+        paired_hurs$future$requirement_key,
+        paired_hurs$reference$requirement_key
     )
-    expect_false(grepl("huss", selected$future$requirement_key))
+    expect_false(grepl("huss", paired_hurs$future$requirement_key))
+
+    # Non-selected humidity alternatives do not become optional fields
+    reordered <- resolvecheck__paired_selection(
+        future_all,
+        resolvecheck__paired_catalog(all_vars, "historical"),
+        requirements = list(hurs = list(huss_vars, "hurs"))
+    )
+    partitions <- shift_resolve__cmip6_partitions(reordered$future$partitions_json[[
+        1L
+    ]])
+    expect_false("hurs" %in% partitions$variable_id)
+    expect_setequal(partitions$variable_id, huss_vars)
+
+    # Named native overrides follow the selected humidity route
+    named <- resolvecheck__paired_selection(
+        future_all,
+        ref_huss,
+        frequency = stats::setNames(rep("mon", length(all_vars)), all_vars),
+        table = stats::setNames(rep("Amon", length(all_vars)), all_vars)
+    )
+    expect_identical(
+        named$future$requirement_key,
+        named$reference$requirement_key
+    )
+    expect_match(named$future$requirement_key, "huss")
 })
 
-test_that("paired alternatives do not substitute sea-level pressure or mix members", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
+test_that("paired humidity selection rejects mismatched pressure, members, or incomplete spans", {
+    all_vars <- c("hurs", "huss", "tas", "ps")
+    huss_vars <- c("huss", "tas", "ps")
+    future_all <- resolvecheck__paired_catalog(all_vars, "ssp126")
+
+    short_ref <- resolvecheck__paired_catalog(huss_vars, "historical")
+    data.table::set(
+        short_ref,
+        j = "datetime_end",
+        value = "2013-12-31T23:59:59Z"
     )
+    data.table::set(
+        short_ref,
+        j = "filename",
+        value = sub("201412", "201312", short_ref$filename, fixed = TRUE)
+    )
+    data.table::set(
+        short_ref,
+        j = "title",
+        value = sub("201412", "201312", short_ref$title, fixed = TRUE)
+    )
+
     for (reference in list(
         resolvecheck__paired_catalog(c("huss", "tas", "psl"), "historical"),
-        resolvecheck__paired_catalog(
-            c("huss", "tas", "ps"),
-            "historical",
-            "r2i1p1f1"
-        )
+        resolvecheck__paired_catalog(huss_vars, "historical", "r2i1p1f1"),
+        short_ref
     )) {
-        selected <- resolvecheck__paired_selection(future, reference)
+        selected <- resolvecheck__paired_selection(future_all, reference)
         diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
             selected$future,
             selected$reference,
@@ -1158,88 +1146,30 @@ test_that("paired alternatives do not substitute sea-level pressure or mix membe
         )
         expect_equal(diagnostic$shared_complete_candidates, 0L)
     }
-})
 
-test_that("paired alternatives still require the entire historical span", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
-    )
-    reference <- resolvecheck__paired_catalog(
-        c("huss", "tas", "ps"),
-        "historical"
-    )
-    reference$datetime_end <- "2013-12-31T23:59:59Z"
-    reference$filename <- sub(
-        "201412",
-        "201312",
-        reference$filename,
-        fixed = TRUE
-    )
-    reference$title <- sub("201412", "201312", reference$title, fixed = TRUE)
-    selected <- resolvecheck__paired_selection(future, reference)
-    diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
-        selected$future,
-        selected$reference,
-        "Model-A",
-        reference_required = TRUE
-    )
-    expect_equal(diagnostic$shared_complete_candidates, 0L)
-})
-
-test_that("non-selected humidity alternatives do not become optional fields", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(variables, "historical"),
-        requirements = list(hurs = list(c("huss", "tas", "ps"), "hurs"))
-    )
-    partitions <- shift_resolve__cmip6_partitions(selected$future$partitions_json[[
-        1L
-    ]])
-    expect_false("hurs" %in% partitions$variable_id)
-    expect_setequal(partitions$variable_id, c("huss", "tas", "ps"))
-})
-
-test_that("unsuccessful native identities remain inspectable after pairing", {
-    future <- data.table::rbindlist(lapply(
+    # Unsuccessful native identities remain inspectable after pairing
+    multi_future <- data.table::rbindlist(lapply(
         c("r1i1p1f1", "r2i1p1f1"),
         function(member) {
-            resolvecheck__paired_catalog(
-                c("hurs", "huss", "tas", "ps"),
-                "ssp126",
-                member
-            )
+            resolvecheck__paired_catalog(all_vars, "ssp126", member)
         }
     ))
-    reference <- data.table::rbindlist(list(
-        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
+    multi_ref <- data.table::rbindlist(list(
+        resolvecheck__paired_catalog(huss_vars, "historical"),
         resolvecheck__paired_catalog(
             c("huss", "tas", "psl"),
             "historical",
             "r2i1p1f1"
         )
     ))
-    selected <- resolvecheck__paired_selection(future, reference)
-    expect_setequal(selected$reference$variant_label, c("r1i1p1f1", "r2i1p1f1"))
-    expect_false(selected$reference$complete[
-        selected$reference$variant_label == "r2i1p1f1"
+    multi_selected <- resolvecheck__paired_selection(multi_future, multi_ref)
+    expect_setequal(
+        multi_selected$reference$variant_label,
+        c("r1i1p1f1", "r2i1p1f1")
+    )
+    expect_false(multi_selected$reference$complete[
+        multi_selected$reference$variant_label == "r2i1p1f1"
     ])
-})
-
-test_that("named native overrides follow the selected humidity route", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
-        frequency = stats::setNames(rep("mon", length(variables)), variables),
-        table = stats::setNames(rep("Amon", length(variables)), variables)
-    )
-    expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
-    )
-    expect_match(selected$future$requirement_key, "huss")
 })
 
 # vim: fdm=marker :

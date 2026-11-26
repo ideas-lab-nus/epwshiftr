@@ -1,3 +1,9 @@
+# Keep discovery deterministic across multi-site planning tests.
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
+))
+
 # Serialize test inputs through the same JSON boundary as user configs.
 # multi_site__write_config {{{
 multi_site__write_config <- function(config) {
@@ -47,13 +53,44 @@ multi_site__plan <- function(
 }
 # }}}
 
+# multi_site__cmip6_docs {{{
+multi_site__cmip6_docs <- function(variables, files) {
+    docs <- data.table::rbindlist(
+        lapply(variables, function(variable) {
+            esgf_test__file_docs(
+                basename(files[[variable]]),
+                opendap_url = files[[variable]],
+                download_url = files[[variable]],
+                variable_id = variable,
+                frequency = "mon",
+                table_id = "Amon"
+            )
+        }),
+        fill = TRUE
+    )
+    vars <- docs$variable_id
+    updates <- list(
+        dataset_id = paste0("future-", vars),
+        master_id = paste0("future-", vars),
+        instance_id = paste0("future-", vars, ".v20260101"),
+        tracking_id = paste0("hdl:21.14100/future-", vars),
+        id = paste0(docs$title, "|future-", vars),
+        checksum = vapply(
+            vars,
+            function(v) store_hash_file(files[[v]], "sha256"),
+            character(1L)
+        )
+    )
+    for (col in names(updates)) {
+        data.table::set(docs, j = col, value = updates[[col]])
+    }
+    docs
+}
+# }}}
+
 # Keep a failed shared source read visible in the saved batch even when no
 # child run was started, so the user can inspect and resume that batch.
 test_that("shared prefetch failure persists as a blocked batch", {
-    test_local_dependencies(list(
-        availability = test_cmip6_availability,
-        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
-    ))
     root <- tempfile("blocked-shared-batch-")
     batch <- multi_site__plan(
         list(shift_site("South", epw = get_cache_epw())),
@@ -76,8 +113,7 @@ test_that("shared prefetch failure persists as a blocked batch", {
     restored <- shift_batch_get(batch@ids$batch_id, root)
     expect_identical(shift_status(restored), "blocked")
     expect_true(
-        "batch_shared_read_failed" %in%
-            shift_diagnostics(restored)$code
+        "batch_shared_read_failed" %in% shift_diagnostics(restored)$code
     )
     expect_length(restored@meta$shared_failure_history, 1L)
 })
@@ -145,10 +181,6 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
 })
 
 test_that("site objects preserve coordinates, metadata and EPW identities", {
-    test_local_dependencies(list(
-        availability = test_cmip6_availability,
-        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
-    ))
     epw <- get_cache_epw()
     sites <- list(
         shift_site(
@@ -185,19 +217,36 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
     expect_false(identical(multi_site__plan(sites)@ids$batch_id, original))
 })
 
-test_that("site constructors and collections reject invalid inputs before discovery", {
+test_that("site validation, coordinate defaults, and single-vs-multi batch contract stay consistent", {
+    epw <- get_cache_epw()
+    derived <- shift_site("A", epw = epw)
+    explicit <- shift_site("A", derived@lon, derived@lat, epw = epw)
+    expect_identical(explicit, derived)
+    sites_dt <- shift_batch__sites(list(
+        explicit,
+        shift_site("B", 110, 30, epw = epw)
+    ))
+    expect_s3_class(sites_dt, "data.table")
+    expect_identical(sites_dt$site[[2L]]@label, derived@label)
+    expect_equal(sites_dt$site[[2L]]@lon, 110)
+
+    root <- tempfile()
+    single <- multi_site__plan(derived, root)
+    wrapped <- multi_site__plan(list(derived), root)
+    expect_s7_class(single, ShiftBatch)
+    expect_identical(single@ids$batch_id, wrapped@ids$batch_id)
+    expect_identical(single@meta$manifest$site_id, c("A", "A"))
+
     test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
-    epw <- get_cache_epw()
-    site <- shift_site("A", epw = epw)
     expect_error(multi_site__plan(epw), "shift_site")
     expect_error(
         multi_site__plan(data.table::data.table(id = "A", epw = epw)),
         "shift_site"
     )
     expect_error(multi_site__plan(list()), "non-empty")
-    expect_error(multi_site__plan(list(site, site)), "duplicated")
+    expect_error(multi_site__plan(list(derived, derived)), "duplicated")
     expect_error(multi_site__plan(shift_site(" ", epw = epw)), "whitespace")
     expect_error(shift_site(NA_character_, epw = epw), "NA|missing")
     expect_error(
@@ -212,39 +261,7 @@ test_that("site constructors and collections reject invalid inputs before discov
     )
 })
 
-test_that("site defaults are independent of explicitly supplied coordinates", {
-    epw <- get_cache_epw()
-    derived <- shift_site("A", epw = epw)
-    explicit <- shift_site("A", derived@lon, derived@lat, epw = epw)
-    expect_identical(explicit, derived)
-    sites <- shift_batch__sites(list(
-        explicit,
-        shift_site("B", 110, 30, epw = epw)
-    ))
-    expect_s3_class(sites, "data.table")
-    expect_identical(sites$site[[2L]]@label, derived@label)
-    expect_equal(sites$site[[2L]]@lon, 110)
-})
-
-test_that("single and multiple site calls use one batch contract", {
-    test_local_dependencies(list(
-        availability = test_cmip6_availability,
-        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
-    ))
-    site <- shift_site("A", epw = get_cache_epw())
-    root <- tempfile()
-    single <- multi_site__plan(site, root)
-    wrapped <- multi_site__plan(list(site), root)
-    expect_s7_class(single, ShiftBatch)
-    expect_identical(single@ids$batch_id, wrapped@ids$batch_id)
-    expect_identical(single@meta$manifest$site_id, c("A", "A"))
-})
-
 test_that("version 3 location arrays plan and restore through the CLI", {
-    test_local_dependencies(list(
-        availability = test_cmip6_availability,
-        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
-    ))
     config <- epwshiftr_cli_shift_example_config()
     config$version <- 3L
     config$sites <- list(
@@ -277,24 +294,16 @@ test_that("version 3 location arrays plan and restore through the CLI", {
         "epw"
     )
     config$epw <- NULL
-    config$version <- 2L
-    expect_error(
-        epwshiftr_cli_read_shift_config(multi_site__write_config(config)),
-        "version 3"
-    )
-    config$version <- 1L
-    expect_error(
-        epwshiftr_cli_read_shift_config(multi_site__write_config(config)),
-        "version 3"
-    )
+    for (ver in c(2L, 1L)) {
+        config$version <- ver
+        expect_error(
+            epwshiftr_cli_read_shift_config(multi_site__write_config(config)),
+            "version 3"
+        )
+    }
 })
 
-
 test_that("multi-site references are resolved for each location", {
-    test_local_dependencies(list(
-        availability = test_cmip6_availability,
-        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
-    ))
     sites <- list(
         shift_site("A", epw = get_cache_epw()),
         shift_site("B", epw = multi_site__epw())
@@ -386,50 +395,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         variables
     )
     withr::defer(unlink(files))
-    docs <- data.table::rbindlist(
-        lapply(variables, function(variable) {
-            esgf_test__file_docs(
-                basename(files[[variable]]),
-                opendap_url = files[[variable]],
-                download_url = files[[variable]],
-                variable_id = variable,
-                frequency = "mon",
-                table_id = "Amon"
-            )
-        }),
-        fill = TRUE
-    )
-    for (column in c("dataset_id", "master_id")) {
-        data.table::set(
-            docs,
-            j = column,
-            value = paste0("future-", docs$variable_id)
-        )
-    }
-    data.table::set(
-        docs,
-        j = "instance_id",
-        value = paste0("future-", docs$variable_id, ".v20260101")
-    )
-    data.table::set(
-        docs,
-        j = "tracking_id",
-        value = paste0("hdl:21.14100/future-", docs$variable_id)
-    )
-    data.table::set(
-        docs,
-        j = "id",
-        value = paste0(docs$title, "|future-", docs$variable_id)
-    )
-    data.table::set(
-        docs,
-        j = "checksum",
-        value = vapply(
-            docs$variable_id,
-            function(variable) store_hash_file(files[[variable]], "sha256"),
-            character(1L)
-        )
-    )
+    docs <- multi_site__cmip6_docs(variables, files)
     calls <- shift_test__mock_collect(docs)
     sites <- list(
         shift_site("A", lon = 103.98, lat = 1.37, epw = get_cache_epw()),
@@ -453,10 +419,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         control = shift_control(strict = FALSE),
         ui = shift_ui(progress = "none")
     )
-    discovery_store <- EsgStore$new(file.path(
-        plan@store_path,
-        "discovery"
-    ))
+    discovery_store <- EsgStore$new(file.path(plan@store_path, "discovery"))
     discovery_store$add_files(esgf_test__file_result(docs))
     discovery_store$close()
     plan@meta$shared_plan <- shift_batch_plan__plan_from_discovery(
@@ -549,22 +512,8 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     expect_identical(tools::md5sum(shift_outputs(resumed)$export_path), hashes)
     expect_identical(length(calls$types), collected)
     expect_setequal(shift_summary(resumed)$site_id, c("A", "B"))
-    restored <- shift_epw_future(
-        sites,
-        plan@meta$climate,
-        2060,
-        transform = transform,
-        dir = plan@meta$output_dir,
-        store = dirname(dirname(plan@store_path)),
-        control = shift_control(strict = FALSE),
-        ui = shift_ui("none")
-    )
-    expect_identical(restored@meta$execution$action, c("reused", "reused"))
-    for (control in list(
-        shift_control(strict = TRUE),
-        shift_control(strict = FALSE, extraction_method = "idw")
-    )) {
-        changed <- shift_epw_future(
+    run_future <- function(control, dry_run = TRUE) {
+        shift_epw_future(
             sites,
             plan@meta$climate,
             2060,
@@ -572,20 +521,28 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
             dir = plan@meta$output_dir,
             store = dirname(dirname(plan@store_path)),
             control = control,
-            dry_run = TRUE,
+            dry_run = dry_run,
             ui = shift_ui("none")
         )
+    }
+    restored <- run_future(shift_control(strict = FALSE), dry_run = FALSE)
+    expect_identical(restored@meta$execution$action, c("reused", "reused"))
+    for (control in list(
+        shift_control(strict = TRUE),
+        shift_control(strict = FALSE, extraction_method = "idw")
+    )) {
+        changed <- run_future(control)
         expect_false(identical(changed@ids$batch_id, plan@ids$batch_id))
         expect_true(all(vapply(
             changed@meta$children,
-            function(x) S7::S7_inherits(x, ShiftPlan),
-            logical(1L)
+            S7::S7_inherits,
+            logical(1L),
+            ShiftPlan
         )))
         expect_identical(changed@meta$children[[1L]]@meta$control, control)
     }
     expect_identical(tools::md5sum(output$export_path), hashes)
 })
-
 
 test_that("R and CLI reject invalid method periods before discovery", {
     test_local_dependencies(list(availability = function(...) {
@@ -597,18 +554,18 @@ test_that("R and CLI reject invalid method periods before discovery", {
     config$calibration <- list(dataset = "era5", years = "1995:2014")
     path <- multi_site__write_config(config)
     root <- tempfile()
-    for (command in list(c("config", "validate"), c("run", "--dry-run"))) {
-        result <- epwshiftr_cli(c(
+    for (cmd in list(c("config", "validate"), c("run", "--dry-run"))) {
+        res <- epwshiftr_cli(c(
             "--quiet",
             "--store",
             root,
             "shift",
-            command,
+            cmd,
             "--config",
             path
         ))
-        expect_equal(result$status, 1L)
-        expect_match(result$error, "at least two weather years")
+        expect_equal(res$status, 1L)
+        expect_match(res$error, "at least two weather years")
     }
     expect_error(
         shift_epw_future(

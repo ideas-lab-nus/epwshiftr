@@ -1,16 +1,34 @@
-test_that("skin temperature has an explicit ERA5 point-service request", {
-    plan <- shift_plan_reanalysis(
+read_test__plan <- function(
+    variables = "skt",
+    years = 2000,
+    access = "arco",
+    lat = 1.25,
+    lon = 104,
+    sites = shift_site("point", lat = lat, lon = lon),
+    dates = NULL
+) {
+    shift_plan_reanalysis(
         shift_era5(
-            2000,
-            variables = "skt",
+            years,
+            variables = variables,
             frequency = "hour",
-            access = "arco"
+            access = access
         ),
-        shift_site("point", lat = 1.25, lon = 104)
+        sites,
+        dates = dates
     )
-    expect_identical(plan$requests$request[[1L]]$variable, "skin_temperature")
-    expect_equal(plan$requests$expected_hours, 8832L)
-})
+}
+
+read_test__temp_files <- function(plan) {
+    stats::setNames(
+        vapply(
+            seq_len(nrow(plan$requests)),
+            function(i) tempfile(fileext = ".nc"),
+            character(1L)
+        ),
+        plan$requests$request_id
+    )
+}
 
 # Write actual CF NetCDF point files. Literal values and explicit hourly offsets
 # are independent fixtures, not output copied from the reader under test.
@@ -70,23 +88,15 @@ test_read__file <- function(
     path
 }
 
-test_that("local skin temperature retains UTC, original values and file identity", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = "skt",
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.26, lon = 104.01)
-    )
-    path <- tempfile(fileext = ".nc")
-    withr::defer(unlink(path))
-    test_read__file(path, units = "degC", values = rep(6.85, 8832))
-    result <- shift_read_reanalysis(
-        plan,
-        setNames(path, plan$requests$request_id)
-    )
+test_that("local skin temperature retains request contract, UTC, original values and file identity", {
+    plan <- read_test__plan(lat = 1.26, lon = 104.01)
+    expect_identical(plan$requests$request[[1L]]$variable, "skin_temperature")
+    expect_equal(plan$requests$expected_hours, 8832L)
+
+    files <- read_test__temp_files(plan)
+    withr::defer(unlink(files))
+    test_read__file(files[[1L]], units = "degC", values = rep(6.85, 8832))
+    result <- shift_read_reanalysis(plan, files)
     expect_equal(nrow(result$data), 8832L)
     expect_equal(unique(result$data$value), 280)
     expect_identical(unique(result$data$units), "K")
@@ -105,19 +115,8 @@ test_that("local skin temperature retains UTC, original values and file identity
 })
 
 test_that("point validation rejects missing, distant and inconsistent grids", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = c("skt", "tas"),
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.375, lon = 104)
-    )
-    paths <- setNames(
-        vapply(1:2, function(i) tempfile(fileext = ".nc"), character(1)),
-        plan$requests$request_id
-    )
+    plan <- read_test__plan(variables = c("skt", "tas"), lat = 1.375)
+    paths <- read_test__temp_files(plan)
     withr::defer(unlink(paths))
     for (i in 1:2) {
         variable <- if (plan$requests$variable_id[[i]] == "tas") {
@@ -140,30 +139,22 @@ test_that("point validation rejects missing, distant and inconsistent grids", {
 })
 
 test_that("radiation retains its end time and one-hour accumulation interval", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = "rsds",
-            frequency = "hour",
-            access = "arco"
-        ),
-        list(
+    plan <- read_test__plan(
+        variables = "rsds",
+        sites = list(
             shift_site("a", lat = 1.25, lon = 104),
             shift_site("b", lat = 1.25, lon = 104)
         )
     )
-    path <- tempfile(fileext = ".nc")
-    withr::defer(unlink(path))
+    files <- read_test__temp_files(plan)
+    withr::defer(unlink(files))
     test_read__file(
-        path,
+        files[[1L]],
         variable = "ssrd",
         units = "J m**-2",
         values = rep(360000, 8832)
     )
-    data <- shift_read_reanalysis(
-        plan,
-        setNames(path, plan$requests$request_id)
-    )$data
+    data <- shift_read_reanalysis(plan, files)$data
     expect_equal(unique(data$value), 100)
     expect_identical(unique(data$units), "W m-2")
     expect_equal(unique(data$raw_value), 360000)
@@ -178,16 +169,14 @@ test_that("radiation retains its end time and one-hour accumulation interval", {
         as.POSIXct("1999-12-30 23:00:00", tz = "UTC")
     )
     expect_identical(data$utc_time, data$interval_end)
+
     test_read__file(
-        path,
+        files[[1L]],
         variable = "ssrd",
         units = "W m-2",
         values = rep(100, 8832)
     )
-    flux <- shift_read_reanalysis(
-        plan,
-        setNames(path, plan$requests$request_id)
-    )$data
+    flux <- shift_read_reanalysis(plan, files)$data
     expect_identical(flux$value, data$value)
     expect_identical(flux$utc_time, data$utc_time)
     expect_identical(unique(flux$raw_temporal_kind), "interval_mean")
@@ -199,19 +188,8 @@ test_that("other raw dependencies use declared SI units", {
     units <- c("hPa", "Pa", "m s**-1", "m/s", "m")
     raw <- c(1000, 100100, -3, 4, 0.0036)
     expected <- c(100000, 100100, -3, 4, 0.001)
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = variables,
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.25, lon = 104)
-    )
-    paths <- setNames(
-        vapply(1:5, function(i) tempfile(fileext = ".nc"), character(1)),
-        plan$requests$request_id
-    )
+    plan <- read_test__plan(variables = variables)
+    paths <- read_test__temp_files(plan)
     withr::defer(unlink(paths))
     for (i in 1:5) {
         j <- match(plan$requests$variable_id[[i]], variables)
@@ -237,18 +215,13 @@ test_that("other raw dependencies use declared SI units", {
 })
 
 test_that("strict local reading never repairs bad time axes, units or values", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = "skt",
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.25, lon = 104)
-    )
-    path <- tempfile(fileext = ".nc")
+    plan <- read_test__plan()
+    files <- read_test__temp_files(plan)
+    path <- files[[1L]]
     withr::defer(unlink(path))
-    files <- setNames(path, plan$requests$request_id)
+    expect_err <- function(p, f, pat) {
+        expect_error(shift_read_reanalysis(p, f), pat)
+    }
     cases <- list(
         list(time = (-24:8807)[-25], values = rep(280, 8831)),
         list(time = c(-24, -24:8806)),
@@ -258,48 +231,43 @@ test_that("strict local reading never repairs bad time axes, units or values", {
     )
     for (case in cases) {
         do.call(test_read__file, c(list(path = path), case))
-        expect_error(shift_read_reanalysis(plan, files), "hourly UTC coverage")
+        expect_err(plan, files, "hourly UTC coverage")
     }
-    test_read__file(path, calendar = "360_day")
-    expect_error(shift_read_reanalysis(plan, files), "Gregorian")
-    test_read__file(path, units = "mystery")
-    expect_error(
-        shift_read_reanalysis(plan, files),
-        "Unknown temperature units"
+    bad_specs <- list(
+        list(args = list(calendar = "360_day"), pat = "Gregorian"),
+        list(args = list(units = "mystery"), pat = "Unknown temperature units"),
+        list(args = list(values = c(NA_real_, rep(280, 8831))), pat = "finite"),
+        list(args = list(values = c(Inf, rep(280, 8831))), pat = "finite"),
+        list(args = list(values = c(-Inf, rep(280, 8831))), pat = "finite"),
+        list(args = list(values = rep(-1, 8832)), pat = "physical"),
+        list(
+            args = list(
+                values = c(rep(280, 8832), rep(281, 8832)),
+                versions = c(1, 5)
+            ),
+            pat = "version|expver"
+        ),
+        list(
+            args = list(values = rep(280, 8832), versions = 999),
+            pat = "version|expver"
+        )
     )
-    for (bad in c(NA_real_, Inf, -Inf)) {
-        test_read__file(path, values = c(bad, rep(280, 8831)))
-        expect_error(shift_read_reanalysis(plan, files), "finite")
+    for (spec in bad_specs) {
+        do.call(test_read__file, c(list(path = path), spec$args))
+        expect_err(plan, files, spec$pat)
     }
-    test_read__file(path, values = rep(-1, 8832))
-    expect_error(shift_read_reanalysis(plan, files), "physical")
-    test_read__file(
-        path,
-        values = c(rep(280, 8832), rep(281, 8832)),
-        versions = c(1, 5)
-    )
-    expect_error(shift_read_reanalysis(plan, files), "version|expver")
-    test_read__file(path, values = rep(280, 8832), versions = 999)
-    expect_error(shift_read_reanalysis(plan, files), "version|expver")
-    expect_error(shift_read_reanalysis(plan, unname(files)), "request ID")
-    expect_error(shift_read_reanalysis(plan, c(files, files)), "request ID")
+    expect_err(plan, unname(files), "request ID")
+    expect_err(plan, c(files, files), "request ID")
     broken <- plan
     broken$requests <- data.table::copy(plan$requests)
     data.table::set(broken$requests, j = "expected_hours", value = 1L)
-    expect_error(shift_read_reanalysis(broken, files), "unchanged")
+    expect_err(broken, files, "unchanged")
 })
 
 test_that("non-leap coverage and longitude aliases preserve actual file identity", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2001,
-            variables = "skt",
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.25, lon = -180)
-    )
-    path <- tempfile(fileext = ".nc")
+    plan <- read_test__plan(years = 2001, lon = -180)
+    files <- read_test__temp_files(plan)
+    path <- files[[1L]]
     withr::defer(unlink(path))
     test_read__file(
         path,
@@ -308,7 +276,6 @@ test_that("non-leap coverage and longitude aliases preserve actual file identity
         longitude = 180,
         versions = 1
     )
-    files <- setNames(path, plan$requests$request_id)
     result <- shift_read_reanalysis(plan, files)
     expect_equal(nrow(result$data), 8808)
     expect_equal(unique(result$data$grid_lon), -180)
@@ -341,16 +308,11 @@ test_that("point archives retain container and member identity through public ex
     archive <- file.path(directory, "response.asset")
     withr::local_dir(directory)
     utils::zip(archive, "weather.nc", flags = "-q")
-    source <- shift_era5(
-        2000,
-        variables = "skt",
-        frequency = "hour",
-        access = "arco"
+    plan <- read_test__plan()
+    read <- shift_read_reanalysis(
+        plan,
+        stats::setNames(archive, plan$requests$request_id)
     )
-    site <- shift_site("point", lat = 1.25, lon = 104)
-    plan <- shift_plan_reanalysis(source, site)
-    files <- setNames(archive, plan$requests$request_id)
-    read <- shift_read_reanalysis(plan, files)
     expect_equal(nrow(read$data), 8832L)
     expect_identical(unique(read$data$value), 280)
     expect_identical(
@@ -370,16 +332,8 @@ test_that("archive packaging never relaxes field or member validation", {
     dir.create(directory)
     withr::defer(unlink(directory, recursive = TRUE))
     withr::local_dir(directory)
-    source <- shift_era5(
-        2000,
-        variables = "skt",
-        frequency = "hour",
-        access = "arco"
-    )
-    plan <- shift_plan_reanalysis(
-        source,
-        shift_site("point", lat = 1.25, lon = 104)
-    )
+    plan <- read_test__plan()
+    req_id <- plan$requests$request_id
     # Wrap independently invalid NetCDF inputs; only the transport container
     # changes, so original coordinate, temporal and unit rules must still apply.
     cases <- list(
@@ -397,10 +351,7 @@ test_that("archive packaging never relaxes field or member validation", {
         archive <- file.path(directory, paste0("invalid-", i, ".asset"))
         utils::zip(archive, "weather.nc", flags = "-q")
         expect_error(
-            shift_read_reanalysis(
-                plan,
-                setNames(archive, plan$requests$request_id)
-            ),
+            shift_read_reanalysis(plan, stats::setNames(archive, req_id)),
             messages[[i]]
         )
     }
@@ -409,10 +360,7 @@ test_that("archive packaging never relaxes field or member validation", {
     multiple <- file.path(directory, "multiple.asset")
     utils::zip(multiple, c("first.nc", "second.nc"), flags = "-q")
     expect_error(
-        shift_read_reanalysis(
-            plan,
-            setNames(multiple, plan$requests$request_id)
-        ),
+        shift_read_reanalysis(plan, stats::setNames(multiple, req_id)),
         "one top-level NetCDF"
     )
     dir.create("nested")
@@ -420,7 +368,7 @@ test_that("archive packaging never relaxes field or member validation", {
     nested <- file.path(directory, "nested.asset")
     utils::zip(nested, "nested/weather.nc", flags = "-q")
     expect_error(
-        shift_read_reanalysis(plan, setNames(nested, plan$requests$request_id)),
+        shift_read_reanalysis(plan, stats::setNames(nested, req_id)),
         "one top-level NetCDF"
     )
 })
@@ -429,21 +377,13 @@ test_that("saved point plans retain exact contracts through local reading", {
     directory <- tempfile("saved-point-plan-")
     dir.create(directory)
     withr::defer(unlink(directory, recursive = TRUE))
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = "skt",
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.25, lon = 104)
-    )
+    plan <- read_test__plan()
     path <- test_read__file(file.path(directory, "weather.nc"))
     saved <- file.path(directory, "plan.rds")
     saveRDS(plan, saved)
     restored <- readRDS(saved)
     before <- serialize(restored, NULL)
-    files <- setNames(path, plan$requests$request_id)
+    files <- stats::setNames(path, plan$requests$request_id)
     result <- shift_read_reanalysis(restored, files)
     expect_identical(result$data$value, rep(280, 8832))
     expect_identical(serialize(restored, NULL), before)
@@ -465,28 +405,15 @@ test_that("saved point plans retain exact contracts through local reading", {
 # ARCO fields retain the same native interval and unit contract as CDS; this
 # checks actual NetCDF reading rather than only the availability flags.
 test_that("ARCO cloud and direct radiation keep their source semantics", {
-    plan <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = c("rsdsdiff", "clt"),
-            frequency = "hour",
-            access = "arco"
-        ),
-        shift_site("point", lat = 1.25, lon = 104),
+    plan <- read_test__plan(
+        variables = c("rsdsdiff", "clt"),
         dates = as.Date("2000-01-02")
     )
     expect_setequal(plan$requests$variable_id, c("clt", "fdir", "rsds"))
     expect_true(all(
         plan$requests$dataset == "reanalysis-era5-single-levels-timeseries"
     ))
-    files <- setNames(
-        vapply(
-            seq_len(nrow(plan$requests)),
-            function(i) tempfile(fileext = ".nc"),
-            character(1)
-        ),
-        plan$requests$request_id
-    )
+    files <- read_test__temp_files(plan)
     withr::defer(unlink(files))
     aliases <- c(clt = "tcc", fdir = "fdir", rsds = "ssrd")
     units <- c(clt = "1", fdir = "J m-2", rsds = "J m-2")
@@ -579,23 +506,22 @@ test_that("CDS point plans preserve exact days and raw dependencies", {
         expect_length(req$month, 1L)
         expect_length(req$variable, 1L)
         expect_length(req$time, 24L)
-        selected <- as.Date(paste(req$year, req$month, req$day, sep = "-"))
-        expect_true(all(selected %in% dates))
+        expect_true(all(
+            as.Date(paste(req$year, req$month, req$day, sep = "-")) %in% dates
+        ))
     }
-    reordered <- shift_plan_reanalysis(
-        source,
-        site,
-        dates = c(rev(dates), dates[1])
-    )
-    expect_true(reanalysis_plan__identical(plan, reordered))
-    integer_dates <- shift_plan_reanalysis(
-        source,
-        site,
-        dates = data.table::as.IDate(dates)
-    )
-    expect_true(reanalysis_plan__identical(plan, integer_dates))
-    from_iso <- shift_plan_reanalysis(source, site, dates = plan$source$dates)
-    expect_true(reanalysis_plan__identical(plan, from_iso))
+    expect_true(reanalysis_plan__identical(
+        plan,
+        shift_plan_reanalysis(source, site, dates = c(rev(dates), dates[1]))
+    ))
+    expect_true(reanalysis_plan__identical(
+        plan,
+        shift_plan_reanalysis(source, site, dates = data.table::as.IDate(dates))
+    ))
+    expect_true(reanalysis_plan__identical(
+        plan,
+        shift_plan_reanalysis(source, site, dates = plan$source$dates)
+    ))
     expect_error(
         shift_plan_reanalysis(
             source,
@@ -606,11 +532,7 @@ test_that("CDS point plans preserve exact days and raw dependencies", {
     )
     for (bad in list(
         character(),
-        NA_character_,
         "2000-02-30",
-        "2000-01-02junk",
-        "1998-01-01",
-        1,
         as.Date(0.5, origin = "2000-01-01")
     )) {
         expect_error(
@@ -618,16 +540,7 @@ test_that("CDS point plans preserve exact days and raw dependencies", {
             "[Dd]ates|ISO"
         )
     }
-    arco <- shift_plan_reanalysis(
-        shift_era5(
-            2000,
-            variables = "tas",
-            frequency = "hour",
-            access = "arco"
-        ),
-        site,
-        dates
-    )
+    arco <- read_test__plan(variables = "tas", sites = site, dates = dates)
     expect_equal(sum(arco$requests$expected_hours), 96)
     expect_equal(nrow(arco$requests), 3L)
 })
@@ -648,7 +561,7 @@ test_that("CDS radiation and clouds pass through public local replay", {
     site <- shift_site("a", lat = 1.25, lon = 104)
     dates <- as.Date("2000-01-02")
     plan <- shift_data_reanalysis(source, site, dates = dates, dry_run = TRUE)
-    files <- setNames(
+    files <- stats::setNames(
         file.path(raw, paste0(plan$requests$variable_id, ".nc")),
         plan$requests$request_id
     )

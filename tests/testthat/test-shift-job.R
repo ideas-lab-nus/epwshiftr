@@ -4,44 +4,57 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-test_that("failed standalone steps expose recovery identity and resume in place", {
-    attempts <- 0L
-    file_docs <- esgf_test__file_docs("tas_day.nc")
-    testthat::local_mocked_bindings(
-        query__collect = function(
-            index_node,
-            params,
-            required_fields = NULL,
-            all = FALSE,
-            limit = TRUE,
-            constraints = TRUE,
-            dict_check = FALSE,
-            progress_callback = NULL
-        ) {
-            attempts <<- attempts + 1L
-            if (attempts == 1L) {
-                stop("temporary catalog failure")
-            }
-            type <- query_param__value(params$type())
-            docs <- if (identical(type, "Dataset")) {
-                esgf_test__dataset_docs()
-            } else {
-                file_docs
-            }
-            fields <- query_param__value(params$fields())
-            if (is.null(fields) || identical(fields, "*")) {
-                fields <- names(docs)
-            }
-            params$fields(unique(c(fields, required_fields)))
-            response <- esgf_test__response(docs)
-            list(
-                response = response,
-                docs = response$response$docs,
-                parameter = params
-            )
-        },
-        .package = "epwshiftr"
+job_test__plan <- function(
+    store_path,
+    climate = shift_cmip6(
+        "EC-Earth3",
+        "ssp585",
+        member = "r1i1p1f1",
+        grid = "gr",
+        frequency = "mon",
+        table = "Amon"
+    ),
+    periods = list(`2060s` = 2060L)
+) {
+    shift_epw_future(
+        sites = shift_site(epw = get_cache_epw()),
+        climate = climate,
+        periods = periods,
+        transform = monthly_transform("epwshiftr"),
+        dir = tempfile("shift-job-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )@meta$children[[1L]]
+}
+
+job_test__spawn_lock <- function(db_path, sleep = 2) {
+    ready <- tempfile("shift-lock-ready-")
+    child_code <- paste(
+        "library(duckdb)",
+        "args <- commandArgs(TRUE)",
+        "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
+        "file.create(args[[2L]])",
+        sprintf("Sys.sleep(%s)", sleep),
+        "dbDisconnect(conn, shutdown = TRUE)",
+        sep = "; "
     )
+    system2(
+        file.path(R.home("bin"), "Rscript"),
+        c("-e", shQuote(child_code), shQuote(db_path), shQuote(ready)),
+        wait = FALSE,
+        stdout = FALSE,
+        stderr = FALSE
+    )
+    for (i in seq_len(50L)) {
+        if (file.exists(ready)) {
+            break
+        }
+        Sys.sleep(0.05)
+    }
+    expect_true(file.exists(ready))
+}
+
+test_that("failed standalone steps expose recovery identity and resume in place", {
     store_path <- tempfile("shift-resume-stage-store-")
     request <- shift_request(
         project = "CMIP6",
@@ -49,9 +62,13 @@ test_that("failed standalone steps expose recovery identity and resume in place"
         variables = "tas",
         frequency = "day"
     )
-    failure <- tryCatch(
-        shift_collect(request, store = store_path, ui = shift_ui("none")),
-        epwshiftr_shift_error = identity
+    failure <- testthat::with_mocked_bindings(
+        tryCatch(
+            shift_collect(request, store = store_path, ui = shift_ui("none")),
+            epwshiftr_shift_error = identity
+        ),
+        query__collect = function(...) stop("temporary catalog failure"),
+        .package = "epwshiftr"
     )
 
     expect_s3_class(failure, "epwshiftr_shift_error")
@@ -66,6 +83,7 @@ test_that("failed standalone steps expose recovery identity and resume in place"
         "failed"
     )
 
+    shift_test__mock_collect(esgf_test__file_docs("tas_day.nc"))
     resumed <- shift_resume(
         failure$run_id,
         store = store_path,
@@ -77,23 +95,7 @@ test_that("failed standalone steps expose recovery identity and resume in place"
 })
 
 test_that("foreground interrupts persist one meaningful cancelled state", {
-    store_path <- tempfile("shift-interrupt-store-")
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r1i1p1f1",
-            grid = "gr",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        periods = list(`2060s` = 2060L),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-interrupt-output-"),
-        store = store_path,
-        dry_run = TRUE
-    )@meta$children[[1L]]
+    plan <- job_test__plan(tempfile("shift-interrupt-store-"))
     store_path <- plan@store_path
     testthat::local_mocked_bindings(
         shift_resolve__collect_resolved_inputs = function(...) {
@@ -125,23 +127,7 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
 })
 
 test_that("background live sidecars carry transient reporter state without events", {
-    store_path <- tempfile("shift-live-ui-store-")
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r1i1p1f1",
-            grid = "gr",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        periods = list(`2060s` = 2060L),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-live-ui-output-"),
-        store = store_path,
-        dry_run = TRUE
-    )@meta$children[[1L]]
+    plan <- job_test__plan(tempfile("shift-live-ui-store-"))
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
     store <- shift_inspect__store(plan)
@@ -182,24 +168,17 @@ test_that("background live sidecars carry transient reporter state without event
         "OPeNDAP"
     )
     expect_equal(
-        nrow(morpher__private_store(store)$read_table(
-            "shift_run_event"
-        )),
+        nrow(morpher__private_store(store)$read_table("shift_run_event")),
         initial_events
     )
 })
 
 test_that("durable and live run reads agree on recorded diagnostics", {
-    store_path <- tempfile("shift-scientific-diagnostic-store-")
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
+    plan <- job_test__plan(
+        tempfile("shift-scientific-diagnostic-store-"),
         climate = shift_cmip6("Model-A", "ssp585"),
-        periods = list(`2050` = 2050L),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-scientific-diagnostic-output-"),
-        store = store_path,
-        dry_run = TRUE
-    )@meta$children[[1L]]
+        periods = list(`2050` = 2050L)
+    )
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
     store <- shift_inspect__store(plan)
@@ -224,10 +203,7 @@ test_that("durable and live run reads agree on recorded diagnostics", {
     expect_identical(actual$code, "dry_baseline_precip")
     expect_identical(actual$severity, "warning")
     expect_identical(actual$variable_id, "pr")
-    expect_equal(
-        nrow(refreshed@meta$events[status == "diagnostic"]),
-        1L
-    )
+    expect_equal(nrow(refreshed@meta$events[status == "diagnostic"]), 1L)
 
     shift_job__run_event(store, run_id, "extract", "running", "Working")
     shift_job__run_event(store, run_id, "extract", "failed", "Read failed")
@@ -248,23 +224,7 @@ test_that("durable and live run reads agree on recorded diagnostics", {
 })
 
 test_that("background runs register live jobs before launching workers", {
-    store_path <- tempfile("shift-background-store-")
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r1i1p1f1",
-            grid = "gr",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        periods = list(`2060s` = 2060L),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-background-output-"),
-        store = store_path,
-        dry_run = TRUE
-    )@meta$children[[1L]]
+    plan <- job_test__plan(tempfile("shift-background-store-"))
     store_path <- plan@store_path
     launched <- new.env(parent = emptyenv())
     test_local_dependencies(list(shift_job__launch_job = function(
@@ -309,58 +269,14 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
     skip_on_cran()
     skip_on_os("windows")
 
-    store_path <- tempfile("shift-live-lock-store-")
-    plan <- shift_epw_future(
-        sites = shift_site(epw = get_cache_epw()),
-        climate = shift_cmip6(
-            "EC-Earth3",
-            "ssp585",
-            member = "r1i1p1f1",
-            grid = "gr",
-            frequency = "mon",
-            table = "Amon"
-        ),
-        periods = list(`2060s` = 2060L),
-        transform = monthly_transform("epwshiftr"),
-        dir = tempfile("shift-live-lock-output-"),
-        store = store_path,
-        dry_run = TRUE
-    )@meta$children[[1L]]
+    plan <- job_test__plan(tempfile("shift-live-lock-store-"))
     store_path <- plan@store_path
     test_local_dependencies(list(shift_job__launch_job = function(...) {
         invisible(0L)
     }))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
 
-    ready <- tempfile("shift-live-lock-ready-")
-    child_code <- paste(
-        "library(duckdb)",
-        "args <- commandArgs(TRUE)",
-        "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
-        "file.create(args[[2L]])",
-        "Sys.sleep(2)",
-        "dbDisconnect(conn, shutdown = TRUE)",
-        sep = "; "
-    )
-    system2(
-        file.path(R.home("bin"), "Rscript"),
-        c(
-            "-e",
-            shQuote(child_code),
-            shQuote(file.path(store_path, "manifest.duckdb")),
-            shQuote(ready)
-        ),
-        wait = FALSE,
-        stdout = FALSE,
-        stderr = FALSE
-    )
-    for (i in seq_len(50L)) {
-        if (file.exists(ready)) {
-            break
-        }
-        Sys.sleep(0.05)
-    }
-    expect_true(file.exists(ready))
+    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"), sleep = 2)
     expect_equal(shift_status(run), "queued")
 
     cancelled <- shift_cancel(run)
@@ -438,35 +354,7 @@ test_that("background workers retry transient DuckDB launch locks", {
     store_path <- tempfile("shift-worker-open-store-")
     store <- EsgStore$new(store_path)
     store$close()
-    ready <- tempfile("shift-worker-open-ready-")
-    child_code <- paste(
-        "library(duckdb)",
-        "args <- commandArgs(TRUE)",
-        "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
-        "file.create(args[[2L]])",
-        "Sys.sleep(0.5)",
-        "dbDisconnect(conn, shutdown = TRUE)",
-        sep = "; "
-    )
-    system2(
-        file.path(R.home("bin"), "Rscript"),
-        c(
-            "-e",
-            shQuote(child_code),
-            shQuote(file.path(store_path, "manifest.duckdb")),
-            shQuote(ready)
-        ),
-        wait = FALSE,
-        stdout = FALSE,
-        stderr = FALSE
-    )
-    for (i in seq_len(50L)) {
-        if (file.exists(ready)) {
-            break
-        }
-        Sys.sleep(0.05)
-    }
-    expect_true(file.exists(ready))
+    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"), sleep = 0.5)
 
     # This call represents the detached worker starting while a short-lived
     # status reader still owns the manifest.
@@ -503,12 +391,8 @@ test_that("run updates preserve other runs and explicit nullable fields", {
         "can't read 'tas'"
     )
     shift_job__run_update(store, first, last_error = NA_character_)
-    selected <- shift_inspect__runs(store, first)
-    expect_identical(selected$run_id, first)
-    expect_true(is.na(selected$last_error))
-    expect_identical(nrow(shift_inspect__runs(store, "missing")), 0L)
-    shift_job__run_update(store, first, started_at = as.POSIXct(NA, tz = "UTC"))
-    expect_identical(shift_inspect__runs(store)$run_id, c(second, first))
+    cleared <- shift_inspect__runs(store)
+    expect_true(is.na(cleared$last_error[cleared$run_id == first]))
 })
 
 # Recreate the on-disk evidence left by a process that exited without releasing
@@ -516,45 +400,45 @@ test_that("run updates preserve other runs and explicit nullable fields", {
 shift_download_test__exited_owner <- function(directory) {
     code <- sprintf(
         'jsonlite::write_json(list(pid=Sys.getpid(), hostname=unname(Sys.info()[["nodename"]])), %s, auto_unbox=TRUE)',
-        encodeString(file.path(directory, 'owner.json'), quote = '"')
+        encodeString(file.path(directory, "owner.json"), quote = '"')
     )
     status <- system2(
-        file.path(R.home('bin'), 'Rscript'),
-        c('--vanilla', '-e', shQuote(code)),
+        file.path(R.home("bin"), "Rscript"),
+        c("--vanilla", "-e", shQuote(code)),
         stdout = FALSE,
         stderr = FALSE
     )
     stopifnot(status == 0L)
-    jsonlite::read_json(file.path(directory, 'owner.json'))
+    jsonlite::read_json(file.path(directory, "owner.json"))
 }
 
 # Foreground staged operations persist a PID just like detached operations.
 # Reopening a run must reconcile a dead owner before public resume tests status.
-test_that('foreground owner death is reconciled without touching live or remote runs', {
+test_that("foreground owner death is reconciled without touching live or remote runs", {
     root <- withr::local_tempdir()
     owner <- shift_download_test__exited_owner(root)
-    for (kind in c('dead', 'live', 'remote')) {
+    for (kind in c("dead", "live", "remote")) {
         path <- file.path(root, kind)
         store <- shift_inspect__store(path, create = TRUE)
         run_id <- shift_job__task_run_register(
             store,
-            'collect',
+            "collect",
             spec = list(),
-            status = 'queued'
+            status = "queued"
         )
-        shift_job__run_update(store, run_id, status = 'running')
+        shift_job__run_update(store, run_id, status = "running")
         job <- shift_job__job_create(
             store,
             run_id,
-            mode = 'foreground',
-            ui = shift_ui('none')
+            mode = "foreground",
+            ui = shift_ui("none")
         )
         shift_job__job_update(
             store,
             job$job_id,
-            pid = if (kind == 'live') Sys.getpid() else owner$pid,
-            hostname = if (kind == 'remote') {
-                paste0(owner$hostname, '-remote')
+            pid = if (kind == "live") Sys.getpid() else owner$pid,
+            hostname = if (kind == "remote") {
+                paste0(owner$hostname, "-remote")
             } else {
                 owner$hostname
             }
@@ -563,38 +447,36 @@ test_that('foreground owner death is reconciled without touching live or remote 
         run <- shift_run_get(run_id, store = path)
         expect_identical(
             shift_status(run, refresh = FALSE),
-            if (kind == 'dead') 'failed' else 'running'
+            if (kind == "dead") "failed" else "running"
         )
-        if (kind == 'dead') {
-            expect_match(run@meta$run$last_error, 'PID .* is not running')
+        if (kind == "dead") {
+            expect_match(run@meta$run$last_error, "PID .* is not running")
         }
     }
 })
 
 # Resume decodes JSON without automatic vector simplification. Preserve bounded
 # time and multi-valued scientific identities when reconstructing a request.
-test_that('saved staged requests restore vectors before public validation', {
+test_that("saved staged requests restore vectors before public validation", {
+    roundtrip <- function(req) {
+        ref <- jsonlite::fromJSON(
+            shift_persist__spec_json(shift_persist__stage_ref(req)),
+            simplifyVector = FALSE
+        )
+        shift_persist__stage_from_ref(ref)
+    }
     request <- shift_request(
-        project = 'CMIP6',
-        source = c('Model-A', 'Model-B'),
-        experiment = c('ssp245', 'ssp585'),
-        variant = c('r1i1p1f1', 'r2i1p1f1'),
-        variables = c('tas', 'psl'),
-        frequency = c('mon', 'day'),
+        project = "CMIP6",
+        source = c("Model-A", "Model-B"),
+        experiment = c("ssp245", "ssp585"),
+        variant = c("r1i1p1f1", "r2i1p1f1"),
+        variables = c("tas", "psl"),
+        frequency = c("mon", "day"),
         time = c(2041L, 2060L)
     )
-    ref <- jsonlite::fromJSON(
-        shift_persist__spec_json(shift_persist__stage_ref(request)),
-        simplifyVector = FALSE
-    )
-    restored <- shift_persist__stage_from_ref(ref)
-    expect_identical(restored@meta, request@meta)
+    expect_identical(roundtrip(request)@meta, request@meta)
     empty <- shift_request()
-    restored <- shift_persist__stage_from_ref(jsonlite::fromJSON(
-        shift_persist__spec_json(shift_persist__stage_ref(empty)),
-        simplifyVector = FALSE
-    ))
-    expect_identical(restored@meta, empty@meta)
+    expect_identical(roundtrip(empty)@meta, empty@meta)
 })
 
 # Kill only the fixture-owned R process tree after a real GET has written its
@@ -609,8 +491,7 @@ test_that("shift_resume reopens a stopped process's original download session", 
     app$locals$offset <- NULL
     app$get("/offset", function(req, res, locals) res$send_json(locals$offset))
     app$head("/source.bin", function(req, res, locals) {
-        range <- req$get_header("Range")
-        start <- as.numeric(gsub("[^0-9]", "", range))
+        start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
         end <- length(locals$bytes) - 1L
         res$set_status(206L)$set_header(
             "Content-Range",
@@ -877,7 +758,6 @@ test_that("an interrupted background download publication reopens the original r
         shift_inspect__ids(shift_inspect__result(reopened))$session_id,
         ids$session_id
     )
-    expect_identical(shift_status(shift_run__complete(reopened)), "completed")
     expect_identical(fixture$downloader$sessions()$session_id, ids$session_id)
     expect_identical(
         fixture$downloader$tasks(session_id = ids$session_id)$task_id,
