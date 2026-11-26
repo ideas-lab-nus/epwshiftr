@@ -126,10 +126,9 @@ shift_ui_state__ui_event_details <- function(events) {
 }
 # }}}
 
-# Rebuild the planned stage route from the persisted scientific specification
-# before a queued worker has emitted its first reporter event.
-# shift_ui_state__ui_stage_sequence_from_row {{{
-shift_ui_state__ui_stage_sequence_from_row <- function(row) {
+# Parse the persisted spec_json column from a run row, returning NULL if absent.
+# shift_ui_state__parse_row_spec {{{
+shift_ui_state__parse_row_spec <- function(row) {
     row <- data.table::as.data.table(row)
     if (
         !nrow(row) ||
@@ -137,48 +136,50 @@ shift_ui_state__ui_stage_sequence_from_row <- function(row) {
             is.na(row$spec_json[[1L]]) ||
             !nzchar(row$spec_json[[1L]])
     ) {
-        return(character())
+        return(NULL)
     }
-    spec <- tryCatch(
+    tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
         error = function(e) NULL
     )
+}
+# }}}
+
+# Rebuild the planned stage route from the persisted scientific specification
+# before a queued worker has emitted its first reporter event.
+# shift_ui_state__ui_stage_sequence_from_row {{{
+shift_ui_state__ui_stage_sequence_from_row <- function(row) {
+    row <- data.table::as.data.table(row)
+    spec <- shift_ui_state__parse_row_spec(row)
     if (is.null(spec)) {
         return(character())
     }
     task <- as.character(shift_stage__coalesce(spec$task, "future_epw"))[[1L]]
     if (!identical(task, "future_epw")) {
-        current <- as.character(shift_stage__coalesce(
+        return(as.character(shift_stage__coalesce(
             row$current_stage[[1L]],
             task
-        ))
-        return(current)
+        )))
     }
-    reference_mode <- if (is.null(spec$reference)) {
-        "none"
-    } else {
-        as.character(shift_stage__coalesce(spec$reference$mode, "none"))[[1L]]
-    }
-    observed_reference_mode <- if (is.null(spec$observed_reference)) {
-        "none"
-    } else {
-        as.character(shift_stage__coalesce(
-            spec$observed_reference$mode,
+    ref_mode <- function(x) {
+        if (is.null(x)) {
             "none"
-        ))[[1L]]
+        } else {
+            as.character(shift_stage__coalesce(x$mode, "none"))[[1L]]
+        }
     }
     download <- as.character(shift_stage__coalesce(
         spec$control$download,
         "auto"
-    ))[[
-        1L
-    ]]
+    ))[[1L]]
     c(
         "resolve",
         if (identical(download, "always")) "download",
         "extract_future",
-        if (identical(reference_mode, "historical")) "extract_reference",
-        if (identical(observed_reference_mode, "historical")) {
+        if (identical(ref_mode(spec$reference), "historical")) {
+            "extract_reference"
+        },
+        if (identical(ref_mode(spec$observed_reference), "historical")) {
             "extract_observed_reference"
         },
         "coverage",
@@ -192,39 +193,12 @@ shift_ui_state__ui_stage_sequence_from_row <- function(row) {
 # without reconstructing a complete ShiftPlan in watch clients.
 # shift_ui_state__ui_periods_from_spec {{{
 shift_ui_state__ui_periods_from_spec <- function(periods) {
-    if (is.null(periods) || !length(periods)) {
-        return("no periods")
-    }
-    if (is.atomic(periods) && !is.null(names(periods))) {
-        periods <- split(as.integer(periods), names(periods))
-    }
-    labels <- names(periods)
-    if (is.null(labels) || !length(labels)) {
-        labels <- rep("period", length(periods))
-    }
-    paste(
-        vapply(
-            seq_along(periods),
-            function(i) {
-                years <- suppressWarnings(as.integer(periods[[i]]))
-                years <- years[!is.na(years)]
-                if (!length(years)) {
-                    return(labels[[i]])
-                }
-                if (length(unique(years)) == 1L) {
-                    sprintf("%s (%d)", labels[[i]], years[[1L]])
-                } else {
-                    sprintf(
-                        "%s (%d\u2013%d)",
-                        labels[[i]],
-                        min(years),
-                        max(years)
-                    )
-                }
-            },
-            character(1L)
-        ),
-        collapse = ", "
+    shift_print__format_period_map(
+        periods,
+        paren = TRUE,
+        collapse = ", ",
+        empty = "no periods",
+        compact_ranges = FALSE
     )
 }
 # }}}
@@ -238,14 +212,11 @@ shift_ui_state__ui_reference_from_spec <- function(reference) {
         return("no reference")
     }
     if (identical(mode, "reanalysis")) {
-        years <- as.integer(unlist(reference$years, use.names = FALSE))
-        return(sprintf(
-            "%s %s %d\u2013%d (%s)",
-            toupper(reference$dataset),
+        return(shift_ui_view__reanalysis_label(
+            reference$dataset,
             reference$product,
-            min(years),
-            max(years),
-            reference$access
+            reference$years,
+            access = reference$access
         ))
     }
     if (identical(mode, "historical")) {
@@ -263,21 +234,11 @@ shift_ui_state__ui_reference_from_spec <- function(reference) {
 # shift_ui_state__ui_plan_context_from_row {{{
 shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     row <- data.table::as.data.table(row)
-    if (
-        !nrow(row) ||
-            !"spec_json" %in% names(row) ||
-            is.na(row$spec_json[[1L]]) ||
-            !nzchar(row$spec_json[[1L]])
-    ) {
-        return(list())
-    }
-    spec <- tryCatch(
-        jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
-        error = function(e) NULL
-    )
+    spec <- shift_ui_state__parse_row_spec(row)
     if (is.null(spec)) {
         return(list())
     }
+    output <- if ("output_dir" %in% names(row)) row$output_dir[[1L]] else NULL
     task <- as.character(shift_stage__coalesce(spec$task, "future_epw"))[[1L]]
     if (!identical(task, "future_epw")) {
         current <- as.character(shift_stage__coalesce(
@@ -299,11 +260,7 @@ shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
                 )
             ),
             selection = NULL,
-            output = if ("output_dir" %in% names(row)) {
-                row$output_dir[[1L]]
-            } else {
-                NULL
-            }
+            output = output
         ))
     }
     climate <- shift_stage__coalesce(spec$climate, spec$request)
@@ -340,42 +297,22 @@ shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
             )
         }
     )
-    member_value <- shift_stage__coalesce(
-        spec$climate$member,
-        spec$request$variant
-    )
-    grid_value <- shift_stage__coalesce(
-        spec$climate$grid,
-        spec$request$filters$grid_label
-    )
-    table_value <- if (!is.null(spec$climate)) {
-        spec$climate$table
-    } else {
-        spec$request$filters$table_id
-    }
-    member <- if (is.null(member_value)) {
-        "member auto"
-    } else {
-        sprintf("member %s", paste(member_value, collapse = ", "))
-    }
-    grid <- if (is.null(grid_value)) {
-        "grid auto"
-    } else {
-        sprintf("grid %s", paste(grid_value, collapse = ", "))
-    }
-    tables <- sprintf(
-        "tables %s",
-        shift_print__format_cmip6_tables(table_value)
-    )
     list(
         line = paste(line, collapse = " \u00b7 "),
         items = line,
-        selection = paste(member, grid, tables, sep = " \u00b7 "),
-        output = if ("output_dir" %in% names(row)) {
-            row$output_dir[[1L]]
-        } else {
-            NULL
-        }
+        selection = shift_ui_view__format_selection(
+            shift_stage__coalesce(spec$climate$member, spec$request$variant),
+            shift_stage__coalesce(
+                spec$climate$grid,
+                spec$request$filters$grid_label
+            ),
+            if (!is.null(spec$climate)) {
+                spec$climate$table
+            } else {
+                spec$request$filters$table_id
+            }
+        ),
+        output = output
     )
 }
 # }}}

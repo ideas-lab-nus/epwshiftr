@@ -139,15 +139,7 @@ ShiftReporter <- R6::R6Class(
                 ),
                 context
             )
-            position <- match(task, private$stage_sequence)
-            private$next_stage <- if (
-                !is.na(position) &&
-                    position < length(private$stage_sequence)
-            ) {
-                private$stage_sequence[[position + 1L]]
-            } else {
-                NULL
-            }
+            private$next_stage <- private$next_stage_after(task)
             if (identical(private$mode_value, "dynamic")) {
                 private$render_dynamic(force = TRUE)
             } else if (!identical(private$mode_value, "none")) {
@@ -257,8 +249,7 @@ ShiftReporter <- R6::R6Class(
         },
         # }}}
 
-        # Commit an operation that produced its final delivery artifact while
-        # preserving the dashboard receipt in terminal scrollback.
+        # Operation terminal receipts delegate to private$finish_operation().
         # operation_completed {{{
         operation_completed = function(
             summary,
@@ -268,15 +259,13 @@ ShiftReporter <- R6::R6Class(
             private$finish_operation(
                 "completed",
                 summary,
-                output_paths = output_paths,
-                output_dir = output_dir
+                output_paths,
+                output_dir
             )
             invisible(self)
         },
         # }}}
 
-        # Commit a scientifically incomplete stage as a visible terminal
-        # receipt instead of presenting it as ready for the next operation.
         # operation_partial {{{
         operation_partial = function(
             summary,
@@ -286,16 +275,13 @@ ShiftReporter <- R6::R6Class(
             private$finish_operation(
                 "partial",
                 summary,
-                output_paths = output_paths,
-                output_dir = output_dir
+                output_paths,
+                output_dir
             )
             invisible(self)
         },
         # }}}
 
-        # Commit one successful intermediate step without terminating its run.
-        # The framebuffer closes at the R prompt; the returned stage carries
-        # run/step identity into the next invocation.
         # operation_waiting {{{
         operation_waiting = function(
             summary,
@@ -305,15 +291,13 @@ ShiftReporter <- R6::R6Class(
             private$finish_operation(
                 "waiting",
                 summary,
-                output_paths = output_paths,
-                output_dir = output_dir
+                output_paths,
+                output_dir
             )
             invisible(self)
         },
         # }}}
 
-        # Close the caller's framebuffer after handing work to an existing
-        # detached subsystem while keeping the durable run in running state.
         # operation_detached {{{
         operation_detached = function(
             summary,
@@ -323,8 +307,8 @@ ShiftReporter <- R6::R6Class(
             private$finish_operation(
                 "running",
                 summary,
-                output_paths = output_paths,
-                output_dir = output_dir
+                output_paths,
+                output_dir
             )
             invisible(self)
         },
@@ -365,13 +349,9 @@ ShiftReporter <- R6::R6Class(
                     } else {
                         "planned"
                     }
-                    private$next_stage <- if (
-                        length(private$stage_sequence) > 1L
-                    ) {
-                        private$stage_sequence[[2L]]
-                    } else {
-                        NULL
-                    }
+                    private$next_stage <- private$next_stage_after(
+                        private$stage
+                    )
                     private$stage_message <- "Preparing resolver"
                     private$render_dynamic(force = TRUE)
                 } else {
@@ -391,30 +371,23 @@ ShiftReporter <- R6::R6Class(
                     # Background control commands include the exact store path
                     # so they remain valid after the returned R handle is gone.
                     quoted_store <- encodeString(plan@store_path, quote = '"')
-                    private$emit(
-                        "text",
-                        sprintf(
-                            "Watch   shift_watch(\"%s\", store = %s)",
-                            run_id,
-                            quoted_store
-                        )
+                    commands <- c(
+                        "Watch  " = "shift_watch",
+                        "Cancel " = "shift_cancel",
+                        "Logs   " = "shift_logs"
                     )
-                    private$emit(
-                        "text",
-                        sprintf(
-                            "Cancel  shift_cancel(\"%s\", store = %s)",
-                            run_id,
-                            quoted_store
+                    for (label in names(commands)) {
+                        private$emit(
+                            "text",
+                            sprintf(
+                                "%s %s(\"%s\", store = %s)",
+                                label,
+                                commands[[label]],
+                                run_id,
+                                quoted_store
+                            )
                         )
-                    )
-                    private$emit(
-                        "text",
-                        sprintf(
-                            "Logs    shift_logs(\"%s\", store = %s)",
-                            run_id,
-                            quoted_store
-                        )
-                    )
+                    }
                 }
             }
             invisible(self)
@@ -438,16 +411,7 @@ ShiftReporter <- R6::R6Class(
             private$stage_total <- total
             private$stage_started_at <- Sys.time()
             private$current_details <- NULL
-            stage_position <- match(stage, private$stage_sequence)
-            private$next_stage <- if (
-                length(stage_position) &&
-                    !is.na(stage_position) &&
-                    stage_position < length(private$stage_sequence)
-            ) {
-                private$stage_sequence[[stage_position + 1L]]
-            } else {
-                NULL
-            }
+            private$next_stage <- private$next_stage_after(stage)
             if (identical(private$mode_value, "log")) {
                 private$emit(
                     "info",
@@ -536,22 +500,13 @@ ShiftReporter <- R6::R6Class(
             details = list()
         ) {
             elapsed <- private$elapsed(private$unit_started_at)
-            event_details <- utils::modifyList(
-                shift_stage__coalesce(
-                    private$current_details,
-                    shift_reporter__progress_details(stage = private$stage)
-                ),
-                c(
-                    details,
-                    list(
-                        unit_label = message,
-                        unit_base_label = message,
-                        current = current,
-                        total = total,
-                        elapsed_seconds = elapsed,
-                        outcome = outcome
-                    )
-                )
+            event_details <- private$merge_unit_details(
+                message,
+                current = current,
+                total = total,
+                outcome = outcome,
+                details = details,
+                elapsed = elapsed
             )
             private$current_details <- event_details
             private$last_event <- message
@@ -614,21 +569,12 @@ ShiftReporter <- R6::R6Class(
             total = NULL,
             details = list()
         ) {
-            event_details <- utils::modifyList(
-                shift_stage__coalesce(
-                    private$current_details,
-                    shift_reporter__progress_details(stage = private$stage)
-                ),
-                c(
-                    details,
-                    list(
-                        unit_label = message,
-                        unit_base_label = message,
-                        current = current,
-                        total = total,
-                        outcome = "updated"
-                    )
-                )
+            event_details <- private$merge_unit_details(
+                message,
+                current = current,
+                total = total,
+                outcome = "updated",
+                details = details
             )
             private$current_details <- event_details
             if (identical(private$mode_value, "dynamic")) {
@@ -854,14 +800,12 @@ ShiftReporter <- R6::R6Class(
             elapsed <- private$elapsed(private$unit_started_at)
             private$current_details$unit_label <- label
             private$current_details$elapsed_seconds <- elapsed
-            due_liveness <- isTRUE(force) ||
-                is.na(private$last_heartbeat) ||
-                as.numeric(difftime(
-                    now,
-                    private$last_heartbeat,
-                    units = "secs"
-                )) >=
-                    max(1, private$ui_value@heartbeat)
+            due_liveness <- private$is_due(
+                private$last_heartbeat,
+                max(1, private$ui_value@heartbeat),
+                force = force,
+                now = now
+            )
             if (isTRUE(due_liveness)) {
                 private$last_heartbeat <- now
                 # Cancellation and durable heartbeat checks follow the slower
@@ -964,17 +908,7 @@ ShiftReporter <- R6::R6Class(
                 sprintf("%d EPW output(s) ready", nrow(outputs)),
                 status
             )
-            if (identical(private$mode_value, "dynamic")) {
-                private$render_dynamic(force = TRUE)
-            }
-            renderer_backend <- if (is.null(private$renderer)) {
-                NULL
-            } else {
-                tryCatch(private$renderer$backend(), error = function(e) NULL)
-            }
-            committed_frame <- identical(private$mode_value, "dynamic") &&
-                identical(renderer_backend, "frame")
-            private$close_renderer(result = "done", preserve = TRUE)
+            committed_frame <- private$commit_dynamic_frame(result = "done")
             if (!isTRUE(committed_frame)) {
                 private$emit(
                     "success",
@@ -1082,14 +1016,6 @@ ShiftReporter <- R6::R6Class(
                 private$emit("warning", terminal_message)
             }
             invisible(self)
-        },
-        # }}}
-
-        # Keep cancellation rendering distinct at call sites while sharing the
-        # same cleanup and warning behavior as other terminal failures.
-        # run_cancelled {{{
-        run_cancelled = function(message) {
-            self$run_failed(message, cancelled = TRUE)
         },
         # }}}
 
@@ -1261,20 +1187,93 @@ ShiftReporter <- R6::R6Class(
         },
         # }}}
 
+        # Check whether a throttled action is due given its last timestamp.
+        # is_due {{{
+        is_due = function(last, interval, force = FALSE, now = Sys.time()) {
+            isTRUE(force) ||
+                is.na(last) ||
+                as.numeric(difftime(now, last, units = "secs")) >= interval
+        },
+        # }}}
+
+        # Return the stage following `stage` in private$stage_sequence, or NULL.
+        # next_stage_after {{{
+        next_stage_after = function(stage) {
+            pos <- match(stage, private$stage_sequence)
+            if (
+                length(pos) &&
+                    !is.na(pos) &&
+                    pos < length(private$stage_sequence)
+            ) {
+                private$stage_sequence[[pos + 1L]]
+            } else {
+                NULL
+            }
+        },
+        # }}}
+
+        # Merge incoming unit update/completion fields onto current_details.
+        # merge_unit_details {{{
+        merge_unit_details = function(
+            message,
+            current = NULL,
+            total = NULL,
+            outcome = NULL,
+            details = list(),
+            elapsed = NULL
+        ) {
+            fields <- list(
+                unit_label = message,
+                unit_base_label = message,
+                current = current,
+                total = total,
+                outcome = outcome
+            )
+            if (!is.null(elapsed)) {
+                fields$elapsed_seconds <- elapsed
+            }
+            utils::modifyList(
+                shift_stage__coalesce(
+                    private$current_details,
+                    shift_reporter__progress_details(stage = private$stage)
+                ),
+                c(details, fields)
+            )
+        },
+        # }}}
+
+        # Render and commit the final dynamic frame, returning whether a full
+        # framebuffer receipt was preserved in scrollback.
+        # commit_dynamic_frame {{{
+        commit_dynamic_frame = function(result = "done") {
+            if (identical(private$mode_value, "dynamic")) {
+                private$render_dynamic(force = TRUE)
+            }
+            backend <- if (is.null(private$renderer)) {
+                NULL
+            } else {
+                tryCatch(private$renderer$backend(), error = function(e) NULL)
+            }
+            committed <- identical(private$mode_value, "dynamic") &&
+                identical(backend, "frame")
+            private$close_renderer(result = result, preserve = TRUE)
+            committed
+        },
+        # }}}
+
         # Best-effort heartbeat updates must never replace the workflow error
         # that triggered reporter cleanup.
         # touch_job {{{
         touch_job = function(force = FALSE, urgent = FALSE) {
             now <- Sys.time()
-            due <- isTRUE(force) ||
-                is.na(private$last_liveness) ||
-                as.numeric(difftime(
-                    now,
+            if (
+                !private$is_due(
                     private$last_liveness,
-                    units = "secs"
-                )) >=
-                    max(1, private$ui_value@heartbeat)
-            if (!isTRUE(due)) {
+                    max(1, private$ui_value@heartbeat),
+                    force = force,
+                    now = now
+                )
+            ) {
                 return(invisible(FALSE))
             }
             private$last_liveness <- now
@@ -1423,20 +1422,10 @@ ShiftReporter <- R6::R6Class(
                     outcome = status
                 )
             )
-            if (identical(private$mode_value, "dynamic")) {
-                private$render_dynamic(force = TRUE)
-            }
-            renderer_backend <- if (is.null(private$renderer)) {
-                NULL
-            } else {
-                tryCatch(private$renderer$backend(), error = function(e) NULL)
-            }
-            committed_frame <- identical(private$mode_value, "dynamic") &&
-                identical(renderer_backend, "frame")
             # Workflow states such as waiting and running are successful UI
             # terminations. The framebuffer owns only terminal outcomes, so
             # translate every non-error operation receipt to its `done` state.
-            private$close_renderer(result = "done", preserve = TRUE)
+            committed_frame <- private$commit_dynamic_frame(result = "done")
             if (
                 !isTRUE(committed_frame) &&
                     !identical(private$mode_value, "none")
@@ -1469,15 +1458,14 @@ ShiftReporter <- R6::R6Class(
                 return(invisible(FALSE))
             }
             now <- Sys.time()
-            due <- isTRUE(force) ||
-                is.na(private$last_refresh) ||
-                as.numeric(difftime(
-                    now,
+            if (
+                !private$is_due(
                     private$last_refresh,
-                    units = "secs"
-                )) >=
-                    private$ui_value@refresh
-            if (!isTRUE(due)) {
+                    private$ui_value@refresh,
+                    force = force,
+                    now = now
+                )
+            ) {
                 return(invisible(FALSE))
             }
             private$last_refresh <- now
@@ -1639,45 +1627,18 @@ ShiftReporter <- R6::R6Class(
         },
         # }}}
 
-        # Print a compact resolver-attempt table after resolve or immediately
-        # before a resolve failure; result text receives the remaining width.
-        # render_node_table {{{
-        render_node_table = function(force = FALSE) {
-            rows <- private$node_rows
+        # Emit a formatted node or case table under one framebuffer suspend.
+        # render_table {{{
+        render_table = function(
+            rows,
+            formatter,
+            detail = private$ui_value@detail
+        ) {
             if (is.null(rows) || !nrow(rows)) {
                 return(invisible(NULL))
             }
             private$with_output(function() {
-                for (line in shift_ui_view__ui_node_table(
-                    rows,
-                    width = private$width(),
-                    detail = private$ui_value@detail
-                )) {
-                    private$emit("verbatim", line)
-                }
-            })
-            invisible(NULL)
-        },
-        # }}}
-
-        # Print the user-level case matrix rather than exposing extraction-plan
-        # rows as the main progress model.
-        # render_case_table {{{
-        render_case_table = function(
-            force = FALSE,
-            detail = private$ui_value@detail
-        ) {
-            rows <- private$case_rows
-            if (
-                is.null(rows) ||
-                    !nrow(rows) ||
-                    (!isTRUE(force) &&
-                        !shift_ui__ui_at_least(private$ui_value, "normal"))
-            ) {
-                return(invisible(NULL))
-            }
-            private$with_output(function() {
-                for (line in shift_ui_view__ui_case_table(
+                for (line in formatter(
                     rows,
                     width = private$width(),
                     detail = detail
@@ -1686,6 +1647,34 @@ ShiftReporter <- R6::R6Class(
                 }
             })
             invisible(NULL)
+        },
+        # }}}
+
+        # render_node_table {{{
+        render_node_table = function(force = FALSE) {
+            private$render_table(
+                private$node_rows,
+                shift_ui_view__ui_node_table
+            )
+        },
+        # }}}
+
+        # render_case_table {{{
+        render_case_table = function(
+            force = FALSE,
+            detail = private$ui_value@detail
+        ) {
+            if (
+                !isTRUE(force) &&
+                    !shift_ui__ui_at_least(private$ui_value, "normal")
+            ) {
+                return(invisible(NULL))
+            }
+            private$render_table(
+                private$case_rows,
+                shift_ui_view__ui_case_table,
+                detail = detail
+            )
         }
         # }}}
     )

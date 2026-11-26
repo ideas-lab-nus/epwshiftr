@@ -3,25 +3,11 @@
 # nested API boundaries instead of merely checking a fabricated final frame.
 test_that("discovery owns one reporter across methods and nested catalog stages", {
     skip_on_cran()
-    frames <- list()
-    opened <- 0L
-    committed <- 0L
+    mock <- shift_test__mock_renderer(strip = TRUE, bind = FALSE)
     reporters <- list()
     withr::local_options(list(cli.width = 112L, cli.num_colors = 1L))
     testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = function(...) {
-            opened <<- opened + 1L
-            list(
-                draw = function(lines, compact) {
-                    frames[[length(frames) + 1L]] <<- cli::ansi_strip(lines)
-                    TRUE
-                },
-                backend = function() "frame",
-                commit = function(...) committed <<- committed + 1L,
-                close = function(...) NULL,
-                suspend = function(code) code()
-            )
-        },
+        shift_tui__ui_renderer = mock$factory,
         shift_resolve__with_query_reporter = function(
             reporter,
             query,
@@ -110,11 +96,11 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
         site = "San Francisco"
     )
     expect_equal(nrow(result$identities), 3L)
-    expect_equal(opened, 1L)
-    expect_equal(committed, 1L)
+    expect_equal(mock$opened, 1L)
+    expect_equal(length(mock$commits), 1L)
     expect_true(all(vapply(reporters, identical, logical(1L), reporters[[1L]])))
     expect_null(shift_run__current_reporter())
-    text <- paste(unlist(frames), collapse = "\n")
+    text <- paste(unlist(mock$frames), collapse = "\n")
     expect_match(text, "San Francisco")
     expect_match(text, "3 GCMs.*4 scenarios.*3 methods")
     expect_match(text, "Future coverage")
@@ -123,7 +109,7 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
     expect_match(text, "combination 2/2")
     expect_match(text, "specific humidity.*huss.*ps")
     expect_false(grepl("READY|input request|Collect CMIP6|%", text))
-    final <- paste(utils::tail(frames, 1L)[[1L]], collapse = "\n")
+    final <- paste(utils::tail(mock$frames, 1L)[[1L]], collapse = "\n")
     expect_match(final, "COMPLETED")
     expect_match(final, "Model-A.*Model-B.*Model-C")
     expect_false(grepl("Now|Cancel|Current search", final))

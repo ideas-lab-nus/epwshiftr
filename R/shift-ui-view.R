@@ -181,6 +181,21 @@ shift_ui_view__ui_prefixed_lines <- function(
 }
 # }}}
 
+# Render a labeled field as a single clipped row in compact viewports or as
+# aligned wrapped lines in unconstrained receipts.
+# shift_ui_view__ui_field {{{
+shift_ui_view__ui_field <- function(label, value, width, compact = FALSE) {
+    if (isTRUE(compact)) {
+        shift_ui_view__ui_fit(
+            shift_ui_view__ui_labeled_line(label, value),
+            width
+        )
+    } else {
+        shift_ui_view__ui_labeled_lines(label, value, width)
+    }
+}
+# }}}
+
 # Render a title-like dashboard field as one row when possible and as aligned
 # continuation rows when its value grows. The fixed label remains the visual
 # anchor in colour terminals and the plain-text anchor under NO_COLOR.
@@ -290,26 +305,33 @@ shift_ui_view__ui_cell <- function(x, width) {
 # Format named workflow periods compactly for the startup summary.
 # shift_ui_view__ui_periods {{{
 shift_ui_view__ui_periods <- function(periods) {
-    periods <- data.table::as.data.table(periods)
-    if (!nrow(periods) || !all(c("period", "year") %in% names(periods))) {
-        return("no periods")
-    }
-    labels <- unique(as.character(periods$period))
-    paste(
-        vapply(
-            labels,
-            function(label) {
-                years <- periods[period == label]$year
-                if (length(unique(years)) == 1L) {
-                    sprintf("%s (%d)", label, years[[1L]])
-                } else {
-                    sprintf("%s (%d\u2013%d)", label, min(years), max(years))
-                }
-            },
-            character(1L)
-        ),
-        collapse = ", "
+    shift_print__format_period_map(
+        data.table::as.data.table(periods),
+        paren = TRUE,
+        collapse = ", ",
+        empty = "no periods",
+        compact_ranges = FALSE
     )
+}
+# }}}
+
+# Format a reanalysis specification consistently across startup, print, and watch.
+# shift_ui_view__reanalysis_label {{{
+shift_ui_view__reanalysis_label <- function(
+    dataset,
+    product,
+    years,
+    access = NULL,
+    sep = " "
+) {
+    years <- as.integer(unlist(years, use.names = FALSE))
+    base <- paste(
+        toupper(dataset),
+        product,
+        sprintf("%d\u2013%d", min(years), max(years)),
+        sep = sep
+    )
+    if (is.null(access)) base else sprintf("%s (%s)", base, access)
 }
 # }}}
 
@@ -321,19 +343,16 @@ shift_ui_view__ui_reference <- function(reference) {
         return("no reference")
     }
     if (S7::S7_inherits(reference, ShiftReanalysisSpec)) {
-        return(sprintf(
-            "%s %s %d\u2013%d (%s)",
-            toupper(reference@dataset),
+        return(shift_ui_view__reanalysis_label(
+            reference@dataset,
             reference@product,
-            min(reference@years),
-            max(reference@years),
-            reference@access
+            reference@years,
+            access = reference@access
         ))
     }
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
         periods_table <- data.table::as.data.table(reference@periods)
-        period_names <- unique(periods_table$period)
-        periods <- if (length(period_names) == 1L) {
+        periods <- if (length(unique(periods_table$period)) == 1L) {
             years <- periods_table$year
             if (length(unique(years)) == 1L) {
                 as.character(years[[1L]])
@@ -352,24 +371,14 @@ shift_ui_view__ui_reference <- function(reference) {
 }
 # }}}
 
-# Format unresolved or explicit CMIP6 selections for the startup summary. The
-# table strategy is part of the scientific selection because enhanced monthly
-# recipes may resolve Amon and LImon on different grids.
-# shift_ui_view__ui_selection {{{
-shift_ui_view__ui_selection <- function(plan) {
-    climate <- plan@meta$climate
-    request <- plan@meta$request@meta
-    member_value <- if (is.null(climate)) request$variant else climate@member
-    grid_value <- if (is.null(climate)) {
-        request$filters$grid_label
-    } else {
-        climate@grid
-    }
-    table_value <- if (is.null(climate)) {
-        request$filters$table_id
-    } else {
-        climate@table
-    }
+# Format member, grid, and CMIP6 table selection consistently across plans,
+# startup summaries, and persisted watch snapshots.
+# shift_ui_view__format_selection {{{
+shift_ui_view__format_selection <- function(
+    member_value,
+    grid_value,
+    table_value
+) {
     member <- if (is.null(member_value)) {
         "member auto"
     } else {
@@ -385,6 +394,21 @@ shift_ui_view__ui_selection <- function(plan) {
         shift_print__format_cmip6_tables(table_value)
     )
     paste(member, grid, tables, sep = " \u00b7 ")
+}
+# }}}
+
+# Format unresolved or explicit CMIP6 selections for the startup summary. The
+# table strategy is part of the scientific selection because enhanced monthly
+# recipes may resolve Amon and LImon on different grids.
+# shift_ui_view__ui_selection {{{
+shift_ui_view__ui_selection <- function(plan) {
+    climate <- plan@meta$climate
+    request <- plan@meta$request@meta
+    shift_ui_view__format_selection(
+        if (is.null(climate)) request$variant else climate@member,
+        if (is.null(climate)) request$filters$grid_label else climate@grid,
+        if (is.null(climate)) request$filters$table_id else climate@table
+    )
 }
 # }}}
 
@@ -658,6 +682,57 @@ shift_ui_view__ui_panel_rule <- function(
 }
 # }}}
 
+# Frame sectioned dashboard content inside a rounded panel when width allows,
+# or emit unboxed lines on narrow consoles.
+# shift_ui_view__ui_panel_box {{{
+shift_ui_view__ui_panel_box <- function(
+    header,
+    sections,
+    width,
+    panel = TRUE,
+    wrap_header = FALSE
+) {
+    if (!isTRUE(panel)) {
+        head_lines <- if (isTRUE(wrap_header)) {
+            shift_ui_view__ui_wrap_lines(header, width)
+        } else {
+            shift_ui_view__ui_fit(header, width)
+        }
+        return(c(
+            head_lines,
+            unlist(lapply(sections, `[[`, "lines"), use.names = FALSE)
+        ))
+    }
+    lines <- shift_ui_view__ui_panel_rule(header, width, "top")
+    for (section in sections) {
+        body <- section$lines
+        if (isTRUE(section$omit_if_empty) && !length(body)) {
+            next
+        }
+        if (!is.null(section$title)) {
+            lines <- c(
+                lines,
+                shift_ui_view__ui_panel_rule(
+                    cli::style_bold(section$title),
+                    width,
+                    "middle"
+                )
+            )
+        }
+        lines <- c(
+            lines,
+            vapply(
+                body,
+                shift_ui_view__ui_panel_line,
+                character(1L),
+                width = width
+            )
+        )
+    }
+    c(lines, shift_ui_view__ui_panel_rule(width = width, kind = "bottom"))
+}
+# }}}
+
 # Apply colour only to semantic state. Ordinary configuration values remain in
 # the terminal's default foreground colour instead of becoming a wall of green.
 # shift_ui_view__ui_status_style {{{
@@ -725,44 +800,29 @@ shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
     width <- shift_ui__ui_width(width)
     details <- shift_stage__coalesce(state$current_details, list())
     stage <- as.character(shift_stage__coalesce(state$stage, "planned"))[[1L]]
-    current <- shift_ui_view__ui_metric_number(
-        details,
-        "current",
-        shift_stage__coalesce(state$unit_current, NA_real_)
-    )
-    total <- shift_ui_view__ui_metric_number(
-        details,
-        "total",
-        shift_stage__coalesce(state$unit_total, NA_real_)
-    )
-    ordinal <- current
-    # A started unit is in progress, not completed. Older snapshots without a
-    # phase retain their historical counter semantics.
-    if (
-        identical(details$phase, "unit") &&
-            is.null(details$outcome) &&
-            !is.na(current)
-    ) {
-        current <- max(0L, current - 1L)
-    }
-    elapsed <- shift_ui_view__format_elapsed(shift_stage__coalesce(
-        state$elapsed_seconds,
-        0
-    ))
+    progress <- shift_ui_state__ui_progress_values(state)
+    current <- progress$current
+    total <- progress$total
     plan_context <- shift_stage__coalesce(state$plan_context, list())
+    labeled <- function(label, ...) {
+        parts <- c(...)
+        shift_ui_view__ui_labeled_lines(
+            label,
+            paste(parts, collapse = " \u00b7 "),
+            width
+        )
+    }
 
     if (identical(details$unit_type, "catalog")) {
         return(shift_ui_view__ui_query_lines(state, width))
     }
-
     if (identical(details$unit_type, "epw_summary")) {
-        return(shift_ui_view__ui_labeled_lines(
+        return(labeled(
             "EPWs",
             shift_stage__coalesce(
                 shift_ui_view__ui_determinate(current, total, width),
                 "Reading local files"
-            ),
-            width
+            )
         ))
     }
     if (
@@ -771,45 +831,35 @@ shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
                 c("reanalysis_variable", "reanalysis_request")
         )
     ) {
-        return(shift_ui_view__ui_labeled_lines(
+        return(labeled(
             "Variables",
-            paste(
-                c(
-                    shift_ui_view__ui_determinate(current, total, width),
-                    if (!is.null(details$request_id)) {
-                        paste("request", details$request_id)
-                    },
-                    details$status
-                ),
-                collapse = " \u00b7 "
-            ),
-            width
+            shift_ui_view__ui_determinate(current, total, width),
+            if (!is.null(details$request_id)) {
+                paste("request", details$request_id)
+            },
+            details$status
         ))
     }
-
     if (identical(stage, "resolve")) {
         attempt <- if (!is.na(current) && !is.na(total)) {
-            sprintf("node %d of %d", as.integer(ordinal), as.integer(total))
+            sprintf("node %d of %d", as.integer(current), as.integer(total))
         } else {
             "checking catalogs"
         }
-        value <- paste(
-            c(attempt, plan_context$selection),
-            collapse = " \u00b7 "
-        )
-        return(shift_ui_view__ui_labeled_lines("Status", value, width))
+        return(labeled("Status", attempt, plan_context$selection))
     }
-
     if (
         identical(details$unit_type, "download_session") ||
             identical(stage, "download")
     ) {
-        parts <- c(shift_ui_view__ui_determinate(current, total, width))
         bytes_done <- shift_ui_view__ui_metric_number(details, "bytes_done")
         bytes_total <- shift_ui_view__ui_metric_number(details, "bytes_total")
-        if (!is.na(bytes_done)) {
-            parts <- c(
-                parts,
+        speed <- shift_ui_view__ui_metric_number(details, "speed_bps")
+        active <- shift_ui_view__ui_metric_number(details, "active_task_count")
+        return(labeled(
+            "Transfer",
+            shift_ui_view__ui_determinate(current, total, width),
+            if (!is.na(bytes_done)) {
                 if (is.na(bytes_total)) {
                     shift_ui_view__ui_bytes(bytes_done)
                 } else {
@@ -819,39 +869,28 @@ shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
                         shift_ui_view__ui_bytes(bytes_total)
                     )
                 }
-            )
-        }
-        speed <- shift_ui_view__ui_metric_number(details, "speed_bps")
-        if (!is.na(speed) && speed > 0) {
-            parts <- c(parts, paste0(shift_ui_view__ui_bytes(speed), "/s"))
-        }
-        eta <- shift_ui_view__ui_eta(shift_ui_view__ui_metric_number(
-            details,
-            "eta_seconds"
-        ))
-        if (!is.null(eta)) {
-            parts <- c(parts, eta)
-        }
-        active <- shift_ui_view__ui_metric_number(details, "active_task_count")
-        if (!is.na(active) && active > 0) {
-            parts <- c(parts, sprintf("%d active", as.integer(active)))
-        }
-        return(shift_ui_view__ui_labeled_lines(
-            "Transfer",
-            paste(parts, collapse = " \u00b7 "),
-            width
+            },
+            if (!is.na(speed) && speed > 0) {
+                paste0(shift_ui_view__ui_bytes(speed), "/s")
+            },
+            shift_ui_view__ui_eta(shift_ui_view__ui_metric_number(
+                details,
+                "eta_seconds"
+            )),
+            if (!is.na(active) && active > 0) {
+                sprintf("%d active", as.integer(active))
+            }
         ))
     }
-
     if (stage %in% c("extract_future", "extract_reference")) {
-        parts <- c(shift_ui_view__ui_determinate(current, total, width))
-        if (!is.null(details$access_method) && length(details$access_method)) {
-            parts <- c(parts, as.character(details$access_method[[1L]]))
-        }
-        return(shift_ui_view__ui_labeled_lines(
+        return(labeled(
             "Plans",
-            paste(parts, collapse = " \u00b7 "),
-            width
+            shift_ui_view__ui_determinate(current, total, width),
+            if (
+                !is.null(details$access_method) && length(details$access_method)
+            ) {
+                as.character(details$access_method[[1L]])
+            }
         ))
     }
 
@@ -859,43 +898,37 @@ shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
     cases_total <- as.integer(shift_stage__coalesce(state$cases_total, 0L))
     outputs <- as.integer(shift_stage__coalesce(state$outputs_completed, 0L))
     if (identical(stage, "coverage")) {
-        value <- paste(
-            c(
-                shift_ui_view__ui_determinate(cases_ready, cases_total, width),
-                sprintf("ready %d", cases_ready),
-                sprintf("missing %d", max(0L, cases_total - cases_ready))
-            ),
-            collapse = " \u00b7 "
-        )
-        return(shift_ui_view__ui_labeled_lines("Cases", value, width))
+        return(labeled(
+            "Cases",
+            shift_ui_view__ui_determinate(cases_ready, cases_total, width),
+            sprintf("ready %d", cases_ready),
+            sprintf("missing %d", max(0L, cases_total - cases_ready))
+        ))
     }
     if (identical(stage, "morph")) {
         completed <- if (!is.na(current)) as.integer(current) else 0L
         target <- if (!is.na(total)) as.integer(total) else cases_ready
-        value <- shift_stage__coalesce(
-            shift_ui_view__ui_determinate(completed, target, width),
-            sprintf("%d/%d", completed, target)
-        )
-        return(shift_ui_view__ui_labeled_lines("Cases", value, width))
+        return(labeled(
+            "Cases",
+            shift_stage__coalesce(
+                shift_ui_view__ui_determinate(completed, target, width),
+                sprintf("%d/%d", completed, target)
+            )
+        ))
     }
     if (identical(stage, "write_epw")) {
         current_case <- if (!is.na(current)) as.integer(current) else outputs
         target <- if (!is.na(total)) as.integer(total) else cases_total
-        value <- paste(
-            c(
-                shift_ui_view__ui_determinate(current_case, target, width),
-                sprintf("exported %d files", outputs)
-            ),
-            collapse = " \u00b7 "
-        )
-        return(shift_ui_view__ui_labeled_lines("EPWs", value, width))
+        return(labeled(
+            "EPWs",
+            shift_ui_view__ui_determinate(current_case, target, width),
+            sprintf("exported %d files", outputs)
+        ))
     }
-
     if (is.null(plan_context$selection)) {
         return(character())
     }
-    value <- paste(plan_context$selection, collapse = " \u00b7 ")
-    shift_ui_view__ui_labeled_lines("Status", value, width)
+    labeled("Status", plan_context$selection)
 }
 # }}}
 
@@ -1803,52 +1836,24 @@ shift_ui_view__ui_status_lines <- function(
         character(1L),
         width = content_width
     )
-    if (!isTRUE(panel)) {
-        return(c(header, plan_lines, workflow, context))
-    }
-    c(
-        shift_ui_view__ui_panel_rule(header, width, "top"),
-        vapply(
-            plan_lines,
-            shift_ui_view__ui_panel_line,
-            character(1L),
-            width = width
-        ),
-        if (length(workflow)) {
-            c(
-                shift_ui_view__ui_panel_rule(
-                    cli::style_bold("Workflow"),
-                    width,
-                    "middle"
-                ),
-                vapply(
-                    workflow,
-                    shift_ui_view__ui_panel_line,
-                    character(1L),
-                    width = width
-                )
-            )
-        },
-        shift_ui_view__ui_panel_rule(
-            cli::style_bold(
-                if (isTRUE(terminal_problem)) {
+    shift_ui_view__ui_panel_box(
+        header,
+        list(
+            list(title = NULL, lines = plan_lines),
+            list(title = "Workflow", lines = workflow, omit_if_empty = TRUE),
+            list(
+                title = if (isTRUE(terminal_problem)) {
                     "Diagnosis"
                 } else if (isTRUE(terminal_result)) {
                     "Results"
                 } else {
                     "Activity"
-                }
-            ),
-            width,
-            "middle"
+                },
+                lines = context
+            )
         ),
-        vapply(
-            context,
-            shift_ui_view__ui_panel_line,
-            character(1L),
-            width = width
-        ),
-        shift_ui_view__ui_panel_rule(width = width, kind = "bottom")
+        width = width,
+        panel = panel
     )
 }
 # }}}
@@ -2032,28 +2037,50 @@ shift_ui_view__ui_compact_line <- function(
 }
 # }}}
 
+# Format byte counts with either binary IEC (KiB/MiB) or CLI (KB/MB) labels.
+# shift_ui_view__format_bytes {{{
+shift_ui_view__format_bytes <- function(x, binary = TRUE, na = "?") {
+    if (is.null(x) || !length(x)) {
+        return(na)
+    }
+    bytes <- suppressWarnings(as.numeric(x))
+    out <- rep(na, length(bytes))
+    ok <- !is.na(bytes) & is.finite(bytes)
+    if (!any(ok)) {
+        return(out)
+    }
+    units <- if (isTRUE(binary)) {
+        c("B", "KiB", "MiB", "GiB", "TiB")
+    } else {
+        c("B", "KB", "MB", "GB", "TB", "PB")
+    }
+    for (i in which(ok)) {
+        value <- bytes[[i]]
+        unit <- 1L
+        if (!isTRUE(binary) || value > 0) {
+            while (abs(value) >= 1024 && unit < length(units)) {
+                value <- value / 1024
+                unit <- unit + 1L
+            }
+        }
+        out[[i]] <- sprintf(
+            if (unit == 1L) "%.0f %s" else "%.1f %s",
+            value,
+            units[[unit]]
+        )
+    }
+    out
+}
+# }}}
+
 # Format byte counts locally so workflow UI does not depend on units objects or
 # on the downloader's table renderer.
 # shift_ui_view__ui_bytes {{{
 shift_ui_view__ui_bytes <- function(bytes) {
-    if (is.null(bytes) || !length(bytes)) {
-        return("?")
-    }
-    bytes <- suppressWarnings(as.numeric(bytes[[1L]]))
-    if (!length(bytes) || is.na(bytes) || !is.finite(bytes)) {
-        return("?")
-    }
-    labels <- c("B", "KiB", "MiB", "GiB", "TiB")
-    power <- if (bytes <= 0) {
-        0L
-    } else {
-        min(floor(log(bytes, 1024)), length(labels) - 1L)
-    }
-    value <- bytes / (1024^power)
-    sprintf(
-        if (power == 0L) "%.0f %s" else "%.1f %s",
-        value,
-        labels[[power + 1L]]
+    shift_ui_view__format_bytes(
+        if (length(bytes)) bytes[[1L]] else NULL,
+        binary = TRUE,
+        na = "?"
     )
 }
 # }}}
@@ -2123,6 +2150,36 @@ shift_ui_view__ui_error_kind <- function(message) {
 }
 # }}}
 
+# Measure the widest display cell after substituting missing values with dashes.
+# shift_ui_view__display_max {{{
+shift_ui_view__display_max <- function(x) {
+    x <- as.character(x)
+    x[is.na(x) | !nzchar(x)] <- "\u2014"
+    max(cli::ansi_nchar(x, type = "width"))
+}
+# }}}
+
+# Format one indented compact table row from column values and fixed widths.
+# shift_ui_view__table_row {{{
+shift_ui_view__table_row <- function(values, sizes, width) {
+    shift_ui_view__ui_fit(
+        paste0(
+            "  ",
+            paste(
+                mapply(
+                    shift_ui_view__ui_cell,
+                    values,
+                    sizes,
+                    USE.NAMES = FALSE
+                ),
+                collapse = "  "
+            )
+        ),
+        width
+    )
+}
+# }}}
+
 # Format resolver attempts as a width-safe table. Normal output uses stable
 # short outcomes; detail and debug retain the complete persisted exception.
 # shift_ui_view__ui_node_table {{{
@@ -2136,14 +2193,10 @@ shift_ui_view__ui_node_table <- function(
         return(character())
     }
     width <- shift_ui__ui_width(width)
-    # Persisted resolver events may omit counts or labels. Replace missing cells
-    # before measuring widths so the table remains stable.
-    shift__display_max <- function(x) {
-        x <- as.character(x)
-        x[is.na(x) | !nzchar(x)] <- "\u2014"
-        max(cli::ansi_nchar(x, type = "width"))
-    }
-    node_width <- min(12L, max(4L, shift__display_max(c("Node", rows$node))))
+    node_width <- min(
+        12L,
+        max(4L, shift_ui_view__display_max(c("Node", rows$node)))
+    )
     include_counts <- width >= 56L
     include_duration <- width >= 72L && "duration" %in% names(rows)
     columns <- c("Node")
@@ -2159,44 +2212,24 @@ shift_ui_view__ui_node_table <- function(
     result_width <- max(1L, width - 2L - sum(sizes) - 2L * length(sizes))
     columns <- c(columns, "Result")
     sizes <- c(sizes, result_width)
-    row_line <- function(values) {
-        shift_ui_view__ui_fit(
-            paste0(
-                "  ",
-                paste(
-                    mapply(
-                        shift_ui_view__ui_cell,
-                        values,
-                        sizes,
-                        USE.NAMES = FALSE
-                    ),
-                    collapse = "  "
-                )
-            ),
-            width
-        )
-    }
     lines <- c(
         cli::style_bold("Resolver attempts"),
-        cli::style_dim(row_line(columns))
+        cli::style_dim(shift_ui_view__table_row(columns, sizes, width))
     )
     for (i in seq_len(nrow(rows))) {
-        values <- c(rows$node[[i]])
-        if (include_counts) {
-            values <- c(values, rows$future[[i]], rows$reference[[i]])
-        }
-        if (include_duration) {
-            values <- c(values, rows$duration[[i]])
-        }
-        result <- if (identical(detail, "normal")) {
-            shift_ui_view__ui_node_result_short(as.list(rows[i]))
-        } else {
-            # Persisted cli conditions may carry semantic ANSI styling that is
-            # misleading after truncation; the table applies its own outcomes.
-            cli::ansi_strip(rows$result[[i]])
-        }
-        values <- c(values, result)
-        lines <- c(lines, row_line(values))
+        values <- c(
+            rows$node[[i]],
+            if (include_counts) c(rows$future[[i]], rows$reference[[i]]),
+            if (include_duration) rows$duration[[i]],
+            if (identical(detail, "normal")) {
+                shift_ui_view__ui_node_result_short(as.list(rows[i]))
+            } else {
+                # Persisted cli conditions may carry semantic ANSI styling that is
+                # misleading after truncation; the table applies its own outcomes.
+                cli::ansi_strip(rows$result[[i]])
+            }
+        )
+        lines <- c(lines, shift_ui_view__table_row(values, sizes, width))
     }
     vapply(lines, shift_ui_view__ui_fit, character(1L), width = width)
 }
@@ -2244,9 +2277,7 @@ shift_ui_view__ui_case_table <- function(
         for (index in seq_len(nrow(rows))) {
             values <- vapply(
                 columns,
-                function(column) {
-                    as.character(rows[[column]][[index]])
-                },
+                function(column) as.character(rows[[column]][[index]]),
                 character(1L)
             )
             lines <- c(
@@ -2276,42 +2307,24 @@ shift_ui_view__ui_case_table <- function(
         return(lines)
     }
     width <- shift_ui__ui_width(width)
-    scenario <- if ("experiment_id" %in% names(rows)) {
-        rows$experiment_id
-    } else {
-        rep("\u2014", nrow(rows))
+    col_or <- function(name, default = "\u2014") {
+        if (name %in% names(rows)) rows[[name]] else rep(default, nrow(rows))
     }
-    period <- if ("period" %in% names(rows)) {
-        rows$period
-    } else {
-        rep("\u2014", nrow(rows))
-    }
-    member <- if ("variant_label" %in% names(rows)) {
-        rows$variant_label
-    } else {
-        rep("\u2014", nrow(rows))
-    }
-    status <- if ("status" %in% names(rows)) {
-        rows$status
-    } else {
-        rep("unknown", nrow(rows))
-    }
+    scenario <- col_or("experiment_id")
+    period <- col_or("period")
+    member <- col_or("variant_label")
+    status <- col_or("status", "unknown")
     include_member <- width >= 68L
-    # Planned cases legitimately carry unresolved member/grid values. Replace
-    # them before measuring columns so NA cannot propagate into ansi_align() as
-    # a literal "NA" suffix in the static dashboard table.
-    shift__display_max <- function(x) {
-        x <- as.character(x)
-        x[is.na(x) | !nzchar(x)] <- "\u2014"
-        max(cli::ansi_nchar(x, type = "width"))
-    }
     scenario_width <- min(
         14L,
-        max(8L, shift__display_max(c("Scenario", scenario)))
+        max(8L, shift_ui_view__display_max(c("Scenario", scenario)))
     )
-    period_width <- min(12L, max(6L, shift__display_max(c("Period", period))))
+    period_width <- min(
+        12L,
+        max(6L, shift_ui_view__display_max(c("Period", period)))
+    )
     member_width <- if (include_member) {
-        min(14L, max(6L, shift__display_max(c("Member", member))))
+        min(14L, max(6L, shift_ui_view__display_max(c("Member", member))))
     } else {
         0L
     }
@@ -2320,52 +2333,31 @@ shift_ui_view__ui_case_table <- function(
         member_width +
         if (include_member) 10L else 7L
     status_width <- max(10L, width - fixed)
-    header <- if (include_member) {
-        sprintf(
-            "  %s  %s  %s  %s",
-            shift_ui_view__ui_cell("Scenario", scenario_width),
-            shift_ui_view__ui_cell("Period", period_width),
-            shift_ui_view__ui_cell("Member", member_width),
-            shift_ui_view__ui_cell("Status", status_width)
-        )
-    } else {
-        sprintf(
-            "  %s  %s  %s",
-            shift_ui_view__ui_cell("Scenario", scenario_width),
-            shift_ui_view__ui_cell("Period", period_width),
-            shift_ui_view__ui_cell("Status", status_width)
-        )
-    }
-    lines <- c("Cases", header)
+    columns <- c("Scenario", "Period", if (include_member) "Member", "Status")
+    sizes <- c(
+        scenario_width,
+        period_width,
+        if (include_member) member_width,
+        status_width
+    )
+    lines <- c("Cases", shift_ui_view__table_row(columns, sizes, width))
     for (i in seq_len(nrow(rows))) {
-        value <- status[[i]]
-        line <- if (include_member) {
-            sprintf(
-                "  %s  %s  %s  %s",
-                shift_ui_view__ui_cell(scenario[[i]], scenario_width),
-                shift_ui_view__ui_cell(period[[i]], period_width),
-                shift_ui_view__ui_cell(member[[i]], member_width),
-                shift_ui_view__ui_cell(value, status_width)
-            )
-        } else {
-            sprintf(
-                "  %s  %s  %s",
-                shift_ui_view__ui_cell(scenario[[i]], scenario_width),
-                shift_ui_view__ui_cell(period[[i]], period_width),
-                shift_ui_view__ui_cell(value, status_width)
-            )
-        }
-        lines <- c(lines, line)
+        values <- c(
+            scenario[[i]],
+            period[[i]],
+            if (include_member) member[[i]],
+            status[[i]]
+        )
+        lines <- c(lines, shift_ui_view__table_row(values, sizes, width))
         if (
             !identical(detail, "normal") &&
                 "missing_reason" %in% names(rows) &&
                 !is.na(rows$missing_reason[[i]]) &&
                 nzchar(rows$missing_reason[[i]])
         ) {
-            reason_width <- max(1L, width - 4L)
             wrapped <- cli::ansi_strwrap(
                 rows$missing_reason[[i]],
-                width = reason_width
+                width = max(1L, width - 4L)
             )
             lines <- c(lines, paste0("    ", wrapped))
         }

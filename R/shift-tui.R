@@ -116,43 +116,7 @@ ShiftFrameRenderer <- R6::R6Class(
         # path so its final receipt remains visible after live animation stops.
         # commit {{{
         commit = function(result = c("done", "failed", "cancelled")) {
-            result <- match.arg(result)
-            if (isTRUE(private$closed)) {
-                return(invisible(NULL))
-            }
-            if (identical(private$backend_value, "compact")) {
-                private$close_compact(
-                    if (identical(result, "done")) {
-                        "done"
-                    } else {
-                        "failed"
-                    }
-                )
-            } else {
-                # Oversized receipts are written once into scrollback after
-                # clearing the bounded live row. Keep every output path even
-                # when the terminal cannot repaint the complete receipt.
-                if (isTRUE(private$frame_compacted)) {
-                    private$clear_frame()
-                    private$write(paste0(
-                        paste(private$last_frame, collapse = "\n"),
-                        "\n"
-                    ))
-                } else if (isTRUE(private$active_value)) {
-                    # A full frame is already visible; release its final row.
-                    private$write("\n")
-                }
-                if (isTRUE(private$cursor_hidden)) {
-                    try(cli::ansi_show_cursor(private$output), silent = TRUE)
-                    private$cursor_hidden <- FALSE
-                }
-            }
-            private$closed <- TRUE
-            private$active_value <- FALSE
-            private$painted_lines <- 0L
-            private$last_frame <- character()
-            private$last_compact <- NULL
-            invisible(NULL)
+            private$teardown(match.arg(result), preserve = TRUE)
         },
         # }}}
 
@@ -160,30 +124,7 @@ ShiftFrameRenderer <- R6::R6Class(
         # interrupt path may call close(), so cleanup must remain idempotent.
         # close {{{
         close = function(result = c("done", "failed", "cancelled")) {
-            result <- match.arg(result)
-            if (isTRUE(private$closed)) {
-                return(invisible(NULL))
-            }
-            if (identical(private$backend_value, "compact")) {
-                private$close_compact(
-                    if (identical(result, "done")) {
-                        "done"
-                    } else {
-                        "failed"
-                    }
-                )
-            } else {
-                private$clear_frame()
-                if (isTRUE(private$cursor_hidden)) {
-                    try(cli::ansi_show_cursor(private$output), silent = TRUE)
-                    private$cursor_hidden <- FALSE
-                }
-            }
-            private$closed <- TRUE
-            private$active_value <- FALSE
-            private$last_frame <- character()
-            private$last_compact <- NULL
-            invisible(NULL)
+            private$teardown(match.arg(result), preserve = FALSE)
         },
         # }}}
 
@@ -356,6 +297,46 @@ ShiftFrameRenderer <- R6::R6Class(
         },
         # }}}
 
+        # Shared idempotent teardown for commit() and close().
+        # teardown {{{
+        teardown = function(result, preserve = FALSE) {
+            if (isTRUE(private$closed)) {
+                return(invisible(NULL))
+            }
+            if (identical(private$backend_value, "compact")) {
+                private$close_compact(
+                    if (identical(result, "done")) "done" else "failed"
+                )
+            } else {
+                if (isTRUE(preserve)) {
+                    # Oversized receipts are written once into scrollback after
+                    # clearing the bounded live row so every output path survives.
+                    if (isTRUE(private$frame_compacted)) {
+                        private$clear_frame()
+                        private$write(paste0(
+                            paste(private$last_frame, collapse = "\n"),
+                            "\n"
+                        ))
+                    } else if (isTRUE(private$active_value)) {
+                        private$write("\n")
+                    }
+                } else {
+                    private$clear_frame()
+                }
+                if (isTRUE(private$cursor_hidden)) {
+                    try(cli::ansi_show_cursor(private$output), silent = TRUE)
+                    private$cursor_hidden <- FALSE
+                }
+            }
+            private$closed <- TRUE
+            private$active_value <- FALSE
+            private$painted_lines <- 0L
+            private$last_frame <- character()
+            private$last_compact <- NULL
+            invisible(NULL)
+        },
+        # }}}
+
         # Close a compact cli bar defensively because an IDE may already have
         # removed it while processing another top-level console operation.
         # close_compact {{{
@@ -448,6 +429,153 @@ shift_tui__ui_renderer <- function(
         return(NULL)
     }
     ShiftFrameRenderer$new(output = output, backend = backend, writer = writer)
+}
+# }}}
+
+# Shared watch/follow state machine for R single-run, R batch, and CLI watch
+# loops. Owns renderer lifecycle, dynamic-to-log fallback, lossless event-delta
+# emission, poll vs animation cadence, count limits, and clean interrupt exits.
+# shift_tui__watch_loop {{{
+shift_tui__watch_loop <- function(
+    poll,
+    is_done,
+    render_view,
+    print_view,
+    ui = shift_ui(),
+    interval = 1,
+    event_delta = NULL,
+    initial_cursor = NA_character_,
+    gap_message = paste(
+        "Some older workflow events are no longer available",
+        "in the live buffer; continuing from its oldest event."
+    ),
+    on_interrupt = NULL,
+    on_poll = NULL,
+    max_polls = Inf,
+    animate = TRUE,
+    now_fn = shift_job__watch_now,
+    sleep_fn = shift_job__watch_sleep
+) {
+    mode <- shift_ui__ui_mode(ui)
+    motion <- shift_ui__ui_motion(ui, mode)
+    renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(e) NULL)
+    if (identical(mode, "dynamic") && is.null(renderer)) {
+        mode <- "log"
+        motion <- "none"
+    }
+    close_renderer <- function(result = "done") {
+        if (!is.null(renderer)) {
+            renderer$close(result = result)
+            renderer <<- NULL
+        }
+        invisible(NULL)
+    }
+    on.exit(close_renderer(), add = TRUE)
+    sleep_interval <- function() {
+        if (isTRUE(animate) && identical(mode, "dynamic")) {
+            if (identical(motion, "full")) {
+                return(ui@refresh)
+            }
+            if (identical(motion, "reduced")) {
+                return(max(1, ui@refresh))
+            }
+        }
+        interval
+    }
+    frame <- 0L
+    polls <- 0L
+    first <- TRUE
+    last_poll <- as.POSIXct(NA)
+    cursor <- initial_cursor
+    cursor_initialized <- FALSE
+    snapshot <- NULL
+    tryCatch(
+        repeat {
+            now <- now_fn()
+            poll_due <- isTRUE(first) ||
+                is.na(last_poll) ||
+                as.numeric(difftime(now, last_poll, units = "secs")) >= interval
+            if (isTRUE(poll_due)) {
+                polls <- polls + 1L
+                snapshot <- poll(polls)
+                last_poll <- now
+            }
+            done <- isTRUE(is_done(snapshot, polls))
+            if (isTRUE(poll_due) && is.function(on_poll)) {
+                on_poll(snapshot, first = first, done = done)
+            }
+            if (
+                identical(mode, "log") &&
+                    isTRUE(poll_due) &&
+                    is.function(event_delta)
+            ) {
+                delta <- event_delta(
+                    snapshot,
+                    cursor,
+                    initial = !cursor_initialized
+                )
+                if (isTRUE(cursor_initialized)) {
+                    if (isTRUE(delta$gap) && !is.null(gap_message)) {
+                        cli::cli_alert_info(gap_message)
+                    }
+                    for (index in seq_len(nrow(delta$rows))) {
+                        cli::cli_text(
+                            "{shift_ui_view__ui_persisted_event_line(delta$rows[index], detail = ui@detail)}"
+                        )
+                    }
+                }
+                cursor <- delta$cursor
+                cursor_initialized <- TRUE
+            }
+            if (isTRUE(done)) {
+                close_renderer(result = "done")
+                if (!identical(mode, "none")) {
+                    print_view(snapshot, final = TRUE)
+                }
+                break
+            }
+            frame <- frame + 1L
+            if (identical(mode, "dynamic")) {
+                view <- render_view(snapshot, motion = motion, frame = frame)
+                if (
+                    !isTRUE(renderer$draw(view$lines, compact = view$compact))
+                ) {
+                    close_renderer(result = "failed")
+                    mode <- "log"
+                    motion <- "none"
+                    print_view(snapshot, final = FALSE)
+                    if (is.function(event_delta)) {
+                        cursor <- event_delta(
+                            snapshot,
+                            cursor,
+                            initial = TRUE
+                        )$cursor
+                        cursor_initialized <- TRUE
+                    }
+                }
+            } else if (
+                identical(mode, "log") && isTRUE(poll_due) && isTRUE(first)
+            ) {
+                print_view(snapshot, final = FALSE)
+            }
+            first <- FALSE
+            if (!is.infinite(max_polls) && polls >= max_polls) {
+                if (identical(mode, "dynamic")) {
+                    close_renderer(result = "done")
+                    print_view(snapshot, final = TRUE)
+                }
+                break
+            }
+            sleep_fn(sleep_interval())
+        },
+        interrupt = function(error) {
+            close_renderer(result = "cancelled")
+            if (is.function(on_interrupt)) {
+                on_interrupt(mode)
+            }
+        }
+    )
+    invisible(snapshot)
 }
 # }}}
 

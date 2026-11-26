@@ -61,35 +61,25 @@ epwshiftr_cli_render <- function(result, context = NULL) {
     if (is.character(result)) {
         return(epwshiftr_cli_render_help(result))
     }
-    group <- context$group
+    group <- shift_stage__coalesce(context$group, "")
     command <- context$command
     action <- context$action
-
-    if (identical(group, "doctor")) {
-        return(epwshiftr_cli_render_doctor(result))
-    }
-    if (identical(group, "query")) {
-        return(epwshiftr_cli_render_query(result, command, context = context))
-    }
-    if (identical(group, "download")) {
-        return(epwshiftr_cli_render_download(result, command, action))
-    }
-    if (identical(group, "esgf") && identical(command, "report")) {
-        return(epwshiftr_cli_render_esgf_report(result))
-    }
-    if (identical(group, "storage")) {
-        return(epwshiftr_cli_render_storage(result, command, action))
-    }
-    if (identical(group, "shift")) {
-        return(epwshiftr_cli_render_shift(result, command))
-    }
-    if (identical(group, "extract")) {
-        return(epwshiftr_cli_render_extract(result, command))
-    }
-    if (identical(group, "morph")) {
-        return(epwshiftr_cli_render_morph(result, command))
-    }
-    epwshiftr_cli_render_default(result)
+    switch(
+        group,
+        doctor = epwshiftr_cli_render_doctor(result),
+        query = epwshiftr_cli_render_query(result, command, context = context),
+        download = epwshiftr_cli_render_download(result, command, action),
+        esgf = if (identical(command, "report")) {
+            epwshiftr_cli_render_esgf_report(result)
+        } else {
+            epwshiftr_cli_render_default(result)
+        },
+        storage = epwshiftr_cli_render_storage(result, command, action),
+        shift = epwshiftr_cli_render_shift(result, command),
+        extract = epwshiftr_cli_render_extract(result, command),
+        morph = epwshiftr_cli_render_morph(result, command),
+        epwshiftr_cli_render_default(result)
+    )
 }
 # }}}
 
@@ -102,35 +92,282 @@ epwshiftr_cli_render_help <- function(lines) {
 }
 # }}}
 
+# Split a space-delimited column specification into a character vector.
+# cli_render__cols {{{
+cli_render__cols <- function(x) {
+    if (is.null(x)) {
+        return(NULL)
+    }
+    if (length(x) > 1L) {
+        return(x)
+    }
+    strsplit(x, " ", fixed = TRUE)[[1L]]
+}
+# }}}
+
+# Build one declarative table spec entry for CLI_RENDER_SPECS.
+# cli_render__table_spec {{{
+cli_render__table_spec <- function(
+    title,
+    columns = NULL,
+    field = NULL,
+    show_types = TRUE,
+    optional = FALSE
+) {
+    list(
+        field = field,
+        title = title,
+        columns = cli_render__cols(columns),
+        show_types = show_types,
+        optional = optional
+    )
+}
+# }}}
+
+# Shared column presets for declarative CLI table renderers.
+CLI_RENDER_COLS_OUTPUTS <- cli_render__cols(
+    "path case_id source_id experiment_id variant_label period morph_id"
+)
+CLI_RENDER_COLS_CASES <- cli_render__cols(
+    "status source_id experiment_id variant_label grid_label period missing_reason"
+)
+CLI_RENDER_COLS_DOWNLOAD_TASKS <- cli_render__cols(
+    "status filename bytes_done size speed_bps eta_seconds attempts last_error job_id session_id task_id file_key"
+)
+CLI_RENDER_COLS_NODES <- cli_render__cols(
+    "data_node service failure_rate failure_count success_count last_latency cooldown_until"
+)
+CLI_RENDER_COLS_CHANGES <- cli_render__cols(
+    "change_type filename size version data_node file_key query_id"
+)
+CLI_RENDER_COLS_STORAGE_FILE <- cli_render__cols("relative_path size mtime")
+
+# Declarative lookup table for static (group, command) table views, aliases,
+# and fallback titles. Multi-section views use cli_render__render_sections().
+CLI_RENDER_SPECS <- list(
+    aliases = c(
+        "download:events" = "download:logs",
+        "download:stop" = "download:jobs",
+        "download:tasks" = "download:status",
+        "download:reset-nodes" = "download:nodes"
+    ),
+    tables = list(
+        "query:list" = cli_render__table_spec(
+            "Stored ESGF queries",
+            "query_id label tracked last_checked_at created_at updated_at"
+        ),
+        "query:preview" = cli_render__table_spec(
+            "Query update preview",
+            "query_id label file_total current_count new_count changed_count stale_count"
+        ),
+        "query:update" = cli_render__table_spec(
+            "Query updates",
+            "query_id label new_count changed_count stale_count file_total created_at update_id"
+        ),
+        "download:logs" = cli_render__table_spec(
+            "Download events",
+            "line message created_at event status error data_node job_id session_id task_id file_key"
+        ),
+        "download:jobs" = cli_render__table_spec(
+            "Download jobs",
+            "status mode bytes_done bytes_total speed_bps active_task_count job_id pid error created_at updated_at"
+        ),
+        "download:daemon" = cli_render__table_spec(
+            "Download daemon",
+            "status daemon_id pid port heartbeat_at error started_at stopped_at"
+        ),
+        "download:status" = cli_render__table_spec(
+            "Download tasks",
+            CLI_RENDER_COLS_DOWNLOAD_TASKS
+        ),
+        "download:sessions" = cli_render__table_spec(
+            "Download sessions",
+            "session_id status task_count label created_at finished_at started_at"
+        ),
+        "download:nodes" = cli_render__table_spec(
+            "Data nodes",
+            c(CLI_RENDER_COLS_NODES, "dry_run")
+        ),
+        "extract:plan" = cli_render__table_spec(
+            "Extraction plan",
+            "plan_id status query_id file_key site_id variable_id time_start time_stop"
+        ),
+        "extract:run" = cli_render__table_spec(
+            "Extraction run",
+            "plan_id status query_id site_id variable_id attempt_count last_error updated_at"
+        ),
+        "extract:retry" = cli_render__table_spec(
+            "Extraction retry",
+            "plan_id status query_id site_id variable_id attempt_count last_error dry_run"
+        ),
+        "extract:coverage" = cli_render__table_spec(
+            "Extraction coverage",
+            "plan_id complete status query_id site_id variable_id output_rows output_time_count last_error"
+        ),
+        "extract:artifacts" = cli_render__table_spec(
+            "Extraction artifacts",
+            "artifact_id kind role relative_path path created_at"
+        ),
+        "morph:variables" = cli_render__table_spec(
+            "Morph variables",
+            "variable_id"
+        ),
+        "morph:backends" = cli_render__table_spec(
+            "Morph backends",
+            "backend label required_variables methods"
+        ),
+        "morph:epw" = cli_render__table_spec(
+            "Morph EPW outputs",
+            CLI_RENDER_COLS_OUTPUTS
+        ),
+        "morph:retry" = cli_render__table_spec(
+            "Morph retry",
+            "morph_id status label summary_id reference_summary_id baseline_id strict last_error dry_run case_id row_count output_path"
+        ),
+        "morph:status" = cli_render__table_spec(
+            "Morph status",
+            "morph_id status label strict summary_id reference_summary_id baseline_id updated_at last_error"
+        ),
+        "morph:outputs" = cli_render__table_spec(
+            "Morph outputs",
+            CLI_RENDER_COLS_OUTPUTS
+        )
+    ),
+    titles = list(
+        query = c(
+            status = "Query status",
+            files = "Query files",
+            updates = "Query updates",
+            changes = "Query changes",
+            tags = "Query tags",
+            track = "Query tracking",
+            untrack = "Query tracking",
+            tag = "Query tags",
+            untag = "Query tags",
+            remove = "Query removal",
+            .default = "Query result"
+        ),
+        download = c(
+            run = "Download run",
+            resume = "Download resume",
+            verify = "Download verification",
+            cancel = "Download cancellation",
+            retry = "Download retry",
+            .default = "Download result"
+        ),
+        storage = c(
+            repair = "Storage repair",
+            cleanup = "Storage cleanup",
+            .default = "Storage result"
+        ),
+        shift = c(
+            cancel = "Shift cancellation",
+            logs = "Shift job logs",
+            status = "Shift status",
+            diagnostics = "Shift diagnostics",
+            outputs = "Shift outputs",
+            data = "Shift data",
+            resume = "Shift resume",
+            .default = "Shift result"
+        ),
+        extract = c(.default = "Extraction result"),
+        morph = c(run = "Morph run", .default = "Morph result")
+    )
+)
+
+# Resolve the static fallback title for a CLI group/command pair.
+# cli_render__title {{{
+cli_render__title <- function(group, command) {
+    titles <- CLI_RENDER_SPECS$titles[[group]]
+    if (is.null(titles)) {
+        return(NULL)
+    }
+    if (!is.null(command) && command %in% names(titles)) {
+        return(unname(titles[[command]]))
+    }
+    unname(titles[[".default"]])
+}
+# }}}
+
+# Render a command whose human output is one declarative table specification.
+# cli_render__dispatch_table {{{
+cli_render__dispatch_table <- function(result, group, command) {
+    if (is.null(command)) {
+        return(FALSE)
+    }
+    key <- paste(group, command, sep = ":")
+    if (key %in% names(CLI_RENDER_SPECS$aliases)) {
+        key <- CLI_RENDER_SPECS$aliases[[key]]
+    }
+    spec <- CLI_RENDER_SPECS$tables[[key]]
+    if (is.null(spec)) {
+        return(FALSE)
+    }
+    epwshiftr_cli_render_table(
+        result,
+        title = spec$title,
+        columns = spec$columns,
+        show_types = shift_stage__coalesce(spec$show_types, TRUE)
+    )
+    TRUE
+}
+# }}}
+
+# Render a multi-section CLI view from a concise list of summary/table specs.
+# cli_render__render_sections {{{
+cli_render__render_sections <- function(
+    result,
+    heading = NULL,
+    summaries = list(),
+    tables = list()
+) {
+    if (!is.null(heading)) {
+        cli::cli_h1(heading)
+    }
+    for (spec in summaries) {
+        value <- if (!is.null(spec$fields)) {
+            result[intersect(cli_render__cols(spec$fields), names(result))]
+        } else {
+            result[[spec$field]]
+        }
+        if (isTRUE(spec$optional) && is.null(value)) {
+            next
+        }
+        epwshiftr_cli_render_summary(value, spec$title)
+    }
+    for (spec in tables) {
+        value <- result[[spec$field]]
+        if (isTRUE(spec$optional) && is.null(value)) {
+            next
+        }
+        epwshiftr_cli_render_table(
+            value,
+            title = spec$title,
+            columns = spec$columns,
+            show_types = shift_stage__coalesce(spec$show_types, TRUE)
+        )
+    }
+    invisible(NULL)
+}
+# }}}
+
 # epwshiftr_cli_render_doctor {{{
 epwshiftr_cli_render_doctor <- function(result) {
-    cli::cli_h1("epwshiftr doctor")
-    epwshiftr_cli_render_summary(result$summary, "Summary")
-    epwshiftr_cli_render_table(
-        result$checks,
-        title = "Checks",
-        columns = c("check", "status", "message", "detail")
+    cli_render__render_sections(
+        result,
+        heading = "epwshiftr doctor",
+        summaries = list(list(field = "summary", title = "Summary")),
+        tables = list(cli_render__table_spec(
+            "Checks",
+            "check status message detail",
+            field = "checks"
+        ))
     )
-    invisible(NULL)
 }
 # }}}
 
 # epwshiftr_cli_render_query {{{
 epwshiftr_cli_render_query <- function(result, command, context = NULL) {
-    if (identical(command, "list")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Stored ESGF queries",
-            columns = c(
-                "query_id",
-                "label",
-                "tracked",
-                "last_checked_at",
-                "created_at",
-                "updated_at"
-            )
-        ))
-    }
     if (identical(command, "search")) {
         if (is.list(result) && !is.data.frame(result)) {
             cli::cli_h1("ESGF search")
@@ -146,80 +383,38 @@ epwshiftr_cli_render_query <- function(result, command, context = NULL) {
             }
             return(invisible(NULL))
         }
-        columns <- epwshiftr_cli_query_search_columns(result, context)
         return(epwshiftr_cli_render_table(
             result,
             title = "ESGF search results",
-            columns = columns
+            columns = epwshiftr_cli_query_search_columns(result, context)
         ))
     }
-    if (identical(command, "preview")) {
-        if (is.list(result) && !is.data.frame(result)) {
-            cli::cli_h1("Query update preview")
-            epwshiftr_cli_render_summary(result$summary, "Summary")
-            epwshiftr_cli_render_table(
-                result$changes,
-                title = "Changes",
-                columns = c(
-                    "change_type",
-                    "filename",
-                    "size",
-                    "version",
-                    "data_node",
-                    "file_key",
-                    "query_id"
-                )
-            )
-            return(invisible(NULL))
-        }
-        return(epwshiftr_cli_render_table(
+    if (
+        identical(command, "preview") &&
+            is.list(result) &&
+            !is.data.frame(result)
+    ) {
+        return(cli_render__render_sections(
             result,
-            title = "Query update preview",
-            columns = c(
-                "query_id",
-                "label",
-                "file_total",
-                "current_count",
-                "new_count",
-                "changed_count",
-                "stale_count"
-            )
-        ))
-    }
-    if (identical(command, "update")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Query updates",
-            columns = c(
-                "query_id",
-                "label",
-                "new_count",
-                "changed_count",
-                "stale_count",
-                "file_total",
-                "created_at",
-                "update_id"
-            )
+            heading = "Query update preview",
+            summaries = list(list(field = "summary", title = "Summary")),
+            tables = list(cli_render__table_spec(
+                "Changes",
+                CLI_RENDER_COLS_CHANGES,
+                field = "changes"
+            ))
         ))
     }
     if (identical(command, "show")) {
         return(epwshiftr_cli_render_named_list(result, title = "Query"))
     }
-    title <- switch(
-        command,
-        status = "Query status",
-        files = "Query files",
-        updates = "Query updates",
-        changes = "Query changes",
-        tags = "Query tags",
-        track = "Query tracking",
-        untrack = "Query tracking",
-        tag = "Query tags",
-        untag = "Query tags",
-        remove = "Query removal",
-        "Query result"
+    if (cli_render__dispatch_table(result, "query", command)) {
+        return(invisible(NULL))
+    }
+    epwshiftr_cli_render_default(
+        result,
+        title = cli_render__title("query", command)
     )
-    epwshiftr_cli_render_default(result, title = title)
 }
 # }}}
 
@@ -229,16 +424,8 @@ epwshiftr_cli_query_search_columns <- function(result, context = NULL) {
     if (!is.null(columns)) {
         return(epwshiftr_cli_validate_display_columns(result, columns))
     }
-    c(
-        "title",
-        "filename",
-        "variable_id",
-        "experiment_id",
-        "source_id",
-        "data_node",
-        "size",
-        "id",
-        "dataset_id"
+    cli_render__cols(
+        "title filename variable_id experiment_id source_id data_node size id dataset_id"
     )
 }
 # }}}
@@ -264,111 +451,6 @@ epwshiftr_cli_render_download <- function(result, command, action = NULL) {
     if (identical(command, "watch")) {
         return(epwshiftr_cli_render_download_watch(result))
     }
-    if (identical(command, "logs") || identical(command, "events")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Download events",
-            columns = c(
-                "line",
-                "message",
-                "created_at",
-                "event",
-                "status",
-                "error",
-                "data_node",
-                "job_id",
-                "session_id",
-                "task_id",
-                "file_key"
-            )
-        ))
-    }
-    if (identical(command, "jobs") || identical(command, "stop")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Download jobs",
-            columns = c(
-                "status",
-                "mode",
-                "bytes_done",
-                "bytes_total",
-                "speed_bps",
-                "active_task_count",
-                "job_id",
-                "pid",
-                "error",
-                "created_at",
-                "updated_at"
-            )
-        ))
-    }
-    if (identical(command, "daemon")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Download daemon",
-            columns = c(
-                "status",
-                "daemon_id",
-                "pid",
-                "port",
-                "heartbeat_at",
-                "error",
-                "started_at",
-                "stopped_at"
-            )
-        ))
-    }
-    if (identical(command, "status") || identical(command, "tasks")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Download tasks",
-            columns = c(
-                "status",
-                "filename",
-                "bytes_done",
-                "size",
-                "speed_bps",
-                "eta_seconds",
-                "attempts",
-                "last_error",
-                "job_id",
-                "session_id",
-                "task_id",
-                "file_key"
-            )
-        ))
-    }
-    if (identical(command, "sessions")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Download sessions",
-            columns = c(
-                "session_id",
-                "status",
-                "task_count",
-                "label",
-                "created_at",
-                "finished_at",
-                "started_at"
-            )
-        ))
-    }
-    if (identical(command, "nodes") || identical(command, "reset-nodes")) {
-        return(epwshiftr_cli_render_table(
-            result,
-            title = "Data nodes",
-            columns = c(
-                "data_node",
-                "service",
-                "failure_rate",
-                "failure_count",
-                "success_count",
-                "last_latency",
-                "cooldown_until",
-                "dry_run"
-            )
-        ))
-    }
     if (identical(command, "config")) {
         return(epwshiftr_cli_render_named_list(
             result,
@@ -378,201 +460,109 @@ epwshiftr_cli_render_download <- function(result, command, action = NULL) {
             )
         ))
     }
-    title <- switch(
-        command,
-        run = "Download run",
-        resume = "Download resume",
-        verify = "Download verification",
-        cancel = "Download cancellation",
-        retry = "Download retry",
-        "Download result"
+    if (cli_render__dispatch_table(result, "download", command)) {
+        return(invisible(NULL))
+    }
+    epwshiftr_cli_render_default(
+        result,
+        title = cli_render__title("download", command)
     )
-    epwshiftr_cli_render_default(result, title = title)
 }
 # }}}
 
 # epwshiftr_cli_render_download_preflight {{{
 epwshiftr_cli_render_download_preflight <- function(result) {
-    cli::cli_h1("Download preflight")
-    epwshiftr_cli_render_summary(result$summary, "Summary")
-    epwshiftr_cli_render_table(
-        result$changes,
-        title = "Changes",
-        columns = c(
-            "change_type",
-            "filename",
-            "size",
-            "version",
-            "data_node",
-            "file_key"
+    cli_render__render_sections(
+        result,
+        heading = "Download preflight",
+        summaries = list(list(field = "summary", title = "Summary")),
+        tables = list(
+            cli_render__table_spec(
+                "Changes",
+                setdiff(CLI_RENDER_COLS_CHANGES, "query_id"),
+                field = "changes"
+            ),
+            cli_render__table_spec(
+                "Files",
+                "status filename size local_path file_key",
+                field = "files"
+            ),
+            cli_render__table_spec(
+                "Candidates",
+                "data_node priority probe_ok probe_latency probe_cached target_rel_path file_key url",
+                field = "candidates"
+            )
         )
     )
-    epwshiftr_cli_render_table(
-        result$files,
-        title = "Files",
-        columns = c("status", "filename", "size", "local_path", "file_key")
-    )
-    epwshiftr_cli_render_table(
-        result$candidates,
-        title = "Candidates",
-        columns = c(
-            "data_node",
-            "priority",
-            "probe_ok",
-            "probe_latency",
-            "probe_cached",
-            "target_rel_path",
-            "file_key",
-            "url"
-        )
-    )
-    invisible(NULL)
 }
 # }}}
 
 # epwshiftr_cli_render_download_watch {{{
 epwshiftr_cli_render_download_watch <- function(result) {
-    cli::cli_h1("Download activity")
-    epwshiftr_cli_render_summary(result$summary, "Summary")
-    if (!is.null(result$jobs)) {
-        epwshiftr_cli_render_table(
-            result$jobs,
-            title = "Jobs",
-            columns = c(
-                "status",
-                "mode",
-                "bytes_done",
-                "bytes_total",
-                "speed_bps",
-                "active_task_count",
-                "job_id",
-                "pid",
-                "error"
+    cli_render__render_sections(
+        result,
+        heading = "Download activity",
+        summaries = list(list(field = "summary", title = "Summary")),
+        tables = list(
+            cli_render__table_spec(
+                "Jobs",
+                "status mode bytes_done bytes_total speed_bps active_task_count job_id pid error",
+                field = "jobs",
+                optional = TRUE
+            ),
+            cli_render__table_spec(
+                "Tasks",
+                CLI_RENDER_COLS_DOWNLOAD_TASKS,
+                field = "tasks"
+            ),
+            cli_render__table_spec(
+                "Data nodes",
+                CLI_RENDER_COLS_NODES,
+                field = "nodes"
+            ),
+            cli_render__table_spec(
+                "Recent events",
+                "created_at event status error job_id session_id task_id file_key",
+                field = "events"
             )
         )
-    }
-    epwshiftr_cli_render_table(
-        result$tasks,
-        title = "Tasks",
-        columns = c(
-            "status",
-            "filename",
-            "bytes_done",
-            "size",
-            "speed_bps",
-            "eta_seconds",
-            "attempts",
-            "last_error",
-            "job_id",
-            "session_id",
-            "task_id",
-            "file_key"
-        )
     )
-    epwshiftr_cli_render_table(
-        result$nodes,
-        title = "Data nodes",
-        columns = c(
-            "data_node",
-            "service",
-            "failure_rate",
-            "failure_count",
-            "success_count",
-            "last_latency",
-            "cooldown_until"
-        )
-    )
-    epwshiftr_cli_render_table(
-        result$events,
-        title = "Recent events",
-        columns = c(
-            "created_at",
-            "event",
-            "status",
-            "error",
-            "job_id",
-            "session_id",
-            "task_id",
-            "file_key"
-        )
-    )
-    invisible(NULL)
 }
 # }}}
 
 # epwshiftr_cli_render_esgf_report {{{
 epwshiftr_cli_render_esgf_report <- function(result) {
-    cli::cli_h1("ESGF report")
-    epwshiftr_cli_render_table(
-        result$summary,
-        title = "Summary",
-        columns = c(
-            "query_id",
-            "label",
-            "tracked",
-            "file_total",
-            "current_count",
-            "local_count",
-            "bytes_missing",
-            "download_incomplete",
-            "download_retryable",
-            "last_download_session_id"
+    cli_render__render_sections(
+        result,
+        heading = "ESGF report",
+        tables = list(
+            cli_render__table_spec(
+                "Summary",
+                "query_id label tracked file_total current_count local_count bytes_missing download_incomplete download_retryable last_download_session_id",
+                field = "summary"
+            ),
+            cli_render__table_spec(
+                "Updates",
+                "query_id new_count changed_count stale_count file_total created_at update_id",
+                field = "updates"
+            ),
+            cli_render__table_spec(
+                "Changes",
+                CLI_RENDER_COLS_CHANGES,
+                field = "changes"
+            ),
+            cli_render__table_spec(
+                "Downloads",
+                "status filename bytes_done size last_error session_id task_id file_key",
+                field = "downloads"
+            ),
+            cli_render__table_spec(
+                "Data nodes",
+                CLI_RENDER_COLS_NODES,
+                field = "nodes"
+            )
         )
     )
-    epwshiftr_cli_render_table(
-        result$updates,
-        title = "Updates",
-        columns = c(
-            "query_id",
-            "new_count",
-            "changed_count",
-            "stale_count",
-            "file_total",
-            "created_at",
-            "update_id"
-        )
-    )
-    epwshiftr_cli_render_table(
-        result$changes,
-        title = "Changes",
-        columns = c(
-            "change_type",
-            "filename",
-            "size",
-            "version",
-            "data_node",
-            "file_key",
-            "query_id"
-        )
-    )
-    epwshiftr_cli_render_table(
-        result$downloads,
-        title = "Downloads",
-        columns = c(
-            "status",
-            "filename",
-            "bytes_done",
-            "size",
-            "last_error",
-            "session_id",
-            "task_id",
-            "file_key"
-        )
-    )
-    epwshiftr_cli_render_table(
-        result$nodes,
-        title = "Data nodes",
-        columns = c(
-            "data_node",
-            "service",
-            "failure_rate",
-            "failure_count",
-            "success_count",
-            "last_latency",
-            "cooldown_until"
-        )
-    )
-    invisible(NULL)
 }
 # }}}
 
@@ -580,74 +570,74 @@ epwshiftr_cli_render_esgf_report <- function(result) {
 epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
     if (identical(command, "report")) {
         if (is.list(result) && !is.data.frame(result)) {
-            cli::cli_h1("Storage report")
-            epwshiftr_cli_render_summary(result$summary, "Summary")
-            epwshiftr_cli_render_table(
-                result$downloads,
-                "Download files",
-                c("relative_path", "size", "mtime")
-            )
-            epwshiftr_cli_render_table(
-                result$registered,
-                "Registered files",
-                c("source", "file_key", "relative_path", "size")
-            )
-            epwshiftr_cli_render_table(
-                result$untracked_files,
-                "Untracked files",
-                c("relative_path", "size", "mtime")
-            )
-            epwshiftr_cli_render_table(
-                result$missing_records,
-                "Missing records",
-                c("source", "file_key", "relative_path", "size")
-            )
-            epwshiftr_cli_render_table(
-                result$tmp,
-                "Temporary files",
-                c("relative_path", "size", "mtime")
-            )
-            epwshiftr_cli_render_table(
-                result$orphan_records,
-                "Orphan records",
-                c("file_key", "filename", "size", "local_path")
-            )
-            return(invisible(NULL))
+            return(cli_render__render_sections(
+                result,
+                heading = "Storage report",
+                summaries = list(list(field = "summary", title = "Summary")),
+                tables = list(
+                    cli_render__table_spec(
+                        "Download files",
+                        CLI_RENDER_COLS_STORAGE_FILE,
+                        field = "downloads"
+                    ),
+                    cli_render__table_spec(
+                        "Registered files",
+                        "source file_key relative_path size",
+                        field = "registered"
+                    ),
+                    cli_render__table_spec(
+                        "Untracked files",
+                        CLI_RENDER_COLS_STORAGE_FILE,
+                        field = "untracked_files"
+                    ),
+                    cli_render__table_spec(
+                        "Missing records",
+                        "source file_key relative_path size",
+                        field = "missing_records"
+                    ),
+                    cli_render__table_spec(
+                        "Temporary files",
+                        CLI_RENDER_COLS_STORAGE_FILE,
+                        field = "tmp"
+                    ),
+                    cli_render__table_spec(
+                        "Orphan records",
+                        "file_key filename size local_path",
+                        field = "orphan_records"
+                    )
+                )
+            ))
         }
         return(epwshiftr_cli_render_summary(result, "Storage report"))
     }
     if (identical(command, "validate")) {
-        cli::cli_h1("Storage validation")
-        epwshiftr_cli_render_summary(result$summary, "Summary")
-        epwshiftr_cli_render_table(
-            result$files,
-            "Files",
-            c(
-                "file_key",
-                "filename",
-                "local_path",
-                "exists",
-                "size_ok",
-                "checksum_ok",
-                "layout_ok"
+        return(cli_render__render_sections(
+            result,
+            heading = "Storage validation",
+            summaries = list(list(field = "summary", title = "Summary")),
+            tables = list(
+                cli_render__table_spec(
+                    "Files",
+                    "file_key filename local_path exists size_ok checksum_ok layout_ok",
+                    field = "files"
+                ),
+                cli_render__table_spec(
+                    "Artifacts",
+                    "artifact_id file_key relative_path exists size_ok",
+                    field = "artifacts"
+                ),
+                cli_render__table_spec(
+                    "Untracked files",
+                    CLI_RENDER_COLS_STORAGE_FILE,
+                    field = "untracked"
+                ),
+                cli_render__table_spec(
+                    "Actions",
+                    "action target file_key from to reason",
+                    field = "actions"
+                )
             )
-        )
-        epwshiftr_cli_render_table(
-            result$artifacts,
-            "Artifacts",
-            c("artifact_id", "file_key", "relative_path", "exists", "size_ok")
-        )
-        epwshiftr_cli_render_table(
-            result$untracked,
-            "Untracked files",
-            c("relative_path", "size", "mtime")
-        )
-        epwshiftr_cli_render_table(
-            result$actions,
-            "Actions",
-            c("action", "target", "file_key", "from", "to", "reason")
-        )
-        return(invisible(NULL))
+        ))
     }
     if (identical(command, "layout")) {
         return(epwshiftr_cli_render_summary(
@@ -655,13 +645,10 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
             paste("Storage layout", epwshiftr_cli_string_default(action, ""))
         ))
     }
-    title <- switch(
-        command,
-        repair = "Storage repair",
-        cleanup = "Storage cleanup",
-        "Storage result"
+    epwshiftr_cli_render_default(
+        result,
+        title = cli_render__title("storage", command)
     )
-    epwshiftr_cli_render_default(result, title = title)
 }
 # }}}
 
@@ -684,56 +671,39 @@ epwshiftr_cli_render_shift <- function(result, command) {
         return(cli_shift__render_records(result, command))
     }
     if (identical(command, "run")) {
-        cli::cli_h1("Shift workflow")
-        if (!is.null(result$intent)) {
-            epwshiftr_cli_render_summary(result$intent, "Requested workflow")
-        }
-        epwshiftr_cli_render_summary(
-            result[intersect(
-                c(
-                    "status",
-                    "run_id",
-                    "query_id",
-                    "morph_id",
-                    "diagnostic_count"
+        return(cli_render__render_sections(
+            result,
+            heading = "Shift workflow",
+            summaries = list(
+                list(
+                    field = "intent",
+                    title = "Requested workflow",
+                    optional = TRUE
                 ),
-                names(result)
-            )],
-            "Summary"
-        )
-        epwshiftr_cli_render_table(
-            result$cases,
-            "Cases",
-            c(
-                "status",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "grid_label",
-                "period",
-                "missing_reason"
+                list(
+                    fields = "status run_id query_id morph_id diagnostic_count",
+                    title = "Summary"
+                )
+            ),
+            tables = list(
+                cli_render__table_spec(
+                    "Cases",
+                    CLI_RENDER_COLS_CASES,
+                    field = "cases"
+                ),
+                cli_render__table_spec(
+                    "Outputs",
+                    CLI_RENDER_COLS_OUTPUTS,
+                    field = "outputs"
+                ),
+                cli_render__table_spec(
+                    "Next steps",
+                    "step command",
+                    field = "next_steps",
+                    show_types = FALSE
+                )
             )
-        )
-        epwshiftr_cli_render_table(
-            result$outputs,
-            "Outputs",
-            c(
-                "path",
-                "case_id",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "period",
-                "morph_id"
-            )
-        )
-        epwshiftr_cli_render_table(
-            result$next_steps,
-            "Next steps",
-            c("step", "command"),
-            show_types = FALSE
-        )
-        return(invisible(NULL))
+        ))
     }
     if (identical(command, "show")) {
         return(epwshiftr_cli_render_shift_show(result))
@@ -744,18 +714,31 @@ epwshiftr_cli_render_shift <- function(result, command) {
     if (identical(command, "watch")) {
         return(epwshiftr_cli_render_shift_watch(result))
     }
-    title <- switch(
-        command,
-        cancel = "Shift cancellation",
-        logs = "Shift job logs",
-        status = "Shift status",
-        diagnostics = "Shift diagnostics",
-        outputs = "Shift outputs",
-        data = "Shift data",
-        resume = "Shift resume",
-        "Shift result"
+    epwshiftr_cli_render_default(
+        result,
+        title = cli_render__title("shift", command)
     )
-    epwshiftr_cli_render_default(result, title = title)
+}
+# }}}
+
+# Emit a named list of scalar fields as aligned labeled lines.
+# cli_render__emit_fields {{{
+cli_render__emit_fields <- function(values, width = shift_ui__ui_width()) {
+    for (name in names(values)) {
+        val <- values[[name]]
+        if (
+            is.null(val) ||
+                !length(val) ||
+                all(is.na(val)) ||
+                !nzchar(val[[1L]])
+        ) {
+            next
+        }
+        for (line in shift_ui_view__ui_labeled_lines(name, val, width)) {
+            cli::cli_verbatim(line)
+        }
+    }
+    invisible(NULL)
 }
 # }}}
 
@@ -768,6 +751,7 @@ cli_shift__render_history <- function(rows) {
         cli::cli_text("No matching saved workflows.")
         return(invisible(NULL))
     }
+    width <- shift_ui__ui_width()
     for (index in seq_len(nrow(rows))) {
         row <- rows[index]
         values <- list()
@@ -786,15 +770,7 @@ cli_shift__render_history <- function(rows) {
         if (!is.na(row$error)) {
             values$Failure <- row$error
         }
-        for (name in names(values)) {
-            for (line in shift_ui_view__ui_labeled_lines(
-                name,
-                values[[name]],
-                shift_ui__ui_width()
-            )) {
-                cli::cli_verbatim(line)
-            }
-        }
+        cli_render__emit_fields(values, width)
         cli::cli_verbatim("")
     }
     total <- shift_stage__coalesce(
@@ -896,18 +872,7 @@ cli_shift__render_summary <- function(rows) {
             )
             if (!is.na(row$weather_error)) values$Failure <- row$weather_error
         }
-        for (name in names(values)) {
-            if (is.na(values[[name]]) || !nzchar(values[[name]])) {
-                next
-            }
-            for (line in shift_ui_view__ui_labeled_lines(
-                name,
-                values[[name]],
-                shift_ui__ui_width()
-            )) {
-                cli::cli_verbatim(line)
-            }
-        }
+        cli_render__emit_fields(values)
         cli::cli_verbatim("")
     }
     invisible(NULL)
@@ -918,9 +883,9 @@ cli_shift__render_summary <- function(rows) {
 # when explicitly requested. Debug additionally exposes raw JSON payloads.
 # epwshiftr_cli_render_shift_show {{{
 epwshiftr_cli_render_shift_show <- function(result) {
-    cli::cli_h1("Shift workflow run")
     detail <- shift_stage__coalesce(attr(result, "shift_ui_detail"), "normal")
     if (!identical(detail, "normal")) {
+        cli::cli_h1("Shift workflow run")
         for (name in c(
             "run",
             "cases",
@@ -937,47 +902,44 @@ epwshiftr_cli_render_shift_show <- function(result) {
         }
         return(invisible(NULL))
     }
-    epwshiftr_cli_render_summary(result$run, "Run")
-    epwshiftr_cli_render_table(
-        result$cases,
-        "Cases",
-        c(
-            "status",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "grid_label",
-            "period",
-            "missing_reason"
-        ),
-        show_types = FALSE
+    cli_render__render_sections(
+        result,
+        heading = "Shift workflow run",
+        summaries = list(list(field = "run", title = "Run")),
+        tables = list(
+            list(
+                field = "cases",
+                title = "Cases",
+                columns = CLI_RENDER_COLS_CASES,
+                show_types = FALSE
+            ),
+            list(
+                field = "outputs",
+                title = "Outputs",
+                columns = c(
+                    "path",
+                    "export_path",
+                    "source_id",
+                    "experiment_id",
+                    "variant_label",
+                    "period"
+                ),
+                show_types = FALSE
+            ),
+            list(
+                field = "events",
+                title = "Events",
+                columns = c("created_at", "stage", "status", "message"),
+                show_types = FALSE
+            ),
+            list(
+                field = "diagnostics",
+                title = "Diagnostics",
+                columns = c("stage", "severity", "code", "message", "action"),
+                show_types = FALSE
+            )
+        )
     )
-    epwshiftr_cli_render_table(
-        result$outputs,
-        "Outputs",
-        c(
-            "path",
-            "export_path",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "period"
-        ),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$events,
-        "Events",
-        c("created_at", "stage", "status", "message"),
-        show_types = FALSE
-    )
-    epwshiftr_cli_render_table(
-        result$diagnostics,
-        "Diagnostics",
-        c("stage", "severity", "code", "message", "action"),
-        show_types = FALSE
-    )
-    invisible(NULL)
 }
 # }}}
 
@@ -999,19 +961,19 @@ cli_shift__render_detail_records <- function(rows, title, debug = FALSE) {
     }
     for (index in seq_len(nrow(rows))) {
         cli::cli_h3("{title} {index}/{nrow(rows)}")
-        for (field in fields) {
-            value <- paste(
-                epwshiftr_cli_format_named_cell(rows[[field]][index], field),
-                collapse = ", "
-            )
-            for (line in shift_ui_view__ui_labeled_lines(
-                epwshiftr_cli_title(field),
-                value,
-                width
-            )) {
-                cli::cli_verbatim(line)
-            }
-        }
+        values <- stats::setNames(
+            lapply(fields, function(field) {
+                paste(
+                    epwshiftr_cli_format_named_cell(
+                        rows[[field]][index],
+                        field
+                    ),
+                    collapse = ", "
+                )
+            }),
+            epwshiftr_cli_title(fields)
+        )
+        cli_render__emit_fields(values, width)
     }
     invisible(NULL)
 }
@@ -1039,24 +1001,31 @@ epwshiftr_cli_render_shift_config <- function(result) {
         return(invisible(NULL))
     }
     if (identical(result$action, "validate")) {
-        cli::cli_h1("Shift config validation")
-        epwshiftr_cli_render_summary(result$intent, "Requested workflow")
-        epwshiftr_cli_render_summary(
-            result[intersect(
-                c("status", "config", "validation", "readiness"),
-                names(result)
-            )],
-            "Summary"
-        )
-        epwshiftr_cli_render_table(result$cases, "Cases")
-        epwshiftr_cli_render_table(result$explain, "Plan")
-        epwshiftr_cli_render_table(result$selected_models, "Selected models")
-        epwshiftr_cli_render_table(
-            result$diagnostics,
-            "Readiness checks",
-            c("severity", "code", "message", "action")
-        )
-        return(invisible(NULL))
+        return(cli_render__render_sections(
+            result,
+            heading = "Shift config validation",
+            summaries = list(
+                list(field = "intent", title = "Requested workflow"),
+                list(
+                    fields = "status config validation readiness",
+                    title = "Summary"
+                )
+            ),
+            tables = list(
+                cli_render__table_spec("Cases", NULL, field = "cases"),
+                cli_render__table_spec("Plan", NULL, field = "explain"),
+                cli_render__table_spec(
+                    "Selected models",
+                    NULL,
+                    field = "selected_models"
+                ),
+                cli_render__table_spec(
+                    "Readiness checks",
+                    "severity code message action",
+                    field = "diagnostics"
+                )
+            )
+        ))
     }
     epwshiftr_cli_render_default(result, title = "Shift config")
 }
@@ -1088,104 +1057,44 @@ epwshiftr_cli_render_shift_watch <- function(
         ui_state = attr(result, "shift_ui_state")
     )
     shift_ui_view__ui_print_view(view, include_tables = TRUE)
-    epwshiftr_cli_render_table(
-        result$outputs,
-        "Outputs",
-        c(
-            "path",
-            "case_id",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "period",
-            "morph_id"
-        ),
-        show_types = FALSE
+    cli_render__render_sections(
+        result,
+        tables = list(
+            list(
+                field = "outputs",
+                title = "Outputs",
+                columns = CLI_RENDER_COLS_OUTPUTS,
+                show_types = FALSE
+            ),
+            list(
+                field = "diagnostics",
+                title = "Diagnostics",
+                columns = c(
+                    "stage",
+                    "severity",
+                    "code",
+                    "message",
+                    "query_id",
+                    "plan_id",
+                    "morph_id",
+                    "action"
+                ),
+                show_types = FALSE
+            )
+        )
     )
-    epwshiftr_cli_render_table(
-        result$diagnostics,
-        "Diagnostics",
-        c(
-            "stage",
-            "severity",
-            "code",
-            "message",
-            "query_id",
-            "plan_id",
-            "morph_id",
-            "action"
-        ),
-        show_types = FALSE
-    )
-    invisible(NULL)
 }
 # }}}
 
 # epwshiftr_cli_render_extract {{{
 epwshiftr_cli_render_extract <- function(result, command) {
-    title <- switch(
-        command,
-        plan = "Extraction plan",
-        run = "Extraction run",
-        retry = "Extraction retry",
-        coverage = "Extraction coverage",
-        artifacts = "Extraction artifacts",
-        "Extraction result"
+    if (cli_render__dispatch_table(result, "extract", command)) {
+        return(invisible(NULL))
+    }
+    epwshiftr_cli_render_table(
+        result,
+        title = cli_render__title("extract", command)
     )
-    columns <- switch(
-        command,
-        plan = c(
-            "plan_id",
-            "status",
-            "query_id",
-            "file_key",
-            "site_id",
-            "variable_id",
-            "time_start",
-            "time_stop"
-        ),
-        run = c(
-            "plan_id",
-            "status",
-            "query_id",
-            "site_id",
-            "variable_id",
-            "attempt_count",
-            "last_error",
-            "updated_at"
-        ),
-        retry = c(
-            "plan_id",
-            "status",
-            "query_id",
-            "site_id",
-            "variable_id",
-            "attempt_count",
-            "last_error",
-            "dry_run"
-        ),
-        coverage = c(
-            "plan_id",
-            "complete",
-            "status",
-            "query_id",
-            "site_id",
-            "variable_id",
-            "output_rows",
-            "output_time_count",
-            "last_error"
-        ),
-        artifacts = c(
-            "artifact_id",
-            "kind",
-            "role",
-            "relative_path",
-            "path",
-            "created_at"
-        ),
-        NULL
-    )
-    epwshiftr_cli_render_table(result, title = title, columns = columns)
 }
 # }}}
 
@@ -1253,98 +1162,50 @@ epwshiftr_cli_render_morph <- function(result, command) {
         epwshiftr_cli_render_summary(result$field_roles, "EPW field roles")
         return(invisible(NULL))
     }
-    title <- switch(
-        command,
-        variables = "Morph variables",
-        backends = "Morph backends",
-        run = "Morph run",
-        epw = "Morph EPW outputs",
-        retry = "Morph retry",
-        status = "Morph status",
-        outputs = "Morph outputs",
-        "Morph result"
-    )
     if (
         identical(command, "run") && is.list(result) && !is.data.frame(result)
     ) {
-        cli::cli_h1(title)
-        epwshiftr_cli_render_summary(
-            result[intersect(
-                c("status", "morph_id", "diagnostic_count"),
-                names(result)
-            )],
-            "Summary"
-        )
-        epwshiftr_cli_render_table(
-            result$plan,
-            "Plan",
-            c(
-                "morph_id",
-                "status",
-                "summary_id",
-                "reference_summary_id",
-                "baseline_id",
-                "strict",
-                "last_error"
+        return(cli_render__render_sections(
+            result,
+            heading = cli_render__title("morph", command),
+            summaries = list(list(
+                fields = c("status", "morph_id", "diagnostic_count"),
+                title = "Summary"
+            )),
+            tables = list(
+                list(
+                    field = "plan",
+                    title = "Plan",
+                    columns = c(
+                        "morph_id",
+                        "status",
+                        "summary_id",
+                        "reference_summary_id",
+                        "baseline_id",
+                        "strict",
+                        "last_error"
+                    )
+                ),
+                list(
+                    field = "results",
+                    title = "Results",
+                    columns = c(
+                        "case_id",
+                        "row_count",
+                        "output_path",
+                        "morph_id"
+                    )
+                )
             )
-        )
-        epwshiftr_cli_render_table(
-            result$results,
-            "Results",
-            c("case_id", "row_count", "output_path", "morph_id")
-        )
+        ))
+    }
+    if (cli_render__dispatch_table(result, "morph", command)) {
         return(invisible(NULL))
     }
-    columns <- switch(
-        command,
-        variables = c("variable_id"),
-        backends = c("backend", "label", "required_variables", "methods"),
-        epw = c(
-            "path",
-            "case_id",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "period",
-            "morph_id"
-        ),
-        retry = c(
-            "morph_id",
-            "status",
-            "label",
-            "summary_id",
-            "reference_summary_id",
-            "baseline_id",
-            "strict",
-            "last_error",
-            "dry_run",
-            "case_id",
-            "row_count",
-            "output_path"
-        ),
-        status = c(
-            "morph_id",
-            "status",
-            "label",
-            "strict",
-            "summary_id",
-            "reference_summary_id",
-            "baseline_id",
-            "updated_at",
-            "last_error"
-        ),
-        outputs = c(
-            "path",
-            "case_id",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "period",
-            "morph_id"
-        ),
-        NULL
+    epwshiftr_cli_render_table(
+        result,
+        title = cli_render__title("morph", command)
     )
-    epwshiftr_cli_render_table(result, title = title, columns = columns)
 }
 # }}}
 
@@ -1489,19 +1350,12 @@ cli_shift__render_records <- function(rows, command) {
         } else {
             c("severity", "code", "message", "action")
         }
-        for (field in intersect(fields, names(row))) {
-            value <- as.character(row[[field]])
-            if (!length(value) || all(is.na(value))) {
-                next
-            }
-            for (line in shift_ui_view__ui_labeled_lines(
-                epwshiftr_cli_title(field),
-                value,
-                width
-            )) {
-                cli::cli_verbatim(line)
-            }
-        }
+        present <- intersect(fields, names(row))
+        values <- stats::setNames(
+            lapply(present, function(field) as.character(row[[field]])),
+            epwshiftr_cli_title(present)
+        )
+        cli_render__emit_fields(values, width)
     }
     invisible(NULL)
 }
@@ -1788,6 +1642,24 @@ epwshiftr_cli_column_max_width <- function(name) {
 }
 # }}}
 
+# Compute display width of each table column once across header, types, and body.
+# cli_render__column_widths {{{
+cli_render__column_widths <- function(body, header, types = NULL) {
+    vapply(
+        seq_along(body),
+        function(i) {
+            label <- c(
+                header[[i]],
+                if (!is.null(types)) types[[i]],
+                as.character(body[[i]])
+            )
+            max(cli::ansi_nchar(label, type = "width"), na.rm = TRUE)
+        },
+        integer(1L)
+    )
+}
+# }}}
+
 # epwshiftr_cli_table_lines {{{
 epwshiftr_cli_table_lines <- function(
     x,
@@ -1816,14 +1688,7 @@ epwshiftr_cli_table_lines <- function(
     chars <- epwshiftr_cli_table_border(border)
     body <- as.data.frame(lapply(x, as.character), stringsAsFactors = FALSE)
     header <- rep_len(header, ncol(body))
-    widths <- vapply(
-        seq_along(body),
-        function(i) {
-            label <- c(header[[i]], if (!is.null(types)) types[[i]], body[[i]])
-            max(cli::ansi_nchar(label, type = "width"), na.rm = TRUE)
-        },
-        integer(1L)
-    )
+    widths <- cli_render__column_widths(body, header, types)
 
     lines <- c(
         epwshiftr_cli_table_rule(widths, chars, "top"),
@@ -1871,37 +1736,45 @@ epwshiftr_cli_adapt_table_columns <- function(
         max_width <- 80L
     }
     min_columns <- max(1L, min(as.integer(min_columns[[1L]]), ncol(display)))
-    dropped <- character()
-    while (
-        ncol(display) > min_columns &&
-            epwshiftr_cli_table_width(display, raw, show_types = show_types) >
-                max_width
-    ) {
-        drop <- names(display)[[ncol(display)]]
-        dropped <- c(drop, dropped)
-        display <- display[-ncol(display)]
-        raw <- raw[-ncol(raw)]
+    chars <- epwshiftr_cli_table_border("single")
+    header <- epwshiftr_cli_title(names(display))
+    types <- if (isTRUE(show_types)) epwshiftr_cli_table_types(raw) else NULL
+    widths <- cli_render__column_widths(display, header, types)
+    sep_width <- cli::ansi_nchar(chars$vertical, type = "width")
+    totals <- cumsum(widths) +
+        (2L * chars$margin + sep_width) * seq_along(widths) +
+        sep_width
+    keep <- ncol(display)
+    while (keep > min_columns && totals[[keep]] > max_width) {
+        keep <- keep - 1L
     }
-    list(display = display, raw = raw, dropped = dropped)
+    if (keep == ncol(display)) {
+        return(list(display = display, raw = raw, dropped = character()))
+    }
+    dropped <- names(display)[seq.int(keep + 1L, ncol(display))]
+    list(
+        display = display[seq_len(keep)],
+        raw = raw[seq_len(keep)],
+        dropped = dropped
+    )
 }
 # }}}
 
 # epwshiftr_cli_table_width {{{
 epwshiftr_cli_table_width <- function(display, raw, show_types = TRUE) {
-    lines <- epwshiftr_cli_table_lines(
-        display,
-        header = epwshiftr_cli_title(names(display)),
-        types = if (isTRUE(show_types)) {
-            epwshiftr_cli_table_types(raw)
-        } else {
-            NULL
-        },
-        align = epwshiftr_cli_table_alignments(raw)
-    )
-    if (!length(lines)) {
+    if (!ncol(display)) {
         return(0L)
     }
-    max(cli::ansi_nchar(lines, type = "width"), na.rm = TRUE)
+    chars <- epwshiftr_cli_table_border("single")
+    header <- epwshiftr_cli_title(names(display))
+    types <- if (isTRUE(show_types)) epwshiftr_cli_table_types(raw) else NULL
+    widths <- cli_render__column_widths(display, header, types)
+    sep_width <- cli::ansi_nchar(chars$vertical, type = "width")
+    as.integer(
+        sum(widths) +
+            (2L * chars$margin + sep_width) * length(widths) +
+            sep_width
+    )
 }
 # }}}
 
@@ -2249,15 +2122,9 @@ epwshiftr_cli_color_status <- function(x) {
     vapply(
         x,
         function(value) {
-            group <- epwshiftr_cli_status_group(value)
-            switch(
-                group,
-                danger = cli::col_red(value),
-                warning = cli::col_yellow(value),
-                success = cli::col_green(value),
-                info = cli::col_cyan(value),
-                muted = cli::col_grey(value),
-                value
+            epwshiftr_cli_style_table_row(
+                value,
+                epwshiftr_cli_status_group(value)
             )
         },
         character(1L),
@@ -2266,73 +2133,69 @@ epwshiftr_cli_color_status <- function(x) {
 }
 # }}}
 
+CLI_STATUS_GROUP_MAP <- c(
+    stats::setNames(
+        rep("danger", 9L),
+        c(
+            "error",
+            "failed",
+            "failure",
+            "cancelled",
+            "missing",
+            "retracted",
+            "invalid",
+            "bad",
+            "blocked"
+        )
+    ),
+    stats::setNames(
+        rep("warning", 8L),
+        c(
+            "warning",
+            "stale",
+            "changed",
+            "deprecated",
+            "cooldown",
+            "retry",
+            "retryable",
+            "interrupted"
+        )
+    ),
+    stats::setNames(
+        rep("success", 7L),
+        c(
+            "ok",
+            "done",
+            "current",
+            "success",
+            "verified",
+            "complete",
+            "completed"
+        )
+    ),
+    stats::setNames(
+        rep("info", 7L),
+        c(
+            "queued",
+            "downloading",
+            "running",
+            "enqueue",
+            "probe",
+            "new",
+            "skipped"
+        )
+    ),
+    stats::setNames(rep("muted", 4L), c("none", "unknown", "na", "-"))
+)
+
 # epwshiftr_cli_status_group {{{
 epwshiftr_cli_status_group <- function(x) {
-    x <- tolower(as.character(x[[1L]]))
-    if (is.na(x) || !nzchar(x) || identical(x, "-")) {
+    key <- tolower(as.character(x[[1L]]))
+    if (is.na(key) || !nzchar(key) || identical(key, "-")) {
         return("none")
     }
-    if (
-        x %in%
-            c(
-                "error",
-                "failed",
-                "failure",
-                "cancelled",
-                "missing",
-                "retracted",
-                "invalid",
-                "bad",
-                "blocked"
-            )
-    ) {
-        return("danger")
-    }
-    if (
-        x %in%
-            c(
-                "warning",
-                "stale",
-                "changed",
-                "deprecated",
-                "cooldown",
-                "retry",
-                "retryable",
-                "interrupted"
-            )
-    ) {
-        return("warning")
-    }
-    if (
-        x %in%
-            c(
-                "ok",
-                "done",
-                "current",
-                "success",
-                "verified",
-                "complete",
-                "completed"
-            )
-    ) {
-        return("success")
-    }
-    if (
-        x %in%
-            c(
-                "queued",
-                "downloading",
-                "running",
-                "enqueue",
-                "probe",
-                "new",
-                "skipped"
-            )
-    ) {
-        return("info")
-    }
-    if (x %in% c("none", "unknown", "na", "-")) {
-        return("muted")
+    if (key %in% names(CLI_STATUS_GROUP_MAP)) {
+        return(unname(CLI_STATUS_GROUP_MAP[[key]]))
     }
     "none"
 }
@@ -2419,30 +2282,7 @@ epwshiftr_cli_format_time <- function(x) {
 
 # epwshiftr_cli_format_bytes {{{
 epwshiftr_cli_format_bytes <- function(x) {
-    if (is.null(x) || !length(x)) {
-        return("-")
-    }
-    bytes <- suppressWarnings(as.numeric(x))
-    out <- rep("-", length(bytes))
-    ok <- !is.na(bytes)
-    if (!any(ok)) {
-        return(out)
-    }
-    units <- c("B", "KB", "MB", "GB", "TB", "PB")
-    for (i in which(ok)) {
-        value <- bytes[[i]]
-        unit <- 1L
-        while (abs(value) >= 1024 && unit < length(units)) {
-            value <- value / 1024
-            unit <- unit + 1L
-        }
-        out[[i]] <- if (unit == 1L) {
-            sprintf("%.0f %s", value, units[[unit]])
-        } else {
-            sprintf("%.1f %s", value, units[[unit]])
-        }
-    }
-    out
+    shift_ui_view__format_bytes(x, binary = FALSE, na = "-")
 }
 # }}}
 

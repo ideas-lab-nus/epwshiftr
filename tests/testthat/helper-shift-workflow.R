@@ -449,4 +449,112 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
 }
 # }}}
 
+# Mock shift_tui__ui_renderer() with a lightweight recorder for frames, compact
+# rows, commits, closes, and call ordering across UI/print/discovery/watch tests.
+# shift_test__mock_renderer {{{
+shift_test__mock_renderer <- function(
+    backend = "frame",
+    draw_ok = TRUE,
+    strip = FALSE,
+    bind = TRUE,
+    env = parent.frame()
+) {
+    state <- new.env(parent = emptyenv())
+    state$frames <- list()
+    state$compacts <- character()
+    state$commits <- character()
+    state$closes <- 0L
+    state$opened <- 0L
+    state$calls <- character()
+    state$factory <- function(...) {
+        state$opened <- state$opened + 1L
+        list(
+            draw = function(lines, compact = NULL) {
+                state$calls <- c(state$calls, "draw")
+                state$frames[[length(state$frames) + 1L]] <- if (
+                    isTRUE(strip)
+                ) {
+                    cli::ansi_strip(lines)
+                } else {
+                    lines
+                }
+                if (!is.null(compact)) {
+                    state$compacts <- c(state$compacts, compact)
+                }
+                isTRUE(draw_ok)
+            },
+            suspend = function(code) code(),
+            backend = function() backend,
+            commit = function(result = c("done", "failed", "cancelled")) {
+                result <- match.arg(result)
+                state$calls <- c(state$calls, "commit")
+                state$commits <- c(state$commits, result)
+                invisible(NULL)
+            },
+            close = function(...) {
+                state$calls <- c(state$calls, "close")
+                state$closes <- state$closes + 1L
+                invisible(NULL)
+            }
+        )
+    }
+    if (isTRUE(bind)) {
+        testthat::local_mocked_bindings(
+            shift_tui__ui_renderer = state$factory,
+            .package = "epwshiftr",
+            .env = env
+        )
+    }
+    state
+}
+# }}}
+
+# Build a compact UI state fixture with defaults so dashboard tests specify only
+# the fields under exercise instead of repeating 25-45 line list literals.
+# shift_test__ui_state {{{
+shift_test__ui_state <- function(...) {
+    defaults <- list(
+        run_id = "run-test",
+        status = "running",
+        stage = "resolve",
+        stage_message = "Working",
+        cases_ready = 0L,
+        cases_total = 2L,
+        outputs_completed = 0L,
+        elapsed_seconds = 1
+    )
+    utils::modifyList(defaults, list(...), keep.null = TRUE)
+}
+# }}}
+
+# Build a minimal cached ShiftRun handle for completion and show receipt tests.
+# shift_test__run_stage {{{
+shift_test__run_stage <- function(
+    run_id,
+    status = "completed",
+    output_dir = NULL,
+    cases = data.table::data.table(),
+    events = data.table::data.table(),
+    task = NULL,
+    spec_json = NULL
+) {
+    run_row <- data.table::data.table(run_id = run_id, status = status)
+    if (!is.null(output_dir)) {
+        data.table::set(run_row, j = "output_dir", value = output_dir)
+    }
+    if (!is.null(task)) {
+        data.table::set(run_row, j = "task", value = task)
+    }
+    if (!is.null(spec_json)) {
+        data.table::set(run_row, j = "spec_json", value = spec_json)
+    }
+    shift_stage__new(
+        ShiftRun,
+        "run",
+        ids = list(run_id = run_id),
+        meta = list(run = run_row, cases = cases, events = events)
+    )
+}
+# }}}
+
 # vim: fdm=marker :

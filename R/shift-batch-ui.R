@@ -287,44 +287,22 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
         recent$recent_outcomes <- utils::tail(state$recent_outcomes, 1L)
         result <- c(pool_status, shift_ui_view__ui_recent_lines(recent, inner))
     }
-    if (!panel) {
-        return(c(shift_ui_view__ui_fit(title, outer), plan, current, result))
-    }
-    c(
-        shift_ui_view__ui_panel_rule(title, outer, "top"),
-        vapply(
-            plan,
-            shift_ui_view__ui_panel_line,
-            character(1L),
-            width = outer
-        ),
-        if (length(current)) {
-            c(
-                shift_ui_view__ui_panel_rule(
-                    cli::style_bold("Current search"),
-                    outer,
-                    "middle"
-                ),
-                vapply(
-                    current,
-                    shift_ui_view__ui_panel_line,
-                    character(1L),
-                    width = outer
-                )
+    shift_ui_view__ui_panel_box(
+        title,
+        list(
+            list(title = NULL, lines = plan),
+            list(
+                title = "Current search",
+                lines = current,
+                omit_if_empty = TRUE
+            ),
+            list(
+                title = if (terminal) "Results" else "Recent checks",
+                lines = result
             )
-        },
-        shift_ui_view__ui_panel_rule(
-            cli::style_bold(if (terminal) "Results" else "Recent checks"),
-            outer,
-            "middle"
         ),
-        vapply(
-            result,
-            shift_ui_view__ui_panel_line,
-            character(1L),
-            width = outer
-        ),
-        shift_ui_view__ui_panel_rule(width = outer, kind = "bottom")
+        width = outer,
+        panel = panel
     )
 }
 # }}}
@@ -344,7 +322,7 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         },
         character(1L)
     )
-    children[, status := statuses]
+    data.table::set(children, j = "status", value = statuses)
     data.table::set(
         children,
         j = "run_id",
@@ -521,14 +499,7 @@ shift_batch_ui__diagnostic_lines <- function(
     shown <- min(nrow(rows), limit)
     # Compact fields consume exactly one row for deterministic height budgets.
     field <- function(label, value) {
-        if (compact) {
-            shift_ui_view__ui_fit(
-                shift_ui_view__ui_labeled_line(label, value),
-                width
-            )
-        } else {
-            shift_ui_view__ui_labeled_lines(label, value, width)
-        }
+        shift_ui_view__ui_field(label, value, width, compact)
     }
     lines <- character()
     for (index in seq_len(shown)) {
@@ -579,14 +550,7 @@ shift_batch_ui__child_lines <- function(
 ) {
     # Compact fields do not wrap beyond the dynamic viewport budget.
     field <- function(label, value) {
-        if (compact) {
-            shift_ui_view__ui_fit(
-                shift_ui_view__ui_labeled_line(label, value),
-                width
-            )
-        } else {
-            shift_ui_view__ui_labeled_lines(label, value, width)
-        }
+        shift_ui_view__ui_field(label, value, width, compact)
     }
     identity <- c(child$site_id, child$method, child$model)
     identity <- identity[!is.na(identity) & nzchar(identity)]
@@ -674,14 +638,7 @@ shift_batch_ui__view <- function(
     content_width <- if (panel) max(1L, width - 4L) else width
     # Preserve long paths and identifiers outside the finite dynamic viewport.
     field <- function(label, value) {
-        if (compact) {
-            shift_ui_view__ui_fit(
-                shift_ui_view__ui_labeled_line(label, value),
-                content_width
-            )
-        } else {
-            shift_ui_view__ui_labeled_lines(label, value, content_width)
-        }
+        shift_ui_view__ui_field(label, value, content_width, compact)
     }
     header <- paste(
         cli::style_bold("Future EPW Batch"),
@@ -876,47 +833,20 @@ shift_batch_ui__view <- function(
     }
     diagnosis <- summary$status %in%
         c("failed", "blocked", "cancelled", "partial")
-    lines <- if (panel) {
-        c(
-            shift_ui_view__ui_panel_rule(header, width, "top"),
-            vapply(
-                overview,
-                shift_ui_view__ui_panel_line,
-                character(1L),
-                width = width
-            ),
-            shift_ui_view__ui_panel_rule(
-                cli::style_bold("Workflows"),
-                width,
-                "middle"
-            ),
-            vapply(
-                workflows,
-                shift_ui_view__ui_panel_line,
-                character(1L),
-                width = width
-            ),
-            shift_ui_view__ui_panel_rule(
-                cli::style_bold(if (diagnosis) "Diagnosis" else "Results"),
-                width,
-                "middle"
-            ),
-            vapply(
-                results,
-                shift_ui_view__ui_panel_line,
-                character(1L),
-                width = width
-            ),
-            shift_ui_view__ui_panel_rule(width = width, kind = "bottom")
-        )
-    } else {
-        c(
-            shift_ui_view__ui_wrap_lines(header, width),
-            overview,
-            workflows,
-            results
-        )
-    }
+    lines <- shift_ui_view__ui_panel_box(
+        header,
+        list(
+            list(title = NULL, lines = overview),
+            list(title = "Workflows", lines = workflows),
+            list(
+                title = if (diagnosis) "Diagnosis" else "Results",
+                lines = results
+            )
+        ),
+        width = width,
+        panel = panel,
+        wrap_header = TRUE
+    )
     compact_line <- shift_ui_view__ui_fit(
         sprintf(
             "Batch %s \u00b7 %d/%d children complete \u00b7 %d EPW files \u00b7 %d warnings",
@@ -941,19 +871,18 @@ shift_batch_ui__view <- function(
             ),
             field("More", "Full details: shift show --verbose")
         )
-        if (panel && height >= 4L) {
-            lines <- c(
-                shift_ui_view__ui_panel_rule(header, width, "top"),
-                vapply(
-                    utils::head(body, height - 2L),
-                    shift_ui_view__ui_panel_line,
-                    character(1L),
-                    width = width
-                ),
-                shift_ui_view__ui_panel_rule(width = width, kind = "bottom")
+        lines <- if (panel && height >= 4L) {
+            shift_ui_view__ui_panel_box(
+                header,
+                list(list(
+                    title = NULL,
+                    lines = utils::head(body, height - 2L)
+                )),
+                width = width,
+                panel = TRUE
             )
         } else {
-            lines <- utils::head(body, height)
+            utils::head(body, height)
         }
     }
     list(
@@ -1032,132 +961,48 @@ shift_batch_ui__event_delta <- function(
 # while another child is queued, running, or stopping.
 # shift_batch_ui__watch {{{
 shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
-    mode <- shift_ui__ui_mode(ui)
-    motion <- shift_ui__ui_motion(ui, mode)
-    renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(error) {
-        NULL
-    })
-    if (identical(mode, "dynamic") && is.null(renderer)) {
-        mode <- "log"
-    }
-    on.exit(if (!is.null(renderer)) renderer$close(), add = TRUE)
-    frame <- 0L
-    first <- TRUE
-    last_poll <- as.POSIXct(NA)
-    cursor <- list()
-    snapshot <- NULL
-    frame_interval <- if (
-        identical(mode, "dynamic") && identical(motion, "full")
-    ) {
-        ui@refresh
-    } else if (identical(mode, "dynamic") && identical(motion, "reduced")) {
-        max(1, ui@refresh)
-    } else {
-        interval
-    }
-    tryCatch(
-        repeat {
-            now <- shift_job__watch_now()
-            poll_due <- first ||
-                is.na(last_poll) ||
-                as.numeric(difftime(now, last_poll, units = "secs")) >= interval
-            if (poll_due) {
-                x <- shift_batch__refresh(x)
-                snapshot <- shift_batch_ui__snapshot(
-                    x,
-                    event_count = events,
-                    refresh = FALSE
-                )
-                last_poll <- now
-            }
-            done <- !follow ||
+    shift_tui__watch_loop(
+        poll = function(polls) {
+            x <<- shift_batch__refresh(x)
+            shift_batch_ui__snapshot(x, event_count = events, refresh = FALSE)
+        },
+        is_done = function(snapshot, polls) {
+            !follow ||
                 (snapshot$batch$active == 0L &&
                     !snapshot$batch$status %in%
                         c("queued", "running", "stopping"))
-            if (identical(mode, "log") && poll_due) {
-                delta <- shift_batch_ui__event_delta(
-                    shift_stage__coalesce(
-                        attr(snapshot, "shift_ui_events"),
-                        snapshot$events
-                    ),
-                    cursor = cursor,
-                    initial_limit = events,
-                    initial = first
-                )
-                # Emit newly observed milestones even on the terminal poll, whose
-                # final receipt may include only a short tail of the event history.
-                if (!first) {
-                    if (delta$gap) {
-                        cli::cli_alert_info(
-                            "Older batch events are no longer available."
-                        )
-                    }
-                    for (index in seq_len(nrow(delta$rows))) {
-                        cli::cli_text(
-                            "{shift_ui_view__ui_persisted_event_line(delta$rows[index], detail = ui@detail)}"
-                        )
-                    }
-                }
-                cursor <- delta$cursor
-            }
-            if (done) {
-                # Clear the bounded live view, then leave a complete static receipt
-                # in scrollback, including when the caller assigns the return value.
-                if (!is.null(renderer)) {
-                    renderer$close()
-                }
-                if (!identical(mode, "none")) {
-                    shift_ui_view__ui_print_view(
-                        shift_batch_ui__view(snapshot, detail = ui@detail),
-                        include_tables = TRUE
-                    )
-                }
-                break
-            }
-            frame <- frame + 1L
-            if (identical(mode, "dynamic")) {
-                view <- shift_batch_ui__view(
-                    snapshot,
-                    detail = ui@detail,
-                    motion = motion,
-                    frame = frame,
-                    height = shift_ui__ui_height()
-                )
-                if (
-                    !isTRUE(renderer$draw(view$lines, compact = view$compact))
-                ) {
-                    renderer$close(result = "failed")
-                    renderer <- NULL
-                    mode <- "log"
-                    first <- TRUE
-                }
-            }
-            if (identical(mode, "log") && poll_due) {
-                if (first) {
-                    shift_ui_view__ui_print_view(shift_batch_ui__view(
-                        snapshot,
-                        detail = ui@detail
-                    ))
-                    # A failed dynamic renderer may have switched to log mode
-                    # after this poll's cursor step. Seed it from the shown frame.
-                    cursor <- shift_batch_ui__event_delta(
-                        shift_stage__coalesce(
-                            attr(snapshot, "shift_ui_events"),
-                            snapshot$events
-                        ),
-                        cursor = cursor,
-                        initial_limit = events,
-                        initial = TRUE
-                    )$cursor
-                }
-            }
-            first <- FALSE
-            shift_job__watch_sleep(frame_interval)
         },
-        interrupt = function(error) {
-            if (!is.null(renderer)) {
-                renderer$close(result = "cancelled")
-            }
+        render_view = function(snapshot, motion, frame) {
+            shift_batch_ui__view(
+                snapshot,
+                detail = ui@detail,
+                motion = motion,
+                frame = frame,
+                height = shift_ui__ui_height()
+            )
+        },
+        print_view = function(snapshot, final = FALSE) {
+            shift_ui_view__ui_print_view(
+                shift_batch_ui__view(snapshot, detail = ui@detail),
+                include_tables = TRUE
+            )
+        },
+        ui = ui,
+        interval = interval,
+        event_delta = function(snapshot, cursor, initial) {
+            shift_batch_ui__event_delta(
+                shift_stage__coalesce(
+                    attr(snapshot, "shift_ui_events"),
+                    snapshot$events
+                ),
+                cursor = cursor,
+                initial_limit = events,
+                initial = initial
+            )
+        },
+        initial_cursor = list(),
+        gap_message = "Older batch events are no longer available.",
+        on_interrupt = function(mode) {
             if (!identical(mode, "none")) {
                 cli::cli_alert_info(
                     "Stopped watching; batch children continue. Use shift_cancel() to cancel them."

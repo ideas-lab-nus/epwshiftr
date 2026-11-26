@@ -1,7 +1,6 @@
 test_that("calibration, started cases and multi-year exports have honest units", {
-    state <- list(
+    state <- shift_test__ui_state(
         stage = "morph",
-        status = "running",
         unit_label = "ERA5 t2m",
         current_details = list(
             unit_type = "reanalysis_variable",
@@ -228,18 +227,11 @@ test_that("frame renderers cap live viewport height and retain full completion r
         "/exports",
         paste0("Weather_Model-A_ssp585_", 2041:2060, ".epw")
     )
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        ids = list(run_id = "multi-year-receipt"),
-        meta = list(
-            run = data.table::data.table(
-                status = "completed",
-                task = "future_epw",
-                output_dir = "/exports"
-            ),
-            cases = data.table::data.table(status = "completed")
-        )
+    run <- shift_test__run_stage(
+        "multi-year-receipt",
+        output_dir = "/exports",
+        task = "future_epw",
+        cases = data.table::data.table(status = "completed")
     )
     reporter$run_completed(run, data.table::data.table(export_path = paths))
     receipt <- cli::ansi_strip(utils::tail(writes, 1L))
@@ -254,21 +246,11 @@ test_that("frame renderers cap live viewport height and retain full completion r
     expect_false(renderer2$active())
 })
 
-test_that("R and CLI batch watch leave a complete final receipt", {
+test_that("R and CLI batch watch leave a complete final receipt and handle fallback/interrupt", {
     states <- ui_workflows__states()
     for (follow in c(FALSE, TRUE)) {
         index <- 0L
-        calls <- character()
-        renderer <- list(
-            draw = function(...) {
-                calls <<- c(calls, "draw")
-                TRUE
-            },
-            close = function(...) {
-                calls <<- c(calls, "close")
-                invisible(NULL)
-            }
-        )
+        mock <- shift_test__mock_renderer(bind = FALSE)
         testthat::with_mocked_bindings(
             {
                 printed <- capture.output(
@@ -282,7 +264,7 @@ test_that("R and CLI batch watch leave a complete final receipt", {
                     type = "message"
                 )
             },
-            shift_tui__ui_renderer = function(...) renderer,
+            shift_tui__ui_renderer = mock$factory,
             shift_batch__refresh = function(x) x,
             shift_job__watch_sleep = function(...) NULL,
             shift_job__watch_now = function() {
@@ -298,17 +280,67 @@ test_that("R and CLI batch watch leave a complete final receipt", {
             paste(cli::ansi_strip(printed), collapse = " "),
             "Future EPW Batch.*8 EPW files"
         )
-        expect_identical("draw" %in% calls, follow)
-        expect_identical(utils::tail(calls, 1L), "close")
+        expect_identical("draw" %in% mock$calls, follow)
+        expect_identical(utils::tail(mock$calls, 1L), "close")
+    }
+
+    # Dynamic draw failure degrades to log mode and interrupt closes cleanly
+    for (scenario in c("fallback", "interrupt")) {
+        index <- 0L
+        mock <- shift_test__mock_renderer(
+            draw_ok = identical(scenario, "interrupt"),
+            bind = FALSE
+        )
+        out <- capture.output(
+            testthat::with_mocked_bindings(
+                invisible(shift_batch_ui__watch(
+                    NULL,
+                    TRUE,
+                    interval = 0.1,
+                    events = 10L,
+                    ui = shift_ui("dynamic", motion = "none")
+                )),
+                shift_tui__ui_renderer = mock$factory,
+                shift_batch__refresh = function(x) x,
+                shift_job__watch_sleep = function(...) {
+                    if (identical(scenario, "interrupt")) {
+                        stop(structure(
+                            list(message = "interrupt", call = NULL),
+                            class = c("interrupt", "condition")
+                        ))
+                    }
+                    NULL
+                },
+                shift_job__watch_now = function() {
+                    as.POSIXct(index * 10, origin = "1970-01-01")
+                },
+                shift_batch_ui__snapshot = function(...) {
+                    index <<- index + 1L
+                    if (index == 1L) states[[1L]] else states[[3L]]
+                },
+                .package = "epwshiftr"
+            ),
+            type = "message"
+        )
+        expect_equal(mock$closes, 1L)
+        if (identical(scenario, "interrupt")) {
+            expect_match(
+                paste(cli::ansi_strip(out), collapse = " "),
+                "Stopped watching; batch children continue"
+            )
+        } else {
+            expect_match(
+                paste(cli::ansi_strip(out), collapse = " "),
+                "8 EPW files"
+            )
+        }
     }
 
     # CLI count-limited dynamic watch keeps its final snapshot
+    mock_cli <- shift_test__mock_renderer()
     testthat::local_mocked_bindings(
         shift_batch_get = function(...) NULL,
-        shift_batch_ui__snapshot = function(...) states[[1L]],
-        shift_tui__ui_renderer = function(...) {
-            list(draw = function(...) TRUE, close = function(...) NULL)
-        }
+        shift_batch_ui__snapshot = function(...) states[[1L]]
     )
     cli_out <- capture.output(
         invisible(epwshiftr_cli_shift_watch_follow(
@@ -324,6 +356,7 @@ test_that("R and CLI batch watch leave a complete final receipt", {
         paste(cli::ansi_strip(cli_out), collapse = " "),
         "Future EPW Batch"
     )
+    expect_identical(utils::tail(mock_cli$calls, 1L), "close")
 })
 
 test_that("download resume, discovery context, and config templates respect output policy", {
@@ -635,18 +668,9 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
         diagnostics = shift_stage__diagnostics_empty()
     )
     attr(snapshot, "shift_ui_state") <- run@meta$ui_state
-    frames <- character()
+    mock <- shift_test__mock_renderer()
     testthat::local_mocked_bindings(
-        epwshiftr_cli_shift_watch_snapshot = function(...) snapshot,
-        shift_tui__ui_renderer = function(...) {
-            list(
-                draw = function(lines, compact) {
-                    frames <<- c(frames, lines, compact)
-                    TRUE
-                },
-                close = function(...) NULL
-            )
-        }
+        epwshiftr_cli_shift_watch_snapshot = function(...) snapshot
     )
     invisible(capture.output(
         invisible(epwshiftr_cli_shift_watch_follow(
@@ -657,6 +681,7 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
         )),
         type = "message"
     ))
+    frames <- c(unlist(mock$frames), mock$compacts)
     expect_match(paste(cli::ansi_strip(frames), collapse = " "), "STOPPING")
     expect_false(any(grepl("RUNNING", frames, fixed = TRUE)))
 
@@ -831,23 +856,15 @@ test_that("single-run show detail retains all rows and long fields without chang
         "ACTION_END"
     )
     raw <- '{"raw_debug_payload":"RAW_PAYLOAD_END"}'
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        ids = list(run_id = "show-detail"),
-        meta = list(
-            run = data.table::data.table(
-                run_id = "show-detail",
-                status = "completed",
-                spec_json = raw
-            ),
-            events = data.table::data.table(
-                stage = "morph",
-                status = "completed",
-                message = paste0("EVENT_", seq_len(25L), "_END"),
-                created_at = Sys.time(),
-                details_json = raw
-            )
+    run <- shift_test__run_stage(
+        "show-detail",
+        spec_json = raw,
+        events = data.table::data.table(
+            stage = "morph",
+            status = "completed",
+            message = paste0("EVENT_", seq_len(25L), "_END"),
+            created_at = Sys.time(),
+            details_json = raw
         )
     )
     outputs <- data.table::data.table(

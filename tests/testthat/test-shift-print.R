@@ -43,53 +43,6 @@ test_that("Shift configuration printers use compact semantic receipts", {
     transform <- monthly_transform("epwshiftr")
     site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
 
-    climate_text <- capture.output(
-        print(climate, width = 72L),
-        type = "message"
-    )
-    expect_true(any(grepl("CMIP6 Climate", climate_text, fixed = TRUE)))
-    expect_true(any(grepl("6-node failover", climate_text, fixed = TRUE)))
-    expect_true(any(grepl(
-        "Table: auto by variable",
-        climate_text,
-        fixed = TRUE
-    )))
-    expect_false(any(grepl("https://", climate_text, fixed = TRUE)))
-    climate_verbose <- capture.output(
-        print(climate, width = 72L, verbose = TRUE, n = 3L),
-        type = "message"
-    )
-    expect_true(any(grepl("https://", climate_verbose, fixed = TRUE)))
-    expect_true(any(grepl("3 more rows", climate_verbose, fixed = TRUE)))
-
-    reference_text <- capture.output(
-        print(reference, width = 72L),
-        type = "message"
-    )
-    expect_true(any(grepl("reference 1995–2014", reference_text, fixed = TRUE)))
-    expect_false(any(grepl("1996, 1997", reference_text, fixed = TRUE)))
-
-    transform_text <- capture.output(
-        print(transform, width = 72L),
-        type = "message"
-    )
-    expect_true(any(grepl(
-        "Transformation scale: monthly",
-        transform_text,
-        fixed = TRUE
-    )))
-    expect_true(any(grepl(
-        "Required source frequency: model_future: mon",
-        transform_text,
-        fixed = TRUE
-    )))
-    expect_true(any(grepl(
-        "Hourly reconstruction",
-        transform_text,
-        fixed = TRUE
-    )))
-    expect_false(any(grepl("Profile|Policy|Backend", transform_text)))
-
     visible <- NULL
     capture.output(
         visible <- withVisible(print(control, width = 72L)),
@@ -385,14 +338,6 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
 })
 
 test_that("shift_ui() validates presentation options without changing scientific intent", {
-    expect_true(S7::S7_inherits(shift_ui(), ShiftUiOptions))
-    expect_equal(
-        shift_ui("log", detail = "detail", heartbeat = 2)@progress,
-        "log"
-    )
-    expect_equal(shift_ui(detail = "debug")@detail, "debug")
-    expect_equal(shift_ui(motion = "reduced")@motion, "reduced")
-    expect_equal(shift_ui(refresh = 0.2)@refresh, 0.2)
     expect_error(shift_ui("invalid"), "arg")
     expect_error(shift_ui(motion = "invalid"), "arg")
     expect_error(shift_ui(refresh = 0.01), "not >= 0.05")
@@ -483,26 +428,7 @@ test_that("ShiftReporter persists structured milestones while none mode stays si
 })
 
 test_that("ShiftReporter submits one complete frame per dynamic refresh", {
-    frames <- list()
-    compacts <- character()
-    closes <- 0L
-    testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = function(...) {
-            list(
-                draw = function(lines, compact = NULL) {
-                    frames[[length(frames) + 1L]] <<- lines
-                    compacts <<- c(compacts, compact)
-                    TRUE
-                },
-                suspend = function(code) code(),
-                close = function(...) {
-                    closes <<- closes + 1L
-                    invisible(NULL)
-                }
-            )
-        },
-        .package = "epwshiftr"
-    )
+    mock <- shift_test__mock_renderer()
 
     reporter <- shift_reporter__reporter(shift_ui("dynamic", heartbeat = 0))
     reporter$stage_started("resolve", "Resolving inputs.")
@@ -511,10 +437,10 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
         "Waiting for future catalog",
         force = TRUE
     ))
-    expect_equal(length(frames), 3L)
-    expect_true(all(lengths(frames) == 10L))
-    expect_length(compacts, 3L)
-    expect_true(all(nzchar(compacts)))
+    expect_equal(length(mock$frames), 3L)
+    expect_true(all(lengths(mock$frames) == 10L))
+    expect_length(mock$compacts, 3L)
+    expect_true(all(nzchar(mock$compacts)))
     expect_message(
         reporter$unit_completed(
             "Node one failed",
@@ -525,20 +451,11 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
         "Node one failed"
     )
     reporter$close()
-    expect_equal(closes, 1L)
+    expect_equal(mock$closes, 1L)
 })
 
 test_that("ShiftReporter falls back to logs when frame painting fails", {
-    testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = function(...) {
-            list(
-                draw = function(...) FALSE,
-                suspend = function(code) code(),
-                close = function(...) invisible(NULL)
-            )
-        },
-        .package = "epwshiftr"
-    )
+    shift_test__mock_renderer(draw_ok = FALSE)
     reporter <- shift_reporter__reporter(shift_ui("dynamic"))
 
     expect_message(

@@ -4,33 +4,9 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-shift_ui_test__mock_renderer <- function(frames, commits, closes) {
-    function(...) {
-        list(
-            draw = function(lines, compact = NULL) {
-                frames$value[[length(frames$value) + 1L]] <- lines
-                TRUE
-            },
-            suspend = function(code) code(),
-            backend = function() "frame",
-            commit = function(result = c("done", "failed", "cancelled")) {
-                result <- match.arg(result)
-                commits$value <- c(commits$value, result)
-                invisible(NULL)
-            },
-            close = function(...) {
-                closes$value <- closes$value + 1L
-                invisible(NULL)
-            }
-        )
-    }
-}
-
 test_that("shared status views adapt to stage, width, and transfer metrics", {
-    resolve_state <- list(
+    resolve_state <- shift_test__ui_state(
         run_id = "run-panel",
-        status = "running",
-        stage = "resolve",
         stage_sequence = c(
             "resolve",
             "extract_future",
@@ -53,9 +29,6 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
             line = "BCC-CSM2-MR \u00b7 ssp126 + ssp585 \u00b7 2060s \u00b7 original_morphing",
             selection = "member auto \u00b7 grid auto"
         ),
-        cases_ready = 0L,
-        cases_total = 2L,
-        outputs_completed = 0L,
         recent_events = c("Catalog retry", "Previous request completed"),
         recent_outcomes = c("fallback", "completed"),
         elapsed_seconds = 12
@@ -79,10 +52,9 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
     expect_match(narrow_plain[[1L]], "Future EPW", fixed = TRUE)
 
     # Download transfer metrics
-    dl_state <- list(
+    dl_state <- shift_test__ui_state(
         run_id = "run-download",
         stage = "download",
-        status = "running",
         elapsed_seconds = 20,
         unit_label = "future download · tas.nc + hurs.nc",
         unit_current = 2L,
@@ -98,9 +70,6 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
             active_task_count = 2L,
             active_files = c("tas.nc", "hurs.nc")
         ),
-        cases_ready = 0L,
-        cases_total = 2L,
-        outputs_completed = 0L,
         last_event = "Selected r1i1p1f1 / gn"
     )
     dl_plain <- cli::ansi_strip(shift_ui_view__ui_status_lines(
@@ -114,18 +83,13 @@ test_that("shared status views adapt to stage, width, and transfer metrics", {
     expect_true(any(grepl("2 active", dl_plain, fixed = TRUE)))
 
     # Coverage, morph, and write_epw stage-specific metrics
-    base <- list(
-        status = "running",
-        stage_message = "Working",
+    base <- shift_test__ui_state(
         unit_label = "case",
         unit_current = 1L,
         unit_total = 2L,
         current_details = list(current = 1L, total = 2L),
         cases_ready = 1L,
-        cases_total = 2L,
-        outputs_completed = 0L,
-        last_event = "Resolved",
-        elapsed_seconds = 1
+        last_event = "Resolved"
     )
     coverage <- cli::ansi_strip(shift_ui_view__ui_status_lines(
         utils::modifyList(base, list(stage = "coverage")),
@@ -235,9 +199,7 @@ test_that("compact renderer, backend detection, and auto UI mode follow terminal
 })
 
 test_that("compact status preserves stage, unit, progress, and elapsed time", {
-    state <- list(
-        status = "running",
-        stage = "resolve",
+    state <- shift_test__ui_state(
         stage_message = "Resolving workflow inputs",
         unit_label = "Checking catalog",
         unit_current = 2L,
@@ -646,20 +608,7 @@ test_that("download metrics and reporter bindings bridge progress and nested fal
 })
 
 test_that("dynamic failures and completions commit one structured terminal dashboard", {
-    frames <- new.env(parent = emptyenv())
-    commits <- new.env(parent = emptyenv())
-    closes <- new.env(parent = emptyenv())
-    frames$value <- list()
-    commits$value <- character()
-    closes$value <- 0L
-    testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = shift_ui_test__mock_renderer(
-            frames,
-            commits,
-            closes
-        ),
-        .package = "epwshiftr"
-    )
+    mock <- shift_test__mock_renderer()
 
     # Failure receipt
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
@@ -695,10 +644,10 @@ test_that("dynamic failures and completions commit one structured terminal dashb
         reporter$run_failed(message = failure$summary, details = failure),
         type = "message"
     )
-    fail_plain <- cli::ansi_strip(utils::tail(frames$value, 1L)[[1L]])
+    fail_plain <- cli::ansi_strip(utils::tail(mock$frames, 1L)[[1L]])
     expect_length(fail_out, 0L)
-    expect_identical(commits$value, "failed")
-    expect_equal(closes$value, 0L)
+    expect_identical(mock$commits, "failed")
+    expect_equal(mock$closes, 0L)
     expect_match(fail_plain[[1L]], "FAILED", fixed = TRUE)
     expect_true(any(grepl("6 checked.*5 incomplete.*1 timeout", fail_plain)))
     expect_true(any(grepl("BCC-CSM2-MR/r1i1p1f1/gn", fail_plain, fixed = TRUE)))
@@ -709,18 +658,10 @@ test_that("dynamic failures and completions commit one structured terminal dashb
         output_dir,
         c("BCC-CSM2-MR_ssp126_2060s.epw", "BCC-CSM2-MR_ssp585_2060s.epw")
     )
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        ids = list(run_id = "run-complete"),
-        meta = list(
-            run = data.table::data.table(
-                run_id = "run-complete",
-                status = "completed",
-                output_dir = output_dir
-            ),
-            cases = data.table::data.table(status = c("completed", "completed"))
-        )
+    run <- shift_test__run_stage(
+        "run-complete",
+        output_dir = output_dir,
+        cases = data.table::data.table(status = c("completed", "completed"))
     )
     done_rep <- shift_reporter__reporter(
         shift_ui("dynamic", motion = "none"),
@@ -743,9 +684,9 @@ test_that("dynamic failures and completions commit one structured terminal dashb
         ),
         type = "message"
     )
-    done_plain <- cli::ansi_strip(utils::tail(frames$value, 1L)[[1L]])
+    done_plain <- cli::ansi_strip(utils::tail(mock$frames, 1L)[[1L]])
     expect_length(done_out, 0L)
-    expect_identical(commits$value, c("failed", "done"))
+    expect_identical(mock$commits, c("failed", "done"))
     expect_true(any(grepl(
         "Summary.*2/2 cases completed.*2 EPW files.*0 warnings",
         done_plain
@@ -770,18 +711,7 @@ test_that("log mode reporters retain missing reasons, completion summary, and fu
     expect_true(any(grepl("future/hurs", fail_out, fixed = TRUE)))
 
     output_dir <- tempfile("shift-log-output-")
-    run <- shift_stage__new(
-        ShiftRun,
-        "run",
-        ids = list(run_id = "run-log-complete"),
-        meta = list(
-            run = data.table::data.table(
-                run_id = "run-log-complete",
-                status = "completed",
-                output_dir = output_dir
-            )
-        )
-    )
+    run <- shift_test__run_stage("run-log-complete", output_dir = output_dir)
     done_rep <- shift_reporter__reporter(
         shift_ui("log", detail = "normal"),
         run_id = "run-log-complete"
@@ -876,28 +806,15 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
     )
 
     # Dynamic startup draws a replaceable frame instead of printing transcript lines
-    frames <- new.env(parent = emptyenv())
-    commits <- new.env(parent = emptyenv())
-    closes <- new.env(parent = emptyenv())
-    frames$value <- list()
-    commits$value <- character()
-    closes$value <- 0L
-    testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = shift_ui_test__mock_renderer(
-            frames,
-            commits,
-            closes
-        ),
-        .package = "epwshiftr"
-    )
+    mock <- shift_test__mock_renderer()
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
     startup_out <- capture.output(
         reporter$run_started(plan, "run_534d9b84b235029404b318bd"),
         type = "message"
     )
     expect_length(startup_out, 0L)
-    expect_length(frames$value, 1L)
-    plain <- cli::ansi_strip(frames$value[[1L]])
+    expect_length(mock$frames, 1L)
+    plain <- cli::ansi_strip(mock$frames[[1L]])
     expect_false(grepl("run 04b318bd", plain[[1L]], fixed = TRUE))
     expect_match(
         paste(plain, collapse = " "),
@@ -913,7 +830,7 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
     )
     reporter$close()
     expect_length(milestone_out, 0L)
-    expect_equal(closes$value, 1L)
+    expect_equal(mock$closes, 1L)
 })
 
 test_that("shift_watch() renders the shared status view", {
@@ -986,20 +903,7 @@ test_that("generic operation reporters preserve receipts across log, none, and d
     )
     expect_length(quiet_output, 0L)
 
-    frames <- new.env(parent = emptyenv())
-    commits <- new.env(parent = emptyenv())
-    closes <- new.env(parent = emptyenv())
-    frames$value <- list()
-    commits$value <- character()
-    closes$value <- 0L
-    testthat::local_mocked_bindings(
-        shift_tui__ui_renderer = shift_ui_test__mock_renderer(
-            frames,
-            commits,
-            closes
-        ),
-        .package = "epwshiftr"
-    )
+    mock <- shift_test__mock_renderer()
 
     for (case in list(
         list(
@@ -1034,7 +938,7 @@ test_that("generic operation reporters preserve receipts across log, none, and d
         rep$operation_started(case$stage, case$label)
         rep[[case$fn]](case$msg)
     }
-    expect_identical(commits$value, rep("done", 4L))
+    expect_identical(mock$commits, rep("done", 4L))
 })
 
 test_that("heartbeat details merge live state without unthrottled durable touches", {
