@@ -88,7 +88,7 @@ reference:
     desc: Create annual ERA5 EPW files with explicit source and conversion records.
     contents:
       - shift_epw_reanalysis
-      - shift_reanalysis_data
+      - shift_data_reanalysis
       - shift_plan_reanalysis
       - shift_download_reanalysis
       - shift_read_reanalysis
@@ -103,10 +103,8 @@ reference:
       - shift_epw_future
       - shift_cmip6
       - shift_era5
-      - shift_era6
-      - shift_plan
       - shift_reference_from_plan
-      - shift_reference_historical
+      - historical_reference
       - EpwMorpher
       - epw_morpher
       - epw_morph_periods
@@ -131,7 +129,6 @@ reference:
       - shift_extract
       - shift_morph
       - shift_epw_write
-      - shift_epw_export
       - shift_status
       - shift_batch_get
       - shift_history
@@ -140,12 +137,8 @@ reference:
       - shift_check
       - shift_diagnostics
       - shift_selection
-      - shift_ids
-      - shift_store
-      - shift_target
       - shift_coverage
       - shift_outputs
-      - shift_artifacts
 
   - title: Command line and package options
     contents:

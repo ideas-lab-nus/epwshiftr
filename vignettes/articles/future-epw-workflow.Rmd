@@ -185,8 +185,8 @@ resumable. Output and diagnostic tables include method, model, member, and grid
 columns for downstream analysis. `shift_summary()` groups output counts and
 optional local weather statistics by scientific identity; it does not rank methods.
 
-For method/model batches, save `shift_ids(run)$batch_id` to reopen the result
-in a later R session using the same store:
+For method/model batches, inspect `shift_history(store = store_dir(), type = "batch")`
+(or `run@ids$batch_id`) to reopen the result in a later R session using the same store:
 
 
 ``` r
@@ -237,8 +237,8 @@ With `access = "auto"`, `shift_era5()` uses the official point time-series
 service when all required variables are available there and otherwise uses the
 complete CDS subset service. CDS access reads a personal access token from
 `ECMWF_DATASTORES_KEY`, `~/.ecmwfdatastoresrc`, or `~/.cdsapirc`; credentials
-are never stored in a shift plan. `shift_era6()` reserves the same
-provider-neutral boundary but currently raises an explicit unavailable error,
+are never stored in a shift plan. Future ERA6 support is reserved behind the same
+provider-neutral boundary and currently raises an explicit unavailable error,
 because no stable public ERA6 dataset endpoint exists yet. It never substitutes
 ERA5 under an ERA6 label.
 
@@ -947,13 +947,7 @@ coverage[, .(variable_id, complete, status, output_rows, output_file_count)]
 
 The extracted values are not stored inside the small stage object. They are
 written as partitioned Parquet files under the store and registered in the store
-manifest. `shift_artifacts()` shows those registered files:
-
-
-``` r
-extract_artifacts <- shift_artifacts(extracted)
-extract_artifacts[kind == "extract", .(kind, role, relative_path)]
-```
+manifest.
 
 Use `shift_data()` when you want to inspect the actual extracted table without
 manually finding or reading those Parquet files. By default it returns a preview
@@ -1011,14 +1005,7 @@ morphed
 ```
 
 The `morphed` stage is still store-native. It contains hourly future weather
-data as Parquet artifacts, not EPW text files yet. Inspect the artifact rows when
-you want to see where those intermediate results live:
-
-
-``` r
-morph_artifacts <- shift_artifacts(morphed)
-morph_artifacts[, .(kind, role, relative_path)]
-```
+data as Parquet artifacts, not EPW text files yet.
 
 Use the same `shift_data()` helper to preview the hourly morphed weather table.
 The metadata columns identify the morphing case; the weather columns are the
@@ -1124,8 +1111,8 @@ data.table::data.table(
 Stage status and run status answer different questions. `shift_status(epws)`
 reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
 is `waiting` because a store-local EPW can still be exported. Calling
-`shift_epw_export(epws, dir)` completes the run. If the store-local file is the
-intentional endpoint, use `shift_complete(epws)` instead.
+`shift_epw_write(epws, dir = dir)` (or piping `shift_run_get(epws) |> shift_epw_write(dir = dir)`)
+exports the written EPW files and completes the run.
 
 ## Read Diagnostics When Something Looks Wrong
 
@@ -1187,5 +1174,5 @@ tables directly.
 
 
 ``` r
-names(shift_ids(epws))
+names(epws@ids)
 ```

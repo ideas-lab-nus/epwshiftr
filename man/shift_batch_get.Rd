@@ -7,7 +7,7 @@
 shift_batch_get(batch_id, store = NULL)
 }
 \arguments{
-\item{batch_id}{Batch identifier returned by \code{\link[=shift_ids]{shift_ids()}}.}
+\item{batch_id}{Batch identifier recorded in \code{\link[=shift_history]{shift_history()}}.}
 
 \item{store}{Root store used for \code{\link[=shift_epw_future]{shift_epw_future()}}, or the batch directory.}
 }

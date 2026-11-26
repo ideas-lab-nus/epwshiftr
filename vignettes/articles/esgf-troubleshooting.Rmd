@@ -34,11 +34,11 @@ to point to the layer that needs attention.
 ```r
 shift_status(epws)
 shift_diagnostics(epws)
-shift_ids(epws)
+shift_history(store = store_dir())
 ```
 
-Use `shift_ids()` only for deeper inspection. Ordinary scripts should rely on
-the stage helpers first.
+Ordinary scripts should rely on the stage helpers first before inspecting
+lower-level manifest records.
 
 # Index Node vs Data Node
 
@@ -135,7 +135,7 @@ Downloader state is persistent. Inspect sessions, tasks, jobs, and events before
 re-running a large download.
 
 ```r
-downloader <- shift_store(files_stage)$downloader()
+downloader <- EsgStore$new(store_dir())$downloader()
 
 downloader$sessions()
 downloader$tasks(session_id = session_id)
@@ -165,12 +165,12 @@ Use store validation when local files, manifest records, or download layout look
 inconsistent.
 
 ```r
-store <- shift_store(epws)
+store <- EsgStore$new(store_dir())
 
 store$storage_report(detail = TRUE)
 
 validation <- store$validate_files(
-    query_id = shift_ids(epws)$query_id,
+    query_id = epws@ids$query_id,
     checksum = FALSE,
     layout = TRUE
 )

@@ -18,7 +18,7 @@ source <- shift_era5(
     access = "arco"
 )
 site <- shift_site("Singapore", lat = 1.25, lon = 104)
-plan <- shift_reanalysis_data(source, site, dry_run = TRUE)
+plan <- shift_data_reanalysis(source, site, dry_run = TRUE)
 # Equivalently: shift_plan_reanalysis(source, site)
 plan$requests[, c("request_id", "variable_id", "expected_hours", "status")]
 ```
@@ -45,7 +45,7 @@ source <- shift_era5(2001, variables = c("rsdsdiff", "rlds", "clt", "pr"),
     frequency = "hour", access = "cds")
 site <- shift_site("grid", lat = -12.5, lon = 131)
 dates <- seq(as.Date("2001-06-29"), as.Date("2001-08-02"), by = "day")
-plan <- shift_reanalysis_data(source, site, dates = dates, dry_run = TRUE)
+plan <- shift_data_reanalysis(source, site, dates = dates, dry_run = TRUE)
 ```
 
 `dates` specifies exact complete UTC days; it does not add padding. Supply the
@@ -68,7 +68,7 @@ are only established during actual access.
 
 ```r
 # This call performs network access. These limits apply to this six-request plan.
-result <- shift_reanalysis_data(
+result <- shift_data_reanalysis(
     source, site, dir = "era5-singapore-2001",
     limits = list(
         max_submissions = 6,
@@ -147,14 +147,14 @@ dependencies remain in the table; downstream study selection must be explicit.
 
 ```r
 # Same source, sites, origin and directory; saved limits are inherited.
-result <- shift_reanalysis_data(source, site, dir = "era5-singapore-2001")
+result <- shift_data_reanalysis(source, site, dir = "era5-singapore-2001")
 
 # Local replay requires one file for every exact request ID.
 files <- setNames(
     file.path("supplied-files", paste0(plan$requests$request_id, ".nc")),
     plan$requests$request_id
 )
-local <- shift_reanalysis_data(source, site, dir = "era5-local", data = files)
+local <- shift_data_reanalysis(source, site, dir = "era5-local", data = files)
 ```
 
 Changed plans or origins require a new directory. `resume = FALSE` refuses an
