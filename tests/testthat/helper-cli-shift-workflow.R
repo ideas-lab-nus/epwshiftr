@@ -1,13 +1,3 @@
-# Thin alias kept while test-shift-discovery-ui.R still references this name.
-# cli_shift_test_mock_collect {{{
-cli_shift_test_mock_collect <- function(
-    file_docs,
-    calls = new.env(parent = emptyenv())
-) {
-    shift_test__mock_collect(file_docs, calls = calls, env = parent.frame())
-}
-# }}}
-
 # cli_run {{{
 cli_run <- function(store, ..., quiet = TRUE) {
     args <- c(
