@@ -461,7 +461,7 @@ morpher__epw_location <- function(epw) {
 # original_morphing__by_case {{{
 original_morphing__by_case <- function(data, fn) {
     data <- data.table::copy(data)
-    data[, .case_order := .I]
+    data.table::set(data, j = ".case_order", value = seq_len(nrow(data)))
     case_cols <- morpher__factor_case_columns(data)
     groups <- if (length(case_cols)) {
         unique(data[, ..case_cols])
@@ -489,8 +489,8 @@ original_morphing__by_case <- function(data, fn) {
         pieces[[i]] <- fn(rows)
     }
     out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-    data.table::setorder(out, .case_order)
-    out[, .case_order := NULL]
+    data.table::setorderv(out, ".case_order")
+    data.table::set(out, j = ".case_order", value = NULL)
     out[]
 }
 # }}}
@@ -768,16 +768,14 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
             delta_target[baseline_monthly$month] <-
                 baseline_monthly$target - baseline_monthly$baseline_huss_mean
         }
-        # FIXME: `rows` inherits column `delta` from `tdb`, so `:= delta`
-        # shadows this local variable with `rows$delta` (pre-existing bug in
-        # ad0520e1). Preserved verbatim here to keep Phase 2 refactor
-        # bit-identical against `_snaps/backend-original-morphing.md`.
-        delta <- morpher__constrained_month_series(
+        # Assign via set() rather than `:=` because `rows` inherits column
+        # `delta` (dry-bulb change in degC) from `tdb`.
+        huss_delta <- morpher__constrained_month_series(
             rows$month,
             delta_target,
             context$recipe$options$transition_hours
         )
-        rows[, huss_delta := delta]
+        data.table::set(rows, j = "huss_delta", value = huss_delta)
         rows
     })
 
@@ -1887,7 +1885,10 @@ morpher__smooth_enhanced_factors <- function(
                 transition_hours
             )
         }
-        rows[, `:=`(delta = delta, alpha = alpha)]
+        # Assign via set() so any pre-existing `delta` or `alpha` column on
+        # `rows` cannot shadow the newly smoothed local vectors.
+        data.table::set(rows, j = "delta", value = delta)
+        data.table::set(rows, j = "alpha", value = alpha)
         rows
     })
 }

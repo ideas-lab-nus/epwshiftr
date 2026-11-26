@@ -1857,4 +1857,79 @@ test_that("monthly smoothing follows the representative calendar across source y
     expect_identical(mixed, before)
 })
 
+test_that("HUSS state morphing applies specific humidity delta without shadowing tdb delta", {
+    epw <- epw_file_read(get_cache_epw())
+    data_epw <- epw_file__calculation_weather(
+        suppressMessages(epw$clone()$add_unit()$data())
+    )
+    future <- enhanced_test__change_climate()
+    reference <- enhanced_test__change_climate(reference = TRUE)
+    context <- original_morphing_test__context(
+        epw,
+        future,
+        "original_morphing",
+        "enhanced",
+        reference
+    )
+    tdb <- original_morphing__field(
+        data_epw,
+        context,
+        "tas",
+        "dry_bulb_temperature",
+        "auto",
+        change_factor = TRUE,
+        max_var = "tasmax",
+        min_var = "tasmin"
+    )
+    pressure <- original_morphing__field(
+        data_epw,
+        context,
+        "psl",
+        "atmospheric_pressure",
+        "shift",
+        change_factor = TRUE
+    )
+    humidity <- original_morphing__huss_state(data_epw, context, tdb, pressure)
+    rh <- humidity$rh
+    tdew <- humidity$tdew
+
+    # Specific-humidity change is +0.002 kg/kg across every month, whereas
+    # `tdb$delta` is +2 degC; shadowing would corrupt `huss_delta` by 1000x.
+    expect_equal(rh$delta, rep(0.002, nrow(rh)), tolerance = 1e-12)
+    expect_false(any(abs(rh$delta - tdb$delta) < 1))
+    expect_true(all(rh$relative_humidity >= 0 & rh$relative_humidity <= 100))
+    expect_gt(sum(rh$relative_humidity < 100 - 1e-6), 0.9 * nrow(rh))
+    expect_gt(sum(rh$factor_status == "ok"), 0.9 * nrow(rh))
+    expect_true(all(
+        tdew$dew_point_temperature <= tdb$dry_bulb_temperature + 1e-10
+    ))
+
+    # Verify ASHRAE psychrometric closure between morphed tdb, pressure, RH,
+    # dew point, and baseline + delta specific humidity.
+    baseline_huss <- epwphys__huss_from_rh_si(
+        as.numeric(data_epw$dry_bulb_temperature),
+        as.numeric(data_epw$relative_humidity),
+        as.numeric(data_epw$atmospheric_pressure)
+    )
+    sat_huss <- epwphys__saturation_huss_si(
+        tdb$dry_bulb_temperature,
+        pressure$atmospheric_pressure
+    )
+    expected_huss <- pmin(pmax(baseline_huss + rh$delta, 0), sat_huss)
+    closed_huss <- epwphys__huss_from_rh_si(
+        tdb$dry_bulb_temperature,
+        rh$relative_humidity,
+        pressure$atmospheric_pressure
+    )
+    expect_equal(closed_huss, expected_huss, tolerance = 1e-8)
+    expect_equal(
+        tdew$dew_point_temperature,
+        epwphys__dew_point_from_rh(
+            tdb$dry_bulb_temperature,
+            rh$relative_humidity / 100
+        ),
+        tolerance = 1e-8
+    )
+})
+
 # vim: fdm=marker :
