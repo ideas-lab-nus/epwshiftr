@@ -81,7 +81,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
     periods <- epw_morph_periods(`2060s` = 2055:2065)
     transform <- monthly_transform("original_morphing")
     climate_spec <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(
             climate_spec,
             periods,
@@ -230,7 +230,7 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
     stale <- shift_run_get(run_id, store = store_path)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     shift_job__run_update(
         store,
         run_id,
@@ -252,7 +252,7 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
     )
 
     view <- shift_ui_view__ui_run_view(
-        shift_refresh(stale),
+        shift_inspect__refresh(stale),
         width = 72L,
         detail = "normal",
         motion = "none"

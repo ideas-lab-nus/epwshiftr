@@ -255,7 +255,7 @@ test_that("staged summaries preserve output identities, transforms and weather g
         )
     )
     # Isolate result restoration; exercise real public grouping and EPW reads.
-    testthat::local_mocked_bindings(shift_result = function(...) stage)
+    testthat::local_mocked_bindings(shift_inspect__result = function(...) stage)
     summary <- shift_summary(
         run,
         refresh = FALSE,

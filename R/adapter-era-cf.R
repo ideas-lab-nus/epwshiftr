@@ -1266,7 +1266,7 @@ reanalysis__materialize <- function(
         period = "observed",
         arg = "calibration$years"
     )
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     identities <- reanalysis__identities(
         spec,
         site,

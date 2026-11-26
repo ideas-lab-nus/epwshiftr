@@ -220,7 +220,7 @@ test_that("Quantile-mapping morphing public method persists both reference roles
         table = "day"
     )
     periods <- epw_morph_periods(`2060s` = 2061L)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,

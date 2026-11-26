@@ -503,7 +503,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         expect_equal(nrow(raw), 12L)
         expect_equal(raw$lon, rep(sites[[i]]@lon, 12L))
         expect_equal(raw$lat, rep(sites[[i]]@lat, 12L))
-        store <- shift_store(child)
+        store <- shift_inspect__store(child)
         shared_events <- store$query(paste(
             "SELECT details_json FROM shift_run_event",
             "WHERE details_json LIKE '%shared_cache%'"

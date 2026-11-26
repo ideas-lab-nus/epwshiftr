@@ -124,7 +124,7 @@ test_that("shift_inspect__with_store closes opened stores on return and error", 
         class = "EsgStore"
     )
     testthat::local_mocked_bindings(
-        shift_store = function(x, create = FALSE) fake_store
+        shift_inspect__store = function(x, create = FALSE) fake_store
     )
     stage <- shift_stage__new(
         ShiftFiles,
@@ -304,7 +304,10 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
         epw_morph_recipe("original_morphing"),
         resume = TRUE
     )
-    expect_equal(shift_ids(reused)$plan_id, shift_ids(derived)$plan_id)
+    expect_equal(
+        shift_inspect__ids(reused)$plan_id,
+        shift_inspect__ids(derived)$plan_id
+    )
 })
 
 test_that("shift_morph() uses complete extraction plans by default", {
@@ -370,7 +373,7 @@ test_that("shift_morph() uses complete extraction plans by default", {
     )
 
     expect_equal(
-        shift_ids(morphed)$plan_id,
+        shift_inspect__ids(morphed)$plan_id,
         coverage$plan_id[coverage$complete]
     )
     expect_true(any(
@@ -378,7 +381,7 @@ test_that("shift_morph() uses complete extraction plans by default", {
     ))
     expect_equal(shift_status(morphed), "morphed")
     expect_equal(shift_status(blocked), "blocked")
-    expect_equal(shift_status(shift_complete(morphed)), "partial")
+    expect_equal(shift_status(shift_run__complete(morphed)), "partial")
 })
 
 test_that("shift_morph() resolves automatic and manual historical references", {
@@ -446,7 +449,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
             transform = transform
         )
         morpher$preflight(
-            plan_id = shift_ids(climate)$plan_id,
+            plan_id = shift_inspect__ids(climate)$plan_id,
             periods = future_periods,
             strict = FALSE
         )
@@ -455,7 +458,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     auto <- shift_morph(
         climate,
         transform = transform,
-        reference = shift_reference_historical(reference_periods),
+        reference = historical_reference(1995L),
         strict = TRUE,
         overwrite = TRUE
     )
@@ -472,7 +475,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         logical(1L)
     )))
     reference_climate <- auto@meta$reference
-    reference_ids <- shift_ids(reference_climate)
+    reference_ids <- shift_inspect__ids(reference_climate)
     plan_reference <- shift_reference_from_plan(
         reference_ids$plan_id,
         reference_periods

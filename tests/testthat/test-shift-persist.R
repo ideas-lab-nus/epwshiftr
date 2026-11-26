@@ -25,7 +25,7 @@ test_that("an identical complete workflow returns its original durable run", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     private <- morpher__private_store(store)
     cases <- private$read_table("shift_run_case")
     cases <- cases[cases[["run_id"]] == run_id]
@@ -113,7 +113,7 @@ test_that("an identical complete workflow returns its original durable run", {
     earlier_json <- shift_persist__spec_json(earlier_spec)
     earlier_hash <- store__hash(earlier_json)
     expect_false(identical(earlier_hash, expected_hash))
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     shift_job__run_update(
         store,
         run_id,
@@ -122,7 +122,7 @@ test_that("an identical complete workflow returns its original durable run", {
     )
     store$close()
     expect_null(shift_run__run_existing(plan))
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     shift_job__run_update(
         store,
         run_id,
@@ -147,7 +147,7 @@ test_that("an identical complete workflow returns its original durable run", {
         unname(tools::md5sum(c(canonical, exported))),
         checksums
     )
-    reopened <- shift_store(plan)
+    reopened <- shift_inspect__store(plan)
     on.exit(reopened$close(), add = TRUE)
     runs <- morpher__private_store(reopened)$read_table("shift_run")
     expect_equal(
@@ -179,7 +179,7 @@ test_that("an identical interrupted workflow resumes its original run ID", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     shift_job__run_update(
         store,
         run_id,
@@ -201,7 +201,7 @@ test_that("an identical interrupted workflow resumes its original run ID", {
 
     expect_identical(resumed@ids$run_id, run_id)
     expect_identical(resumed_ids, run_id)
-    reopened <- shift_store(plan)
+    reopened <- shift_inspect__store(plan)
     on.exit(reopened$close(), add = TRUE)
     runs <- morpher__private_store(reopened)$read_table("shift_run")
     expect_equal(nrow(runs), 1L)

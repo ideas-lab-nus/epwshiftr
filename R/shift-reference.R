@@ -39,31 +39,21 @@ shift_reference_from_plan <- function(
 # }}}
 
 #' @rdname shift_api
+#' @param years Reference years used by [historical_reference()].
 #' @param period Reference period name used when constructing periods from
 #'   `years`.
 #' @export
 # historical_reference {{{
 historical_reference <- function(years = 1995:2014, period = "reference", ...) {
-    shift_reference_historical(
+    shift_reference__historical(
         shift_spec__periods_from_years(years, period = period, arg = "years"),
         ...
     )
 }
 # }}}
 
-#' @rdname shift_api
-#' @param match File metadata fields copied from the future climate stage when
-#'   resolving an automatic historical reference.
-#' @param collect Named collection options. Historical reference collection may
-#'   use `fields`, `all`, `limit`, `label`, and `time`; [shift_plan()] applies
-#'   the same strict field validation to its collection stage.
-#' @param extract Named extraction options. Historical reference extraction may
-#'   use `variables`, `time`, `filters`, `method`, and `fallback`;
-#'   [shift_plan()] applies the same strict field validation to its extraction
-#'   stage.
-#' @export
-# shift_reference_historical {{{
-shift_reference_historical <- function(
+# shift_reference__historical {{{
+shift_reference__historical <- function(
     periods,
     experiment = "historical",
     activity = "CMIP",
@@ -145,7 +135,7 @@ shift_reference__resolve <- function(
     }
 
     if (S7::S7_inherits(reference, ShiftClimate)) {
-        reference_ids <- shift_ids(reference)
+        reference_ids <- shift_inspect__ids(reference)
         return(list(
             reference = reference,
             spec = NULL,
@@ -179,7 +169,7 @@ shift_reference__resolve <- function(
             resume = resume,
             reporter = reporter
         )
-        climate_ids <- shift_ids(climate)
+        climate_ids <- shift_inspect__ids(climate)
         return(list(
             reference = climate,
             spec = reference,
@@ -215,7 +205,7 @@ shift_reference__observed_reference_resolve <- function(
             resume = resume,
             reporter = reporter
         )
-        climate_ids <- shift_ids(climate)
+        climate_ids <- shift_inspect__ids(climate)
         return(list(
             reference = climate,
             spec = observed_reference,
@@ -267,8 +257,8 @@ shift_reference__resolve_historical <- function(
         )
     }
 
-    store <- shift_store(x)
-    ids <- shift_ids(x)
+    store <- shift_inspect__store(x)
+    ids <- shift_inspect__ids(x)
     catalog <- if (!is.null(ids$query_id)) {
         shift_inspect__file_catalog(store, ids$query_id)
     } else {
@@ -421,7 +411,7 @@ shift_reference__historical_filters <- function(
         cli::cli_abort(c(
             "Automatic historical reference resolution could not infer required match field(s).",
             "x" = "{.field {missing}}",
-            "i" = "Supply explicit values through `shift_reference_historical(filters = ...)` or reduce `match`."
+            "i" = "Supply explicit values through `historical_reference(filters = ...)` or reduce `match`."
         ))
     }
 

@@ -624,7 +624,7 @@ shift_collect <- S7::new_generic(
 #'   detached `Rscript` worker. Single plans return a queued `ShiftRun`; batches
 #'   return a queued `ShiftBatch` whose single coordinator shares source reads
 #'   and starts child workflows. Both modes honor the same source-worker limit
-#'   from `options(epwshiftr.mirai_workers = 4L)`. Use [shift_refresh()] or
+#'   from `options(epwshiftr.mirai_workers = 4L)`. Use [shift_status()] or
 #'   [shift_watch()] to follow source reading and newly registered child runs.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
@@ -679,7 +679,7 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
-#'   [shift_epw_future()] and [shift_plan()] also accept a numeric vector of
+#'   [shift_epw_future()] also accepts a numeric vector of
 #'   target years; each year becomes an independently named output period.
 #' @param method Grid extraction method used by [shift_extract()].
 #' @param fallback Extraction fallback policy.
@@ -1012,7 +1012,7 @@ S7::method(shift_check, ShiftFiles) <- function(
             "missing_store",
             "The store for this collected file stage cannot be opened.",
             query_id = x@ids$query_id,
-            action = "Check `shift_store(x)` and the stored path."
+            action = "Check that the store directory exists and is accessible."
         )
     )
     shift_stage__finish_check(diagnostics, strict, base = x@diagnostics)

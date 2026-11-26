@@ -448,7 +448,7 @@ shift_batch_plan__plan_from_discovery <- function(children, manifest, path) {
             consumers
         ))
     }
-    store <- shift_store(path)
+    store <- shift_inspect__store(path)
     on.exit(store$close(), add = TRUE)
     sql <- sprintf(
         paste(
@@ -546,7 +546,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                 if (is.null(files)) {
                     return(NULL)
                 }
-                store <- shift_store(files)
+                store <- shift_inspect__store(files)
                 on.exit(store$close(), add = TRUE)
                 query <- shift_inspect__query_run(store, files@ids$query_id)
                 source <- file.path(store$path, query$query_file[[1L]])
@@ -615,7 +615,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
         ))
     ]
     catalogs <- lapply(inputs, function(input) {
-        store <- shift_store(input$store)
+        store <- shift_inspect__store(input$store)
         on.exit(store$close(), add = TRUE)
         rows <- data.table::rbindlist(
             lapply(

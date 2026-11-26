@@ -36,7 +36,7 @@ epwshiftr_cli_morph <- function(
 # cli_morph__attach_ids {{{
 cli_morph__attach_ids <- function(x, stage) {
     result <- data.table::as.data.table(data.table::copy(x))
-    ids <- shift_ids(stage)
+    ids <- shift_inspect__ids(stage)
     n <- nrow(result)
     for (col in c("run_id", "step_id")) {
         if (!is.null(ids[[col]])) {
@@ -372,7 +372,7 @@ cli_morph__parse_references <- function(parsed) {
                     "--reference-plan cannot be used with --reference historical."
                 )
             }
-            reference <- shift_reference_historical(
+            reference <- shift_reference__historical(
                 reference_periods,
                 filters = epwshiftr_cli_key_value_list(
                     parsed$options[["--reference-filter"]],
@@ -489,7 +489,7 @@ epwshiftr_cli_morph_run <- function(
         )
     )
     result <- epwshiftr_cli_morph_workflow_result(morphed@meta$workflow)
-    ids <- shift_ids(morphed)
+    ids <- shift_inspect__ids(morphed)
     result$run_id <- ids$run_id
     result$step_id <- ids$step_id
     result

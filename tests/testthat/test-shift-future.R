@@ -403,17 +403,22 @@ test_that("shift_epw_future() completes an explicit historical reference run", {
     expect_true(all(vapply(
         run_tables,
         function(table) {
-            nrow(morpher__private_store(shift_store(run))$read_table(table)) >=
+            nrow(morpher__private_store(shift_inspect__store(run))$read_table(
+                table
+            )) >=
                 1L
         },
         logical(1L)
     )))
-    expect_equal(nrow(shift_runs(store_path)), 1L)
+    expect_equal(nrow(shift_history(store_path, type = "run")), 1L)
     expect_equal(
-        shift_status(shift_run_get(shift_ids(run)$run_id, store_path)),
+        shift_status(shift_run_get(shift_inspect__ids(run)$run_id, store_path)),
         "completed"
     )
-    expect_equal(shift_ids(shift_resume(run))$run_id, shift_ids(run)$run_id)
+    expect_equal(
+        shift_inspect__ids(shift_resume(run))$run_id,
+        shift_inspect__ids(run)$run_id
+    )
     delivery_files <- list.files(output_dir, recursive = TRUE, all.files = TRUE)
     expect_false(any(grepl("\\.(duckdb|parquet|json)$", delivery_files)))
 })

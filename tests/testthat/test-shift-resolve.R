@@ -91,7 +91,7 @@ resolve_test__plan <- function(
     transform = monthly_transform("epwshiftr"),
     periods = epw_morph_periods(`2060s` = 2060L)
 ) {
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(
             climate_spec,
             periods,
@@ -190,8 +190,8 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
         store = tempfile("shift-drs-time-store-")
     )
     catalog <- shift_inspect__file_catalog(
-        shift_store(files),
-        shift_ids(files)$query_id
+        shift_inspect__store(files),
+        shift_inspect__ids(files)$query_id
     )
 
     expect_false(is.na(catalog$datetime_start[[1L]]))
@@ -226,7 +226,7 @@ test_that("workflow resolver resolves both File service paths", {
     ))
 
     resolved <- shift_resolve__resolve_file_services(files, "future")
-    resolved_store <- shift_store(resolved)
+    resolved_store <- shift_inspect__store(resolved)
     on.exit(resolved_store$close(), add = TRUE)
     catalog <- shift_inspect__file_catalog(
         resolved_store,
@@ -491,7 +491,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     dataset_run <- shift_run_get(datasets)
     expect_equal(shift_status(dataset_run), "completed")
     expect_equal(dataset_run@meta$run$task[[1L]], "datasets")
-    expect_equal(shift_result(dataset_run)$count(), 1L)
+    expect_equal(shift_inspect__result(dataset_run)$count(), 1L)
     expect_true(nzchar(attr(datasets, "epwshiftr.run_id", exact = TRUE)))
     expect_true(nzchar(attr(datasets, "epwshiftr.step_id", exact = TRUE)))
     dataset_event <- dataset_run@meta$events[
@@ -515,9 +515,9 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_true(all(calls$query_reporter))
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
-    expect_true(length(shift_ids(files)$query_id) == 1L)
-    expect_true(nzchar(shift_ids(files)$run_id))
-    expect_true(nzchar(shift_ids(files)$step_id))
+    expect_true(length(shift_inspect__ids(files)$query_id) == 1L)
+    expect_true(nzchar(shift_inspect__ids(files)$run_id))
+    expect_true(nzchar(shift_inspect__ids(files)$step_id))
     expect_equal(shift_status(shift_run_get(files)), "waiting")
     collect_run <- shift_run_get(files)
     collect_event <- collect_run@meta$events[
@@ -537,7 +537,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(file_result$filename, "tas_day.nc")
     expect_error(shift_files(req), "No File result")
     expect_false("error" %in% shift_check(files, strict = TRUE)$severity)
-    expect_equal(shift_status(shift_refresh(files)), "collected")
+    expect_equal(shift_status(shift_inspect__refresh(files)), "collected")
 
     printed <- capture.output(print(files), type = "message")
     expect_true(any(grepl("ESGF Query Result [File]", printed, fixed = TRUE)))
@@ -593,14 +593,20 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_false(capped_calls$dataset_all[[1L]])
     expect_identical(capped_calls$dataset_limit[[1L]], 10L)
 
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     store$add_files(esgf_test__file_result(esgf_test__file_docs(
         "hurs_day.nc",
         variable_id = "hurs"
     )))
     dl <- shift_download(files, run = FALSE, probe = FALSE)
-    expect_identical(shift_ids(dl)$run_id, shift_ids(files)$run_id)
-    expect_false(identical(shift_ids(dl)$step_id, shift_ids(files)$step_id))
+    expect_identical(
+        shift_inspect__ids(dl)$run_id,
+        shift_inspect__ids(files)$run_id
+    )
+    expect_false(identical(
+        shift_inspect__ids(dl)$step_id,
+        shift_inspect__ids(files)$step_id
+    ))
     expect_equal(nrow(data.table::as.data.table(dl)), 1L)
     expect_equal(shift_datasets(dl)$count(), 1L)
     expect_equal(shift_files(dl)$filename, "tas_day.nc")
@@ -611,7 +617,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(shift_status(restored), "collected")
     expect_equal(nrow(data.table::as.data.table(restored)), 1L)
 
-    completed <- shift_complete(dl)
+    completed <- shift_run__complete(dl)
     expect_equal(shift_status(completed), "partial")
 })
 
@@ -633,7 +639,7 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     shift_job__run_event(
         store,
@@ -866,7 +872,7 @@ test_that("workflow resolver removes HTTP-only files when downloads are forbidde
         "future",
         require_opendap = TRUE
     )
-    resolved_store <- shift_store(resolved)
+    resolved_store <- shift_inspect__store(resolved)
     on.exit(resolved_store$close(), add = TRUE)
     catalog <- shift_inspect__file_catalog(
         resolved_store,
@@ -923,7 +929,7 @@ test_that("CF-aware collection retains final-year File candidates", {
         },
         .package = "epwshiftr"
     )
-    request <- shift_cmip6_scenario(
+    request <- shift_spec__cmip6_scenario(
         "CMCC-ESM2",
         "ssp245",
         years = 2081:2100,
@@ -936,9 +942,12 @@ test_that("CF-aware collection retains final-year File candidates", {
         options = list(time_filter_method = "auto")
     )
     files <- shift_collect(request, store = tempfile("end-window-store-"))
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(store$close(), add = TRUE)
-    catalog <- shift_inspect__file_catalog(store, shift_ids(files)$query_id)
+    catalog <- shift_inspect__file_catalog(
+        store,
+        shift_inspect__ids(files)$query_id
+    )
     expect_equal(nrow(catalog), 1L)
     expect_equal(format(catalog$datetime_end, "%Y", tz = "UTC"), "2100")
     expect_null(query_param__value(dataset_queries[[1L]]$stop))

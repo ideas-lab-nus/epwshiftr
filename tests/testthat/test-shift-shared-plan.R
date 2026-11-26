@@ -283,7 +283,7 @@ test_that("child demands retain site and historical source roles", {
         shift_site("Guangzhou", lon = 113.3, lat = 23.1, epw = epw)
     )
     children <- lapply(sites, function(site) {
-        child <- shift_plan(
+        child <- shift_spec__plan(
             request,
             site,
             periods,

@@ -59,7 +59,7 @@ shift_climate__derive_hurs_climate <- function(
         return(climate)
     }
 
-    store <- shift_store(climate)
+    store <- shift_inspect__store(climate)
     private <- priv(store)
     coverage <- store$coverage(plan_id = climate@ids$plan_id)
     coverage <- coverage[complete %in% TRUE]

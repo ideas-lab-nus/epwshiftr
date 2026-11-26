@@ -163,7 +163,7 @@ test_that("completed batch children reuse one authoritative store", {
     }
     run <- batch_test__child_run("completed")
     testthat::local_mocked_bindings(
-        shift_store = function(x, create = FALSE) {
+        shift_inspect__store = function(x, create = FALSE) {
             opened <<- opened + 1L
             expect_identical(x, "/example/child")
             expect_false(create)
@@ -197,7 +197,7 @@ test_that("completed receipt hints do not replace authoritative run status", {
     child_store$close <- function() invisible(NULL)
     run <- batch_test__child_run("running")
     testthat::local_mocked_bindings(
-        shift_store = function(x, create = FALSE) child_store,
+        shift_inspect__store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
         shift_run__run_artifacts_complete = function(store, run_id) {
             verified <<- verified + 1L
@@ -221,7 +221,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
     }
     run <- batch_test__child_run("completed")
     testthat::local_mocked_bindings(
-        shift_store = function(x, create = FALSE) child_store,
+        shift_inspect__store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
         shift_run__run_artifacts_complete = function(store, run_id) FALSE,
         .package = "epwshiftr"
@@ -237,7 +237,7 @@ test_that("locked completed children retain path-based live restoration", {
     store_arguments <- list()
     run <- batch_test__child_run("running")
     testthat::local_mocked_bindings(
-        shift_store = function(x, create = FALSE) {
+        shift_inspect__store = function(x, create = FALSE) {
             stop("manifest locked")
         },
         shift_run_get = function(run_id, store) {
@@ -847,7 +847,7 @@ test_that("single-case and batch CMIP6 evidence identify an interior historical 
     reference <- historical_reference(1995:2014)
     observed <- shift_era5(1995:2014)
     site <- shift_site(epw = get_cache_epw())
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         shift_spec__request_from_cmip6(climate, periods, transform),
         site = site,
         periods = periods,

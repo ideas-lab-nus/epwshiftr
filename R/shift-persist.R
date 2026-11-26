@@ -58,7 +58,7 @@ shift_persist__reference_spec_value <- function(reference, role) {
         return(list(
             mode = "plan",
             role = role,
-            plan_id = shift_ids(reference)$plan_id,
+            plan_id = shift_inspect__ids(reference)$plan_id,
             periods = shift_persist__periods_value(reference@meta$periods)
         ))
     }
@@ -128,7 +128,7 @@ shift_persist__reference_from_spec <- function(spec) {
                 "Persisted automatic historical reference has an invalid semantic role."
             )
         }
-        return(shift_reference_historical(
+        return(shift_reference__historical(
             periods = periods,
             experiment = as.character(spec$experiment),
             activity = as.character(spec$activity),
@@ -673,7 +673,7 @@ shift_persist__stage_from_ref <- function(ref) {
             climate <- shift_persist__stage_from_ref(meta$climate)
             transform <- transform__from_spec(meta$transform)
             baseline <- if (is.null(meta$baseline)) {
-                shift_target(climate)
+                shift_inspect__target(climate)
             } else if (identical(as.character(meta$baseline$type), "site")) {
                 shift_persist__site_from_ref(meta$baseline$value)
             } else {
@@ -806,7 +806,7 @@ shift_persist__plan_from_spec <- function(spec, store = NULL) {
         )
     }
     stage <- shift_stage__coalesce(spec$stages, list())
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = request,
         site = site,
         periods = spec$periods,

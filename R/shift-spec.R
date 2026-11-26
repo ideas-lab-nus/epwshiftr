@@ -637,9 +637,9 @@ shift_spec__resolve_epw <- function(x) {
 #'   In `shift_cmip6()`, an unnamed scalar `frequency` applies to every transform
 #'   input, while a named character vector assigns one frequency to every
 #'   source variable so `3hrPt`, `3hr`, and `day` data can be collected together.
-#'   In `shift_reference_historical()`, `experiment` is the historical
-#'   reference experiment filter. Values are not translated; for ESGF, use
-#'   exact facet values such as `project = "CMIP6"` and `frequency = "mon"`.
+#'   In [historical_reference()], `experiment` (passed via `...`) is the
+#'   historical reference experiment filter. Values are not translated; for ESGF,
+#'   use exact facet values such as `project = "CMIP6"` and `frequency = "mon"`.
 #' @param time Optional request or extraction time filter. Numeric years such as
 #'   `2060L` are expanded to the full UTC year; otherwise supply one or two
 #'   date-time values accepted by the provider/store.
@@ -655,10 +655,11 @@ shift_spec__resolve_epw <- function(x) {
 #' @param lon,lat Optional site longitude and latitude. Missing values are read
 #'   from the EPW LOCATION header when `epw` is supplied.
 #' @param epw A baseline EPW path, internal `EpwFile`, or external object
-#'   inheriting from `"Epw"` in site and task APIs; in [shift_plan()], a named
-#'   EPW export option list.
+#'   inheriting from `"Epw"` in site and task APIs.
 #' @param metadata Optional site metadata.
-#' @param ... Additional provider-specific filters or workflow options.
+#' @param ... Additional provider-specific filters or workflow options. In
+#'   [historical_reference()], forwarded options include `experiment`,
+#'   `activity`, `match`, `filters`, `options`, `collect`, and `extract`.
 #'
 #' @return A shift stage object.
 #'
@@ -983,7 +984,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
         frequencies,
         climate@table
     )
-    request <- shift_cmip6_scenario(
+    request <- shift_spec__cmip6_scenario(
         source = climate@model,
         scenario = climate@scenarios,
         member = climate@member,
@@ -1013,8 +1014,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
 #' @rdname shift_api
 #' @param allow_partial Whether a task-level run may complete with missing cases.
 #' @param download Source-data policy in [shift_control()] (`"auto"`,
-#'   `"always"`, or `"never"`), or a named download-stage option list in
-#'   [shift_plan()].
+#'   `"always"`, or `"never"`).
 #' @param extraction_method Grid extraction method.
 #' @param output_layout Output directory layout.
 #' @export
@@ -1051,21 +1051,8 @@ shift_control <- function(
 }
 # }}}
 
-#' @rdname shift_api
-#' @param scenario CMIP6 scenario experiment IDs, for example
-#'   `"ssp126"` or `"ssp585"`.
-#' @param member CMIP6 variant label, for example `"r1i1p1f1"`.
-#' @param years Optional years used to constrain the future request time window.
-#' @param activity CMIP6 activity ID. `shift_cmip6_scenario()` defaults to
-#'   `"ScenarioMIP"` and `shift_reference_historical()` defaults to `"CMIP"`.
-#' @param table_id One or more CMIP6 table IDs. If `NULL`, the native table is
-#'   inferred for each variable's `frequency`.
-#' @param grid_label Optional CMIP6 grid label.
-#' @param data_node Optional ESGF data node filter.
-#' @param index_node Optional ESGF index node.
-#' @export
-# shift_cmip6_scenario {{{
-shift_cmip6_scenario <- function(
+# shift_spec__cmip6_scenario {{{
+shift_spec__cmip6_scenario <- function(
     source,
     scenario,
     member = NULL,
@@ -1211,14 +1198,8 @@ shift_spec__validate_transform_periods <- function(transform, periods) {
 }
 # }}}
 
-#' @rdname shift_api
-#' @param request A [shift_request()] object, commonly from
-#'   `shift_cmip6_scenario()`.
-#' @param morph Named morph-stage options. Stage option lists are validated and
-#'   cannot override task-level controls or the transform/reference inputs.
-#' @export
-# shift_plan {{{
-shift_plan <- function(
+# shift_spec__plan {{{
+shift_spec__plan <- function(
     request,
     site,
     periods,
@@ -1235,7 +1216,7 @@ shift_plan <- function(
 ) {
     if (!S7::S7_inherits(request, ShiftRequest)) {
         cli::cli_abort(
-            "`request` must be a {.cls ShiftRequest}, usually from {.fn shift_request} or {.fn shift_cmip6_scenario}."
+            "`request` must be a {.cls ShiftRequest}, usually from {.fn shift_request}."
         )
     }
     if (!S7::S7_inherits(site, ShiftSite)) {
@@ -1331,7 +1312,7 @@ shift_plan <- function(
 #'   and bounded native reads are shared; each child owns its persisted outputs.
 #'   Use declarative
 #'   historical/reanalysis references. For previously extracted site-specific
-#'   references, use [shift_plan()] with the matching site and store.
+#'   references, use [shift_reference_from_plan()] with [shift_morph()].
 #' @param methods One or more unambiguous method keys from
 #'   [weather_transforms()]. This high-level form creates a `ShiftBatch` across
 #'   every selected method and model.

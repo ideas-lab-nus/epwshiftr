@@ -26,7 +26,7 @@ shift_live_snapshot_test__run <- function(env = parent.frame()) {
         dry_run = TRUE
     )@meta$children[[1L]]
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     withr::defer(store$close(), envir = env)
     shift_job__job_create(
         store,

@@ -172,7 +172,7 @@ test_that("Shift scientific labels preserve table policy and partitions", {
     all_spec <- shift_persist__climate_spec_value(all_models)
     expect_null(shift_persist__climate_from_spec(all_spec)@n_models)
 
-    request <- shift_cmip6_scenario(
+    request <- shift_spec__cmip6_scenario(
         source = "BCC-CSM2-MR",
         scenario = "ssp585",
         variables = c("tas", "rsds"),
@@ -193,9 +193,9 @@ test_that("Shift scientific labels preserve table policy and partitions", {
     expect_identical(shift_spec__cmip6_request_table_spec("3hr"), "3hr")
 })
 
-test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
+test_that("internal scenario and plan builders describe future EPW workflows", {
     transform <- monthly_transform("original_morphing")
-    req <- shift_cmip6_scenario(
+    req <- shift_spec__cmip6_scenario(
         source = "BCC-CSM2-MR",
         scenario = c("ssp126", "ssp585"),
         member = "r1i1p1f1",
@@ -218,7 +218,7 @@ test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows
     expect_true(all(c("tas", "hurs", "pr") %in% req@meta$variables))
 
     site <- shift_site(id = "SIN", epw = get_cache_epw())
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = req,
         site = site,
         periods = list(`2060s` = "2055:2065"),
@@ -447,7 +447,7 @@ test_that("CMIP6 fields remain valid after construction", {
 test_that("shift reference specs validate manual and automatic reference inputs", {
     periods <- epw_morph_periods(reference = 1995L)
 
-    historical <- shift_reference_historical(periods)
+    historical <- shift_reference__historical(periods)
     manual <- shift_reference_from_plan("plan-reference", periods)
 
     expect_true(S7::S7_inherits(historical, ShiftReferenceSpec))
@@ -459,7 +459,7 @@ test_that("shift reference specs validate manual and automatic reference inputs"
     expect_equal(manual@mode, "plan")
     expect_equal(manual@role, "model_historical")
     expect_equal(manual@plan_id, "plan-reference")
-    expect_error(shift_reference_historical(NULL), "data.frame")
+    expect_error(shift_reference__historical(NULL), "data.frame")
     expect_error(shift_reference_from_plan(character(), periods), "length >= 1")
 })
 

@@ -259,7 +259,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         frequency = HOURLY_KQDM_MODEL_FREQUENCIES
     )
     periods <- epw_morph_periods(`2060s` = 2061:2062)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,

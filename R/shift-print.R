@@ -401,7 +401,7 @@ shift_print__format_options <- function(x) {
 # rather than making print() fail when a store is temporarily unavailable.
 # shift_print__print_store_read {{{
 shift_print__print_store_read <- function(x, reader) {
-    opened <- tryCatch(shift_store(x), error = identity)
+    opened <- tryCatch(shift_inspect__store(x), error = identity)
     if (inherits(opened, "condition")) {
         return(list(
             data = data.table::data.table(),
@@ -477,7 +477,7 @@ shift_print__print_stage_intro <- function(x, title, facts = list()) {
 # Render optional workflow provenance after the scientific query/result view.
 # shift_print__print_workflow {{{
 shift_print__print_workflow <- function(x, verbose = FALSE) {
-    ids <- shift_ids(x)
+    ids <- shift_inspect__ids(x)
     diagnostics <- shift_diagnostics(x)
     if (isTRUE(verbose)) {
         cli::cli_rule("Workflow")
@@ -528,7 +528,7 @@ shift_print__print_files <- function(
     verbose = FALSE
 ) {
     shift_print__print_use_width(width)
-    ids <- shift_ids(x)
+    ids <- shift_inspect__ids(x)
     result_fields <- unique(as.character(x@meta$result_fields))
     result_fields <- result_fields[
         !is.na(result_fields) & nzchar(result_fields)
@@ -548,7 +548,7 @@ shift_print__print_files <- function(
             )
         }
     }
-    store <- tryCatch(shift_store(x), error = identity)
+    store <- tryCatch(shift_inspect__store(x), error = identity)
     if (inherits(store, "condition")) {
         # Detached or temporarily unavailable stores remain printable from cached metadata.
         node <- if (!is.null(request)) {
@@ -851,7 +851,7 @@ shift_print__print_download <- function(
     verbose = FALSE
 ) {
     shift_print__print_use_width(width)
-    ids <- shift_ids(x)
+    ids <- shift_inspect__ids(x)
     read <- shift_print__cached_or_store(x, x@meta$session, function(store) {
         if (is.null(ids$session_id) || is.na(ids$session_id)) {
             return(data.table::data.table())
@@ -945,10 +945,10 @@ shift_print__print_climate <- function(
 ) {
     shift_print__print_use_width(width)
     read <- shift_print__cached_or_store(x, x@meta$coverage, function(store) {
-        store$coverage(plan_id = shift_ids(x)$plan_id)
+        store$coverage(plan_id = shift_inspect__ids(x)$plan_id)
     })
     coverage <- read$data
-    site <- tryCatch(shift_target(x), error = function(e) NULL)
+    site <- tryCatch(shift_inspect__target(x), error = function(e) NULL)
     complete <- if (nrow(coverage) && "complete" %in% names(coverage)) {
         sum(coverage$complete %in% TRUE)
     } else {
@@ -1014,7 +1014,10 @@ shift_print__morph_print_rows <- function(x) {
         x,
         x@meta$results,
         function(store) {
-            shift_inspect__morph_result_rows(store, shift_ids(x)$morph_id)
+            shift_inspect__morph_result_rows(
+                store,
+                shift_inspect__ids(x)$morph_id
+            )
         }
     )
     if (nrow(persisted$data)) {
@@ -1086,7 +1089,7 @@ shift_print__print_morphed <- function(
         ),
         n = n,
         empty = "No morph results are available.",
-        more_hint = "use `shift_data()` or `shift_artifacts()` for complete morph data.",
+        more_hint = "use `shift_data()` for complete morph data.",
         error = read$error,
         verbose = verbose
     )
@@ -1104,7 +1107,7 @@ shift_print__print_outputs_stage <- function(
 ) {
     shift_print__print_use_width(width)
     read <- shift_print__cached_or_store(x, x@meta$outputs, function(store) {
-        shift_inspect__epw_output_rows(store, shift_ids(x)$morph_id)
+        shift_inspect__epw_output_rows(store, shift_inspect__ids(x)$morph_id)
     })
     outputs <- read$data
     paths <- intersect(c("export_path", "path", "output_path"), names(outputs))
@@ -1327,7 +1330,7 @@ shift_print__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     if (is.null(x@store_path) || !nzchar(x@store_path)) {
         refresh_error <- "No store is associated with this cached run."
     } else {
-        refreshed <- tryCatch(shift_refresh(x), error = identity)
+        refreshed <- tryCatch(shift_inspect__refresh(x), error = identity)
         if (inherits(refreshed, "condition")) {
             refresh_error <- conditionMessage(refreshed)
         } else {

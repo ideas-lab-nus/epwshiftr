@@ -372,7 +372,7 @@ ui_workflows__batch <- function(root) {
         shift_cmip6(model = 2L, scenarios = "ssp585"),
         periods = list(mid = 2049:2050),
         methods = c("original_morphing", "bws_btws"),
-        reference = shift_reference_historical(data.frame(
+        reference = shift_reference__historical(data.frame(
             period = "reference",
             year = 1995:2014
         )),

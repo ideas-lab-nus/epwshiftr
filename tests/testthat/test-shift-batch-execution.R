@@ -46,7 +46,7 @@ test_that("background batches share reads through one coordinator", {
                 sep = "\n"
             ))
         }
-        current <- shift_refresh(background)
+        current <- shift_inspect__refresh(background)
         runs <- Filter(
             function(child) S7::S7_inherits(child, ShiftRun),
             current@meta$children
@@ -78,7 +78,7 @@ test_that("background batches share reads through one coordinator", {
         )) >
             0L
     )
-    restored <- shift_refresh(background)
+    restored <- shift_inspect__refresh(background)
     expect_true(all(vapply(
         restored@meta$children,
         function(child) S7::S7_inherits(child, ShiftRun),

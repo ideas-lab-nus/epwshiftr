@@ -101,23 +101,34 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     ))
     expect_true(S7::S7_inherits(morphed, ShiftMorphed))
     expect_true(S7::S7_inherits(epws, ShiftOutputs))
-    expect_identical(shift_ids(climate)$run_id, shift_ids(files)$run_id)
+    expect_identical(
+        shift_inspect__ids(climate)$run_id,
+        shift_inspect__ids(files)$run_id
+    )
     expect_false(identical(
-        shift_ids(climate_resumed)$run_id,
-        shift_ids(files)$run_id
+        shift_inspect__ids(climate_resumed)$run_id,
+        shift_inspect__ids(files)$run_id
     ))
-    expect_identical(shift_ids(morphed)$run_id, shift_ids(climate)$run_id)
-    expect_identical(shift_ids(epws)$run_id, shift_ids(morphed)$run_id)
+    expect_identical(
+        shift_inspect__ids(morphed)$run_id,
+        shift_inspect__ids(climate)$run_id
+    )
+    expect_identical(
+        shift_inspect__ids(epws)$run_id,
+        shift_inspect__ids(morphed)$run_id
+    )
     expect_equal(shift_status(shift_run_get(epws)), "waiting")
     expect_equal(shift_status(climate), "extracted")
     expect_equal(shift_status(climate_resumed), "extracted")
     expect_identical(
-        shift_ids(climate_resumed)$plan_id,
-        shift_ids(climate)$plan_id
+        shift_inspect__ids(climate_resumed)$plan_id,
+        shift_inspect__ids(climate)$plan_id
     )
     expect_equal(shift_status(climate_after_download), "extracted")
-    expect_true(length(shift_ids(climate)$plan_id) >= 1L)
-    expect_true(length(shift_ids(climate_after_download)$plan_id) >= 1L)
+    expect_true(length(shift_inspect__ids(climate)$plan_id) >= 1L)
+    expect_true(
+        length(shift_inspect__ids(climate_after_download)$plan_id) >= 1L
+    )
     expect_true(nrow(shift_coverage(climate)) >= 1L)
     preview <- shift_data(
         climate,
@@ -202,8 +213,8 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_equal(nrow(shift_data(epws, case_id = "missing")), 0L)
     expect_error(shift_data(epws, variables = "tas"), "variables")
 
-    morph_artifacts <- shift_artifacts(morphed)
-    output_artifacts <- shift_artifacts(epws)
+    morph_artifacts <- shift_inspect__artifacts(morphed)
+    output_artifacts <- shift_inspect__artifacts(epws)
     expect_true(nrow(morph_artifacts) >= 1L)
     expect_true(nrow(output_artifacts) >= 1L)
     expect_true(all(morph_artifacts$role %in% "derived"))
@@ -225,9 +236,9 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
     epw_run <- shift_run_get(epws)
-    expect_identical(epw_run@ids$query_id, shift_ids(files)$query_id)
-    expect_identical(epw_run@ids$morph_id, shift_ids(morphed)$morph_id)
-    expect_true(S7::S7_inherits(shift_result(epw_run), ShiftOutputs))
+    expect_identical(epw_run@ids$query_id, shift_inspect__ids(files)$query_id)
+    expect_identical(epw_run@ids$morph_id, shift_inspect__ids(morphed)$morph_id)
+    expect_true(S7::S7_inherits(shift_inspect__result(epw_run), ShiftOutputs))
     # Persisted standalone results retain their scientific comparison identity.
     summary <- shift_summary(epw_run, refresh = FALSE)
     expect_identical(unique(summary$method), transform@method)
@@ -240,8 +251,8 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         sum(summary$cases),
         data.table::uniqueN(shift_outputs(epws)$case_id)
     )
-    expect_error(shift_complete(climate), "not the latest result")
-    expect_equal(shift_status(shift_complete(epws)), "completed")
+    expect_error(shift_run__complete(climate), "not the latest result")
+    expect_equal(shift_status(shift_run__complete(epws)), "completed")
 })
 
 test_that("dynamic stack scopes restore nested and failing values", {

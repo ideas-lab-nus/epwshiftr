@@ -72,7 +72,7 @@ test_that("failed standalone steps expose recovery identity and resume in place"
         ui = shift_ui("none")
     )
     expect_s7_class(resumed, ShiftFiles)
-    expect_identical(shift_ids(resumed)$run_id, failure$run_id)
+    expect_identical(shift_inspect__ids(resumed)$run_id, failure$run_id)
     expect_equal(shift_status(shift_run_get(resumed)), "waiting")
 })
 
@@ -144,7 +144,7 @@ test_that("background live sidecars carry transient reporter state without event
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     job <- shift_job__job_create(
         store,
@@ -202,7 +202,7 @@ test_that("durable and live run reads agree on recorded diagnostics", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     diagnostic <- shift_stage__diagnostic(
         "plan",
@@ -239,7 +239,7 @@ test_that("durable and live run reads agree on recorded diagnostics", {
 
     # Force the public reader down its lock fallback using a real live snapshot.
     shift_job__live_snapshot(store, run_id, urgent = TRUE)
-    local_mocked_bindings(shift_store = function(...) {
+    local_mocked_bindings(shift_inspect__store = function(...) {
         stop("IO Error: Could not set lock on file 'manifest.duckdb'.")
     })
     live <- shift_run_get(run_id, store = store_path)
@@ -287,7 +287,7 @@ test_that("background runs register live jobs before launching workers", {
         ui = shift_ui("none", motion = "reduced", refresh = 0.25, heartbeat = 7)
     )
     expect_equal(shift_status(run), "queued")
-    expect_equal(launched$args$run_id, shift_ids(run)$run_id)
+    expect_equal(launched$args$run_id, shift_inspect__ids(run)$run_id)
     expect_true(startsWith(
         launched$args$log_path,
         normalizePath(store_path, winslash = "/")
@@ -367,7 +367,7 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
     expect_equal(shift_status(cancelled), "stopping")
     expect_true(file.exists(shift_job__live_path(
         store_path,
-        shift_ids(run, refresh = FALSE)$run_id,
+        shift_inspect__ids(run, refresh = FALSE)$run_id,
         "cancel.json"
     )))
 })
@@ -381,7 +381,7 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
         invisible(0L)
     }))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
-    run_id <- shift_ids(run, refresh = FALSE)$run_id
+    run_id <- shift_inspect__ids(run, refresh = FALSE)$run_id
     failure <- simpleError(paste(
         'IO Error: Cannot open file "C:\\store\\manifest.duckdb":',
         "The process cannot access the file because it is being used by another process.",
@@ -391,7 +391,7 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
     # job of its own. A standalone queued job otherwise uses its startup grace.
     local_mocked_bindings(
         shift_job__live_process_is_active = function(...) FALSE,
-        shift_store = function(...) stop(failure)
+        shift_inspect__store = function(...) stop(failure)
     )
     restored <- shift_run_get(run_id, store = run@store_path)
     expect_s7_class(restored, ShiftRun)
@@ -482,18 +482,18 @@ test_that("background workers retry transient DuckDB launch locks", {
 # Exercise persisted updates against DuckDB, including SQL quoting and NULLs,
 # so an unrelated run cannot be changed by a lifecycle state transition.
 test_that("run updates preserve other runs and explicit nullable fields", {
-    store <- shift_store(tempfile("run-update-"), create = TRUE)
+    store <- shift_inspect__store(tempfile("run-update-"), create = TRUE)
     on.exit(store$close(), add = TRUE)
     first <- shift_job__task_run_register(store, "collect")
     second <- shift_job__task_run_register(store, "collect")
-    before <- shift_runs(store)
+    before <- shift_inspect__runs(store)
     shift_job__run_update(
         store,
         first,
         status = "failed",
         last_error = "can't read 'tas'"
     )
-    after <- shift_runs(store)
+    after <- shift_inspect__runs(store)
     expect_identical(
         after[after$run_id == second],
         before[before$run_id == second]
@@ -508,7 +508,7 @@ test_that("run updates preserve other runs and explicit nullable fields", {
     expect_true(is.na(selected$last_error))
     expect_identical(nrow(shift_inspect__runs(store, "missing")), 0L)
     shift_job__run_update(store, first, started_at = as.POSIXct(NA, tz = "UTC"))
-    expect_identical(shift_runs(store)$run_id, c(second, first))
+    expect_identical(shift_inspect__runs(store)$run_id, c(second, first))
 })
 
 # Recreate the on-disk evidence left by a process that exited without releasing
@@ -535,7 +535,7 @@ test_that('foreground owner death is reconciled without touching live or remote 
     owner <- shift_download_test__exited_owner(root)
     for (kind in c('dead', 'live', 'remote')) {
         path <- file.path(root, kind)
-        store <- shift_store(path, create = TRUE)
+        store <- shift_inspect__store(path, create = TRUE)
         run_id <- shift_job__task_run_register(
             store,
             'collect',
@@ -716,7 +716,10 @@ test_that("shift_resume reopens a stopped process's original download session", 
     expect_length(run_id, 1L)
     store$close()
     reopened <- shift_resume(run_id, store = store_path, ui = shift_ui("none"))
-    expect_identical(shift_ids(reopened)$session_id, sessions$session_id)
+    expect_identical(
+        shift_inspect__ids(reopened)$session_id,
+        sessions$session_id
+    )
     store <- EsgStore$new(store_path)
     downloader <- store$downloader(n_workers = 0L)
     expect_identical(downloader$sessions()$session_id, sessions$session_id)
@@ -776,7 +779,7 @@ shift_job_test__finished_background_download <- function(env = parent.frame()) {
     data.table::set(docs, j = "size", value = length(bytes))
     hash <- checksum_bytes(bytes, "sha256")
     data.table::set(docs, j = "checksum", value = hash)
-    store <- shift_store(
+    store <- shift_inspect__store(
         file.path(withr::local_tempdir(.local_envir = env), "store"),
         create = TRUE
     )
@@ -798,7 +801,7 @@ shift_job_test__finished_background_download <- function(env = parent.frame()) {
         background = TRUE,
         ui = shift_ui("none")
     )
-    ids <- shift_ids(stage)
+    ids <- shift_inspect__ids(stage)
     store$close()
 
     # Complete the queued session directly in the Downloader's own manifest.
@@ -849,7 +852,7 @@ test_that("an interrupted background download publication reopens the original r
     )
     expect_true(interrupted)
     expect_identical(snapshots, 0L)
-    store <- shift_store(path)
+    store <- shift_inspect__store(path)
     on.exit(store$close(), add = TRUE)
     expect_identical(
         shift_job__latest_step(store, ids$run_id)$status,
@@ -871,10 +874,10 @@ test_that("an interrupted background download publication reopens the original r
         "waiting for its next stage"
     )
     expect_identical(
-        shift_ids(shift_result(reopened))$session_id,
+        shift_inspect__ids(shift_inspect__result(reopened))$session_id,
         ids$session_id
     )
-    expect_identical(shift_status(shift_complete(reopened)), "completed")
+    expect_identical(shift_status(shift_run__complete(reopened)), "completed")
     expect_identical(fixture$downloader$sessions()$session_id, ids$session_id)
     expect_identical(
         fixture$downloader$tasks(session_id = ids$session_id)$task_id,
@@ -887,7 +890,7 @@ test_that("an interrupted background download publication reopens the original r
 test_that("reopening a legacy download commit repairs the waiting run once", {
     fixture <- shift_job_test__finished_background_download()
     ids <- fixture$ids
-    store <- shift_store(fixture$path)
+    store <- shift_inspect__store(fixture$path)
     on.exit(store$close(), add = TRUE)
     shift_job__step_finish(store, ids$step_id, "completed")
     step <- shift_job__latest_step(store, ids$run_id)
@@ -896,7 +899,10 @@ test_that("reopening a legacy download commit repairs the waiting run once", {
 
     run <- shift_run_get(ids$run_id, store = fixture$path)
     expect_identical(shift_status(run, refresh = FALSE), "waiting")
-    expect_identical(shift_ids(shift_result(run))$session_id, ids$session_id)
+    expect_identical(
+        shift_inspect__ids(shift_inspect__result(run))$session_id,
+        ids$session_id
+    )
     again <- shift_run_get(ids$run_id, store = fixture$path)
     expect_equal(
         sum(
@@ -905,7 +911,7 @@ test_that("reopening a legacy download commit repairs the waiting run once", {
         ),
         1L
     )
-    store <- shift_store(fixture$path)
+    store <- shift_inspect__store(fixture$path)
     expect_identical(
         shift_job__latest_step(store, ids$run_id)$completed_at,
         step$completed_at

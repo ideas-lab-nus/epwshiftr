@@ -408,7 +408,7 @@ shift_run__task_execute <- function(
     checkmate::assert_flag(auto_complete)
     ui <- shift_run__task_ui(ui)
     store_value <- shift_run__task_store_value(x, store)
-    opened <- shift_store(store_value, create = TRUE)
+    opened <- shift_inspect__store(store_value, create = TRUE)
     own_store <- !inherits(store_value, "EsgStore")
     if (isTRUE(own_store)) {
         on.exit(try(opened$close(), silent = TRUE), add = TRUE)
@@ -693,13 +693,11 @@ shift_run__task_execute <- function(
 # Normal pipelines do not need this helper because EPW export completes the run
 # automatically; it exists for workflows that deliberately stop after collect,
 # download, extract, morph, or store-local EPW writing.
-#' @rdname shift_api
-#' @export
-# shift_complete {{{
-shift_complete <- function(x) {
+# shift_run__complete {{{
+shift_run__complete <- function(x) {
     shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftRun)) {
-        run <- shift_refresh(x)
+        run <- shift_inspect__refresh(x)
         input_step_id <- NA_character_
     } else {
         run <- shift_run_get(x)
@@ -716,7 +714,7 @@ shift_complete <- function(x) {
         ))
     }
 
-    store <- shift_store(run)
+    store <- shift_inspect__store(run)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     latest <- shift_job__latest_step(store, run@ids$run_id)
     if (!nrow(latest)) {
@@ -826,7 +824,7 @@ shift_run__run_artifacts_complete <- function(store, run_id) {
 # remain resumable under their original run ID and resolved input selection.
 # shift_run__run_existing {{{
 shift_run__run_existing <- function(plan) {
-    store <- shift_store(plan, create = TRUE)
+    store <- shift_inspect__store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     spec <- shift_persist__plan_spec(plan)
     spec_hashes <- store__hash(shift_persist__spec_json(spec))
@@ -922,7 +920,7 @@ shift_run__run_one <- function(
         }
     }
     run_id <- shift_job__run_register(x)
-    store <- shift_store(x, create = TRUE)
+    store <- shift_inspect__store(x, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     shift_run__start_plan(x, store, run_id, background, ui, execution, ...)
 }
@@ -1035,7 +1033,7 @@ shift_run__datasets_stage <- function(result, request, store) {
 # }}}
 
 # Load the persisted Dataset result when the live R6 object is no longer
-# available, for example after shift_result() reconstructs a previous run.
+# available, for example after shift_inspect__result() reconstructs a previous run.
 # shift_run__datasets_result {{{
 shift_run__datasets_result <- function(x) {
     if (!S7::S7_inherits(x, ShiftDatasets)) {
@@ -1214,7 +1212,7 @@ S7::method(shift_collect, ShiftRequest) <- function(
     if (is.null(store)) {
         cli::cli_abort("`store` is required for {.fn shift_collect}.")
     }
-    store <- shift_store(store, create = TRUE)
+    store <- shift_inspect__store(store, create = TRUE)
     datasets <- shift_run__with_catalog_unit_total(
         2L,
         shift_datasets(x, all = all, limit = limit, store = store)
@@ -1593,7 +1591,7 @@ S7::method(shift_download, ShiftFiles) <- function(
     checkmate::assert_flag(resume)
     checkmate::assert_flag(overwrite)
 
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     if (is.null(downloader)) {
         downloader <- if (isTRUE(run)) {
@@ -1761,9 +1759,9 @@ shift_run__extract_stage <- function(
     checkmate::assert_flag(resume)
     fallback <- match.arg(fallback)
 
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    ids <- shift_ids(x)
+    ids <- shift_inspect__ids(x)
     variables <- shift_stage__coalesce(variables, shift_stage__variables(x))
     time <- shift_spec__time_window(shift_stage__coalesce(
         time,
@@ -1826,7 +1824,7 @@ shift_run__extract_plans_task <- function(
     ui = NULL
 ) {
     own_store <- !inherits(store, "EsgStore")
-    store <- shift_store(store, create = FALSE)
+    store <- shift_inspect__store(store, create = FALSE)
     if (isTRUE(own_store)) {
         on.exit(try(store$close(), silent = TRUE), add = TRUE)
     }
@@ -2875,7 +2873,7 @@ shift_run__plan_run <- function(
     resume_existing = FALSE,
     ...
 ) {
-    store <- shift_store(x, create = TRUE)
+    store <- shift_inspect__store(x, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     if (is.null(reporter)) {
         reporter <- shift_reporter__reporter(
@@ -3005,10 +3003,10 @@ S7::method(shift_morph, ShiftClimate) <- function(
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
 
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    ids <- shift_ids(x)
-    site <- shift_target(x)
+    ids <- shift_inspect__ids(x)
+    site <- shift_inspect__target(x)
     baseline <- shift_stage__coalesce(baseline, site)
     epw <- shift_spec__resolve_epw(baseline)
     periods <- x@meta$periods
@@ -3142,10 +3140,10 @@ S7::method(shift_epw_write, ShiftMorphed) <- function(
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
 
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    ids <- shift_ids(x)
-    site <- shift_target(x)
+    ids <- shift_inspect__ids(x)
+    site <- shift_inspect__target(x)
     epw <- shift_spec__resolve_epw(shift_stage__coalesce(x@meta$baseline, site))
     morpher <- epw_morpher(
         store,
@@ -3225,7 +3223,7 @@ S7::method(shift_epw_write, ShiftOutputs) <- function(
 # the stage matches what the target continuation function accepts.
 # shift_run__unwrap_stage {{{
 shift_run__unwrap_stage <- function(x, expected, fn) {
-    run <- shift_refresh(x)
+    run <- shift_inspect__refresh(x)
     status <- shift_status(run, refresh = FALSE)
     current_stage <- store__chr1(run@meta$run$current_stage[[1L]])
     if (is.na(current_stage) || !nzchar(current_stage)) {

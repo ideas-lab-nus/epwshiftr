@@ -155,7 +155,7 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
             )
         ),
         export_epw = list(
-            what = shift_epw_export,
+            what = shift_epw_write,
             args = list(
                 input,
                 dir = as.character(spec$dir),
@@ -208,7 +208,7 @@ shift_job__resume_one <- function(
     execution = NULL
 ) {
     run <- if (S7::S7_inherits(x, ShiftRun)) {
-        shift_refresh(x)
+        shift_inspect__refresh(x)
     } else if (S7::S7_inherits(x, ShiftStage)) {
         shift_run_get(x, store = store)
     } else {
@@ -229,11 +229,11 @@ shift_job__resume_one <- function(
     if (identical(status, "waiting")) {
         cli::cli_abort(c(
             "Shift run {.val {run@ids$run_id}} is waiting for its next stage, not interrupted.",
-            "i" = "Pass the latest stage object to the next {.fn shift_*} function, or call {.fn shift_complete}."
+            "i" = "Pass the run or latest stage object to the next {.fn shift_*} stage function (for example {.fn shift_extract}, {.fn shift_morph}, or {.fn shift_epw_write})."
         ))
     }
     if (!identical(task, "future_epw")) {
-        run_store <- shift_store(run)
+        run_store <- shift_inspect__store(run)
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
         step <- shift_job__latest_step(run_store, run@ids$run_id)
         if (!nrow(step)) {
@@ -312,7 +312,7 @@ shift_job__resume_one <- function(
     if (isTRUE(background)) {
         shift_job__validate_background_plan(plan)
     }
-    run_store <- shift_store(run)
+    run_store <- shift_inspect__store(run)
     on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
     shift_job__run_event(
         run_store,
@@ -337,7 +337,7 @@ shift_job__resume_one <- function(
 # shift_job__as_run {{{
 shift_job__as_run <- function(x, store = NULL) {
     if (S7::S7_inherits(x, ShiftRun)) {
-        return(shift_refresh(x))
+        return(shift_inspect__refresh(x))
     }
     if (S7::S7_inherits(x, ShiftStage)) {
         return(shift_run_get(x, store = store))
@@ -534,7 +534,7 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         # No process is active between object-carried stages. Cancelling here
         # closes the resumable run immediately instead of creating a stopping
         # state that no worker could ever acknowledge.
-        run_store <- shift_store(run)
+        run_store <- shift_inspect__store(run)
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
         shift_job__publish_result(
             run_store,
@@ -1575,7 +1575,7 @@ shift_job__run_cases_write <- function(store, run_id, cases) {
 # Register workflow intent through the shared run writer, then save its cases.
 # shift_job__run_register {{{
 shift_job__run_register <- function(plan) {
-    store <- shift_store(plan, create = TRUE)
+    store <- shift_inspect__store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     run_id <- shift_job__task_run_register(
         store,

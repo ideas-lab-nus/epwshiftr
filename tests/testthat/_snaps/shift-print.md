@@ -218,8 +218,7 @@
       | case-2  | BCC-CSM2-MR | ssp126        | r1i1p1f1      | 2060s  | result_done |
       | case-3  | BCC-CSM2-MR | ssp585        | r1i1p1f1      | 2060s  | result_done |
       +---------+-------------+---------------+---------------+--------+-------------+
-      i 1 more rows; use `shift_data()` or `shift_artifacts()` for complete morph
-        data.
+      i 1 more rows; use `shift_data()` for complete morph data.
       i Hidden columns for console width: row_count, output_path. Use the
         corresponding shift_*() inspector for all columns.
       == EPW Outputs =================================================================
@@ -328,7 +327,7 @@
       | case-2  | BCC-CSM2-MR | ssp126        | r1i1p1f1      | 2060s  | result_done |      8760 |
       | case-3  | BCC-CSM2-MR | ssp585        | r1i1p1f1      | 2060s  | result_done |      8760 |
       +---------+-------------+---------------+---------------+--------+-------------+-----------+
-      i 1 more rows; use `shift_data()` or `shift_artifacts()` for complete morph data.
+      i 1 more rows; use `shift_data()` for complete morph data.
       i Hidden columns for console width: output_path. Use the corresponding shift_*() inspector for all
         columns.
       -- Workflow ----------------------------------------------------------------------------------------

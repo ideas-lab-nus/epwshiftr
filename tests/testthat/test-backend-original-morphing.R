@@ -1046,7 +1046,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     variables <- morpher__input_variables(transform__recipe(transform))
     climate <- shift_cmip6("Model-A", "ssp585")
     periods <- epw_morph_periods(`2060s` = 2055:2065)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
@@ -1250,7 +1250,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         fallback = "error"
     )
     coverage <- shift_coverage(climate)
-    expect_equal(length(shift_ids(climate)$plan_id), 2L)
+    expect_equal(length(shift_inspect__ids(climate)$plan_id), 2L)
     expect_true(all(coverage$complete))
     expect_setequal(coverage$variable_id, c("tas", "snd"))
 })

@@ -35,12 +35,14 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
         data.table::as.data.table(child@meta$shared_inputs$selection)
     )
     expect_identical(inputs$files@store_path, child@store_path)
-    target <- shift_store(child, create = TRUE)
+    target <- shift_inspect__store(child, create = TRUE)
     on.exit(target$close(), add = TRUE)
     # The restored selection must also work without opening another child's
     # store, as required when background processes own separate databases.
     testthat::local_mocked_bindings(
-        shift_store = function(...) stop("Unexpected shared database access"),
+        shift_inspect__store = function(...) {
+            stop("Unexpected shared database access")
+        },
         .package = "epwshiftr"
     )
     expect_equal(
@@ -133,7 +135,7 @@ test_that("shared source matching respects the selected snapshot per method", {
     children <- batch@meta$children
     consumers <- shift_batch_plan__consumers(children, batch@meta$manifest)
     input <- children[[1L]]@meta$shared_inputs
-    store <- shift_store(input$store)
+    store <- shift_inspect__store(input$store)
     on.exit(store$close(), add = TRUE)
     catalog <- shift_inspect__file_catalog(
         store,
@@ -154,7 +156,7 @@ test_that("shared source matching respects the selected snapshot per method", {
     # Missing snapshots must fail locally rather than silently rediscover data.
     inputs <- children[[2L]]@meta$shared_inputs
     inputs$files$snapshot <- tempfile("missing-query-")
-    target <- shift_store(children[[2L]], create = TRUE)
+    target <- shift_inspect__store(children[[2L]], create = TRUE)
     on.exit(target$close(), add = TRUE)
     expect_error(shift_resolve__import_shared_inputs(inputs, target), "exist")
 })

@@ -361,7 +361,7 @@ shift_batch__receipt_write <- function(x) {
 #' Reopen a batch and its independent child plans or runs without querying
 #' climate catalogs. Dry-run batches retain their child plans; executed batches
 #' retain their durable child run identifiers.
-#' @param batch_id Batch identifier returned by [shift_ids()].
+#' @param batch_id Batch identifier recorded in [shift_history()].
 #' @param store Root store used for [shift_epw_future()], or the batch directory.
 #' @return A `ShiftBatch` accepted by the ordinary `shift_*()` inspectors,
 #'   [shift_run()], [shift_resume()], [shift_cancel()], and [shift_watch()].
@@ -456,7 +456,7 @@ shift_batch__restore_child <- function(reference) {
     # the same connection verifies every required persisted and exported file.
     if (identical(store__chr1(reference$status), "completed")) {
         opened <- tryCatch(
-            shift_store(store_path, create = FALSE),
+            shift_inspect__store(store_path, create = FALSE),
             error = identity
         )
         if (!inherits(opened, "error")) {
@@ -479,7 +479,7 @@ shift_batch__restore_child <- function(reference) {
     }
     if (identical(shift_status(run, refresh = FALSE), "completed")) {
         if (is.null(child_store)) {
-            child_store <- shift_store(run)
+            child_store <- shift_inspect__store(run)
             on.exit(try(child_store$close(), silent = TRUE), add = TRUE)
         }
         if (!shift_run__run_artifacts_complete(child_store, run_id)) {
@@ -1298,7 +1298,7 @@ shift_batch__references <- function(
         ) {
             cli::cli_abort(c(
                 "Batches cannot share an extracted reference plan.",
-                "i" = "Use historical/reanalysis references, or shift_plan() for a site-specific extracted reference."
+                "i" = "Use historical/reanalysis references, or {.fn shift_reference_from_plan} with {.fn shift_morph} for a site-specific extracted reference."
             ))
         }
     }
@@ -1610,7 +1610,7 @@ shift_batch__future_epw <- function(
         mi <- spec_index[[index]]
         output_dir <- manifest$output_dir[[index]]
         child_store <- manifest$store[[index]]
-        child <- shift_plan(
+        child <- shift_spec__plan(
             requests[[mi]],
             sites$site[[si]],
             periods,
@@ -1802,7 +1802,7 @@ shift_batch__refresh <- function(x) {
         child <- x@meta$children[[index]]
         tryCatch(
             {
-                refreshed <- shift_refresh(child)
+                refreshed <- shift_inspect__refresh(child)
                 refreshed@meta$shared_inputs <- child@meta$shared_inputs
                 refreshed
             },

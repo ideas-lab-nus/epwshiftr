@@ -902,7 +902,7 @@ shift_resolve__cmip6_coverage_request <- function(
 
     # Monthly Dataset timestamps often use representative mid-month values,
     # so exact dates are applied to File records rather than the Dataset query.
-    shift_cmip6_scenario(
+    shift_spec__cmip6_scenario(
         source = unique(as.character(sources)),
         scenario = experiments,
         member = unique(as.character(members)),
@@ -926,7 +926,7 @@ shift_resolve__cmip6_coverage_request <- function(
 shift_resolve__cmip6_coverage_catalog <- function(request, store, ui, label) {
     # Discovery owns the reporter, so the standalone task wrapper no longer
     # owns this connection. Close locally opened stores on every exit path.
-    file_store <- shift_store(store, create = TRUE)
+    file_store <- shift_inspect__store(store, create = TRUE)
     if (!inherits(store, "EsgStore")) {
         on.exit(file_store$close(), add = TRUE)
     }
@@ -2322,7 +2322,7 @@ shift_resolve__resolve_file_services <- function(
     checkmate::assert_string(role, min.chars = 1L)
     checkmate::assert_flag(refresh)
     checkmate::assert_flag(require_opendap)
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(store$close(), add = TRUE)
     result <- shift_inspect__stage_query_result(
         store,
@@ -2694,7 +2694,7 @@ shift_resolve__collect_resolved_inputs <- function(
     reporter = NULL,
     job_id = NULL
 ) {
-    store <- shift_store(plan, create = TRUE)
+    store <- shift_inspect__store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     wanted_run_id <- run_id
     run_row <- morpher__private_store(store)$read_table("shift_run")
@@ -3280,7 +3280,7 @@ shift_resolve__files_for_partitions <- function(
 ) {
     role <- match.arg(role)
     partitions <- shift_resolve__selection_partition_rows(selection, role)
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     result <- shift_inspect__stage_query_result(
         store,

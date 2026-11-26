@@ -17,7 +17,7 @@ selection_test__plan <- function(member = NULL, reference = TRUE) {
         index_nodes = "https://example.org"
     )
     periods <- epw_morph_periods(future = 2060L)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
@@ -164,7 +164,7 @@ test_that("public selection reads durable records and marks legacy absence", {
     )
     expect_identical(shift_selection(plan)$state, "planned")
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     expect_error(
         shift_selection(shift_run_get(run_id, store)),
@@ -220,7 +220,7 @@ test_that("shared selection records persist without changing workflow intent", {
     )
     expect_identical(shift_persist__plan_spec(plan), before)
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     shift_job__run_update(store, run_id, status = "failed")
     read <- shift_selection(shift_run_get(run_id, store))

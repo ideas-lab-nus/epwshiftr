@@ -63,7 +63,7 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
         availability = function(...) {
             reporter <- shift_run__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
-            shift_datasets(shift_cmip6_scenario(
+            shift_datasets(shift_spec__cmip6_scenario(
                 source = "Model-A",
                 scenario = "ssp585",
                 variables = "tas"
@@ -74,7 +74,7 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
     ))
     transforms <- shift_batch__transforms(c("original_morphing", "bws_btws"))
     transforms$epwshiftr <- monthly_transform("epwshiftr")
-    reference <- shift_reference_historical(data.frame(
+    reference <- shift_reference__historical(data.frame(
         period = "reference",
         year = 1973:2005
     ))

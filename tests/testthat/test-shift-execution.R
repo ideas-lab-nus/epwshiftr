@@ -90,7 +90,7 @@ test_that("source workers share the execution settings snapshot", {
 # Cancellation before a stage starts must finish both durable records without
 # evaluating the source operation or leaving a running step behind.
 test_that("early standalone cancellation updates the run and step", {
-    store <- shift_store(withr::local_tempdir(), create = TRUE)
+    store <- shift_inspect__store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
     create <- shift_job__job_create
     local_mocked_bindings(shift_job__job_create = function(...) {
@@ -124,9 +124,9 @@ test_that("early standalone cancellation updates the run and step", {
 })
 
 # A foreground result exposes its final attempt without requiring a second
-# read through shift_refresh().
+# read through shift_inspect__refresh().
 test_that("execution returns the final attempt snapshot", {
-    store <- shift_store(withr::local_tempdir(), create = TRUE)
+    store <- shift_inspect__store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
     run_id <- shift_job__task_run_register(store, "collect", spec = list())
     job <- shift_job__job_create(
@@ -154,7 +154,7 @@ test_that("execution returns the final attempt snapshot", {
 # Animation callbacks must not turn one durable liveness check into repeated
 # DuckDB reads. Explicit checks still bypass the heartbeat throttle.
 test_that("standalone progress checks cancellation once per heartbeat", {
-    store <- shift_store(withr::local_tempdir(), create = TRUE)
+    store <- shift_inspect__store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
     run_id <- shift_job__task_run_register(store, "collect", spec = list())
     job <- shift_job__job_create(

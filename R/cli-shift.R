@@ -600,7 +600,7 @@ cli_shift__config_reference <- function(reference, field) {
         return(shift_reference_from_plan(plan_id, periods, role = role))
     }
 
-    shift_reference_historical(
+    shift_reference__historical(
         periods = periods,
         experiment = epwshiftr_cli_config_string(
             reference$experiment,
@@ -1171,7 +1171,7 @@ epwshiftr_cli_shift_stage_result <- function(stage) {
             "The unified shift runner did not return a ShiftRun."
         )
     }
-    ids <- shift_ids(stage)
+    ids <- shift_inspect__ids(stage)
     diagnostics <- shift_diagnostics(stage)
     outputs <- cli_shift__output_metadata(shift_outputs(stage))
     list(
