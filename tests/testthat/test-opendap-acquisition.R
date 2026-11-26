@@ -3,13 +3,53 @@ local_test_cache(scope = "persist")
 withr::local_options(list(epwshiftr.progress = FALSE))
 
 # Shared DAP, ESGF index, DuckDB, and recovery test helpers {{{
+qr_test__file_env <- environment()
+qr_test__shared_dap_state <- new.env(parent = emptyenv())
+qr_test__shared_dap_state$server <- NULL
+
+qr_test__shared_dap_server <- function() {
+    skip_if_not_installed("webfakes")
+    srv <- qr_test__shared_dap_state$server
+    if (is.null(srv)) {
+        srv <- webfakes::new_app_process(subset_test__dap_app())
+        qr_test__shared_dap_state$server <- srv
+        withr::defer(
+            {
+                qr_test__shared_dap_state$server <- NULL
+                try(srv$stop(), silent = TRUE)
+            },
+            envir = qr_test__file_env
+        )
+    }
+    qr_test__dap_control(srv, "reset")
+    srv
+}
+
 qr_test__dap_server <- function(
     ...,
     init = NULL,
     app = NULL,
+    shared = NULL,
     env = parent.frame()
 ) {
     skip_if_not_installed("webfakes")
+    dots <- list(...)
+    fail_only <- length(dots) == 1L &&
+        identical(names(dots), "fail_first") &&
+        is.null(init) &&
+        is.null(app)
+    use_shared <- if (is.null(shared)) {
+        (length(dots) == 0L && is.null(init) && is.null(app)) || fail_only
+    } else {
+        isTRUE(shared)
+    }
+    if (use_shared) {
+        server <- qr_test__shared_dap_server()
+        if (fail_only && isTRUE(dots$fail_first)) {
+            qr_test__dap_control(server, "fail")
+        }
+        return(server)
+    }
     if (is.null(app)) {
         app <- subset_test__dap_app(...)
     }
@@ -663,6 +703,7 @@ test_that("raw subset fresh invocation retains progress and rejects incompatible
     expect_equal(sum(subset_status(d1, "attempts")$native_values), 16)
 
     # Incompatible bounds replica is rejected without reading weather or full time_bnds
+    qr_test__dap_control(srv, "reset")
     d2 <- withr::local_tempdir()
     f2 <- qr_test__dap_files(
         srv,
@@ -694,6 +735,7 @@ test_that("raw subset fresh invocation retains progress and rejects incompatible
             gap = TRUE
         )
     )) {
+        qr_test__dap_control(srv, "reset")
         db <- withr::local_tempdir()
         fb <- qr_test__dap_files(srv, spec$eps, nodes = spec$nodes)
         expect_false(qr_test__fetch(fb, req, db)$complete)
@@ -1056,7 +1098,7 @@ test_that("raw subset reports partial directories independently of native comple
 # A blocked remote weather read retires its own reader; an unrelated source
 # uses another slot and remains available through the same public result.
 test_that("raw subset timeouts release workers while unrelated sources finish", {
-    slow <- qr_test__dap_server()
+    slow <- qr_test__dap_server(shared = FALSE)
     healthy <- qr_test__dap_server()
     d <- withr::local_tempdir()
     docs <- query_result_test_file_docs()[c(1L, 1L), ]
@@ -1077,7 +1119,7 @@ test_that("raw subset timeouts release workers while unrelated sources finish", 
         qr_test__dap_request(),
         d,
         workers = 2L,
-        timeout = 2
+        timeout = 0.8
     )
     expect_false(res$complete)
     expect_equal(sort(res$jobs$status), c("done", "failed"))
@@ -1097,11 +1139,11 @@ test_that("raw subset block progress extends a healthy reader beyond the stall t
         sprintf("2060-01-%02d", c(1, 3, 5, 7)),
         request_id = paste0("day-", 1:4)
     )
-    expect_true(qr_test__fetch(f, req, d, timeout = 5)$complete)
+    expect_true(qr_test__fetch(f, req, d, timeout = 1.2)$complete)
     expect_equal(qr_test__vals(d), c(1:4, 9:12, 17:20, 25:28))
     att <- subset_status(d, "attempts")
     expect_true(all(att$success))
-    expect_true(sum(att$elapsed_seconds[att$native_values > 0]) > 5)
+    expect_true(sum(att$elapsed_seconds[att$native_values > 0]) > 1.2)
 })
 
 # Bootstrap failure after a real worker is running retires its exact owned profile.

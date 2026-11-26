@@ -210,12 +210,12 @@ test_that("DiskCache honors max_age expiry and prune_rate/prune_limit throttling
     skip_on_cran()
     # max_age on get() and prune()
     da <- withr::local_tempdir("cache-age-")
-    ca <- cache_disk_deterministic(da, max_age = 0.5, prune_rate = 1)
+    ca <- cache_disk_deterministic(da, max_age = 0.2, prune_rate = 1)
     withr::defer(ca$destroy())
     ca$set("a", 1)
     ca$set("b", 2)
     expect_equal(ca$get("a"), 1)
-    Sys.sleep(0.6)
+    Sys.sleep(0.25)
     expect_true(cache__missing(ca$get("a")))
     expect_false(ca$exists("a"))
     ca$prune()
@@ -239,14 +239,14 @@ test_that("DiskCache honors max_age expiry and prune_rate/prune_limit throttling
         dl,
         max_n = 2,
         prune_rate = 100,
-        prune_limit = 1
+        prune_limit = 0.3
     )
     withr::defer(cl$destroy())
     for (k in c("a", "b", "c")) {
         cl$set(k, 1)
     }
     expect_equal(cl$size(), 3L)
-    Sys.sleep(1.1)
+    Sys.sleep(0.35)
     cl$set("d", 1)
     expect_equal(sort(cl$keys()), c("c", "d"))
 })

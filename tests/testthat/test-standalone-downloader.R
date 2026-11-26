@@ -1,4 +1,26 @@
 # downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() {{{
+# downloader_test__http_server {{{
+downloader_test__file_env <- environment()
+downloader_test__http_state <- new.env(parent = emptyenv())
+downloader_test__http_state$server <- NULL
+
+downloader_test__http_server <- function() {
+    skip_if_not_installed("webfakes")
+    srv <- downloader_test__http_state$server
+    if (is.null(srv)) {
+        srv <- local_downloader_http_server(env = downloader_test__file_env)
+        downloader_test__http_state$server <- srv
+        withr::defer(
+            downloader_test__http_state$server <- NULL,
+            envir = downloader_test__file_env
+        )
+    }
+    res <- curl::curl_fetch_memory(srv$url("/reset"))
+    stopifnot(res$status_code == 200L)
+    srv
+}
+# }}}
+
 # downloader_test_df {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
@@ -148,9 +170,8 @@ test_that("Downloader$new()", {
     expect_equal(dl$transfer_policy, DOWNLOADER_TRANSFER_POLICY_DEFAULT)
     expect_equal(dl$resource_policy, DOWNLOADER_RESOURCE_POLICY_DEFAULT)
 
-    d <- tempdir()
+    d <- withr::local_tempdir("downloader-new-")
     tmp <- file.path(d, ".tmp_test")
-    withr::defer(unlink(tmp, recursive = TRUE))
     tp <- list(
         chunk_size = 65536,
         bandwidth_limit = 1048576,
@@ -579,7 +600,7 @@ test_that("downloader__range_probe_url() checks local files and HTTP range metad
 
     skip_on_cran()
     skip_if_not_installed("webfakes")
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     p3 <- downloader__range_probe_url(srv$url("/files/range.bin"))
     expect_true(p3$range_supported && is.na(p3$range_probe_error))
     expect_equal(p3$range_size, 8193)
@@ -595,7 +616,7 @@ test_that("downloader__range_probe_url() checks local files and HTTP range metad
 test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     skip_on_cran()
     skip_if_not_installed("webfakes")
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     bytes <- downloader_http_bytes(8193L)
     tp <- list(range_mode = "single", piece_size = 31L, piece_concurrency = 3L)
     fx <- downloader_test__fixture(transfer_policy = tp)
@@ -658,7 +679,7 @@ test_that("Downloader$run() downloads pieces inside a persistent worker", {
 test_that("Downloader$run() downloads multi-source range pieces", {
     skip_on_cran()
     skip_if_not_installed("webfakes")
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     bytes <- downloader_http_bytes(8193L)
     tp <- list(
         range_mode = "multi",
@@ -1091,7 +1112,7 @@ test_that("Downloader$run() falls back across candidate URLs", {
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    server <- local_downloader_http_server()
+    server <- downloader_test__http_server()
     checksum <- downloader_http_checksum()
 
     dl <- Downloader$new(
@@ -1156,7 +1177,7 @@ test_that("Downloader$run() falls back across candidate URLs", {
 test_that("Downloader$run() retries transient HTTP failures", {
     skip_on_cran()
     skip_if_not_installed("webfakes")
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     fx <- downloader_test__fixture(retries = 2L)
     p <- downloader_test_df(
         logical_file_id = "tracking:flaky-test",
@@ -1393,7 +1414,7 @@ test_that("Downloader$download() restarts unsupported Range resume", {
     skip_if_not_installed("webfakes")
     fx <- downloader_test__fixture(manifest = FALSE)
     dir.create(fx$temp, recursive = TRUE, showWarnings = FALSE)
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     part <- file.path(fx$temp, "range-restart.part")
     writeLines("stale partial", part)
 
@@ -1417,7 +1438,7 @@ test_that("Downloader$download() verifies checksum and rejects mismatch", {
         retries = 1L,
         timeout = 300
     )
-    srv <- local_downloader_http_server()
+    srv <- downloader_test__http_server()
     ck <- downloader_http_checksum(algo = "sha256")
     u <- srv$url("/files/ok.bin")
 
@@ -1448,7 +1469,7 @@ test_that("Downloader$download() handles HTTP errors", {
 
     temp_dir <- tempfile()
     dir.create(temp_dir)
-    server <- local_downloader_http_server()
+    server <- downloader_test__http_server()
 
     dl <- Downloader$new(
         dest = temp_dir,
@@ -1468,7 +1489,10 @@ test_that("Downloader$download() handles HTTP errors", {
 
 test_that("Downloader$download() offline mode blocks new downloads", {
     local_cache_mode("offline")
-    dl <- Downloader$new(dest = tempdir(), n_workers = 0L)
+    dl <- Downloader$new(
+        dest = withr::local_tempdir("downloader-offline-"),
+        n_workers = 0L
+    )
 
     expect_error(
         dl$download(url = "https://example.com/nonexistent.nc"),
@@ -1479,10 +1503,9 @@ test_that("Downloader$download() offline mode blocks new downloads", {
 test_that("Downloader$download() offline mode allows verified files", {
     local_cache_mode("offline")
 
-    dest <- tempdir()
+    dest <- withr::local_tempdir("downloader-offline-")
     test_file <- file.path(dest, "test-offline-verified.txt")
     writeLines("test content", test_file)
-    on.exit(unlink(test_file), add = TRUE)
 
     dl <- Downloader$new(dest = dest, n_workers = 0L)
 
@@ -1811,19 +1834,32 @@ test_that('successful owner publication keeps the original release contract', {
 
 # Recreate the on-disk evidence left by a process that exited without releasing
 # its lock. A real short-lived R child provides a PID known to have exited.
+lock_recovery_test__owner_cache <- new.env(parent = emptyenv())
+lock_recovery_test__owner_cache$owner <- NULL
+
 lock_recovery_test__owner <- function(directory) {
-    code <- sprintf(
-        'jsonlite::write_json(list(pid=Sys.getpid(), hostname=unname(Sys.info()[["nodename"]])), %s, auto_unbox=TRUE)',
-        encodeString(file.path(directory, 'owner.json'), quote = '"')
-    )
-    status <- system2(
-        file.path(R.home('bin'), 'Rscript'),
-        c('--vanilla', '-e', shQuote(code)),
-        stdout = FALSE,
-        stderr = FALSE
-    )
-    stopifnot(status == 0L)
-    jsonlite::read_json(file.path(directory, 'owner.json'))
+    owner <- lock_recovery_test__owner_cache$owner
+    if (
+        is.null(owner) ||
+            !isTRUE(downloader__local_pid_absent(owner$pid, owner$hostname))
+    ) {
+        out <- system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("--vanilla", "-e", shQuote("cat(Sys.getpid())")),
+            stdout = TRUE,
+            stderr = FALSE
+        )
+        pid <- as.integer(trimws(paste(out, collapse = "")))
+        stopifnot(is.null(attr(out, "status")), length(pid) == 1L, !is.na(pid))
+        owner <- list(
+            pid = pid,
+            hostname = unname(Sys.info()[["nodename"]])
+        )
+        lock_recovery_test__owner_cache$owner <- owner
+    }
+    owner_path <- file.path(directory, "owner.json")
+    jsonlite::write_json(owner, owner_path, auto_unbox = TRUE)
+    jsonlite::read_json(owner_path)
 }
 
 test_that("manifest acquisition recovers an exited local owner immediately", {

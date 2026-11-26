@@ -139,6 +139,10 @@ downloader_http_app <- function(ok, range, slow) {
     app$all("/dods/missing.nc.dds", function(req, res) {
         res$set_status(404L)$send("missing")
     })
+    app$get("/reset", function(req, res, locals) {
+        locals$flaky_count <- 0L
+        res$set_status(200L)$send("ok")
+    })
 
     app
 }
@@ -200,6 +204,9 @@ subset_test__dap_app <- function(
     })
     app$get('/reset', function(req, res, locals) {
         locals$requests <- character()
+        locals$weather <- 0L
+        locals$unavailable <- FALSE
+        locals$fail_last_corner <- FALSE
         res$send('ok')
     })
     app$use(function(req, res, locals) {
@@ -427,7 +434,7 @@ subset_test__dap_app <- function(
                     Sys.sleep(.25)
                 }
                 if (grepl('[.]dods$', name) && grepl('progress', name)) {
-                    Sys.sleep(2)
+                    Sys.sleep(0.5)
                 }
                 if (grepl('[.]dods$', name) && grepl('hang', name)) {
                     Sys.sleep(10)
