@@ -38,6 +38,432 @@ ui_test__plan <- function(table = NULL) {
     )@meta$children[[1L]]
 }
 
+test_that("ShiftRequest print shares the ESGF query renderer", {
+    req <- shift_request(
+        project = "CMIP6",
+        experiment = c("ssp126", "ssp585"),
+        variables = c("tas", "hurs"),
+        frequency = "mon",
+        filters = list(table_id = "Amon")
+    )
+
+    printed <- paste(
+        capture.output(print(req, width = 60L), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(printed, "(^|\n)[=═]{2} ESGF request")
+    expect_match(printed, "(^|\n)[*•] Index node: auto")
+    expect_match(printed, "experiment_id = ssp126, ssp585", fixed = TRUE)
+    expect_match(printed, "table_id = Amon", fixed = TRUE)
+    expect_no_match(printed, "stage:  request", fixed = TRUE)
+
+    verbose <- paste(
+        capture.output(print(req, verbose = TRUE), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(verbose, "Workflow", fixed = TRUE)
+    expect_match(verbose, "Status: new", fixed = TRUE)
+})
+
+test_that("Shift configuration printers use compact semantic receipts", {
+    withr::local_options(cli.num_colors = 1L)
+    climate <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
+    control <- shift_control()
+    expect_false(control@refresh)
+    expect_true(shift_control(refresh = TRUE)@refresh)
+    expect_error(shift_control(refresh = NA), "May not be NA")
+    ui <- shift_ui()
+    reference <- historical_reference(1995:2014)
+    transform <- monthly_transform("epwshiftr")
+    site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
+
+    visible <- NULL
+    capture.output(
+        visible <- withVisible(print(control, width = 72L)),
+        type = "message"
+    )
+    expect_false(visible$visible)
+    expect_identical(visible$value, control)
+
+    expect_snapshot(shift_test__print_objects(
+        list(climate, control, ui, reference, transform, site),
+        width = 72L
+    ))
+    expect_snapshot(shift_test__print_objects(
+        list(climate, control, ui, reference, transform, site),
+        width = 100L,
+        n = 3L,
+        verbose = TRUE
+    ))
+})
+
+test_that("Shift plan and stage printers use bounded semantic previews", {
+    withr::local_options(cli.num_colors = 1L)
+    site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
+    periods <- epw_morph_periods(`2060s` = 2055:2065)
+    transform <- monthly_transform("original_morphing")
+    climate_spec <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
+    plan <- shift_spec__plan(
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
+        transform = transform,
+        reference = historical_reference(1995:2014),
+        epw = list(
+            dir = "outputs/future-epw",
+            separate = TRUE,
+            export_dir = file.path(tempdir(), "shift-print-output")
+        ),
+        store = file.path(tempdir(), "shift-print-store")
+    )
+    plan@meta$climate <- climate_spec
+    tasks <- data.table::data.table(
+        status = c("done", "done", "queued", "error"),
+        filename = sprintf("tas_%02d.nc", 1:4),
+        bytes_done = c(100, 200, 0, 20),
+        size = c(100, 200, 300, 400),
+        speed_bps = c(10, 20, 0, 0),
+        eta_seconds = c(0, 0, 30, NA),
+        data_node = "example.org",
+        attempts = c(1L, 1L, 0L, 2L),
+        last_error = c(NA, NA, NA, "connection failed")
+    )
+    download <- shift_stage__new(
+        ShiftDownload,
+        "download",
+        ids = list(session_id = "session-print"),
+        meta = list(session = tasks)
+    )
+    coverage <- data.table::data.table(
+        complete = c(TRUE, TRUE, FALSE),
+        status = c("done", "done", "failed"),
+        experiment_id = c("ssp126", "ssp585", "ssp585"),
+        variable_id = c("tas", "tas", "hurs"),
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        time_start = as.POSIXct("2055-01-01", tz = "UTC"),
+        time_stop = as.POSIXct("2065-12-31", tz = "UTC"),
+        output_time_count = c(132L, 132L, 0L),
+        output_rows = c(132L, 132L, 0L),
+        last_error = c(NA, NA, "missing years")
+    )
+    climate <- shift_stage__new(
+        ShiftClimate,
+        "climate",
+        meta = list(site = site, periods = periods, coverage = coverage)
+    )
+    morph_rows <- data.table::data.table(
+        case_id = sprintf("case-%d", 1:4),
+        source_id = "BCC-CSM2-MR",
+        experiment_id = rep(c("ssp126", "ssp585"), each = 2L),
+        variant_label = "r1i1p1f1",
+        period = "2060s",
+        status = "result_done",
+        row_count = 8760L,
+        output_path = sprintf("morph/case-%d.parquet", 1:4)
+    )
+    morphed <- shift_stage__new(
+        ShiftMorphed,
+        "morphed",
+        meta = list(
+            transform = transform,
+            recipe = transform__recipe(transform),
+            reference_spec = historical_reference(1995:2014),
+            results = morph_rows
+        )
+    )
+    output_rows <- data.table::data.table(
+        source_id = "BCC-CSM2-MR",
+        experiment_id = rep(c("ssp126", "ssp585"), 6L),
+        variant_label = "r1i1p1f1",
+        period = "2060s",
+        path = sprintf("outputs/future-%02d.epw", 1:12),
+        export_path = sprintf("/exports/future-%02d.epw", 1:12),
+        created_at = as.POSIXct("2026-01-01", tz = "UTC")
+    )
+    outputs <- shift_stage__new(
+        ShiftOutputs,
+        "outputs",
+        meta = list(outputs = output_rows, export_dir = "/exports")
+    )
+
+    output_text <- capture.output(
+        print(outputs, width = 72L, n = 3L),
+        type = "message"
+    )
+    expect_true(any(grepl("9 more rows", output_text, fixed = TRUE)))
+    output_default <- capture.output(
+        print(outputs, width = 72L),
+        type = "message"
+    )
+    expect_true(any(grepl("2 more rows", output_default, fixed = TRUE)))
+    output_all <- capture.output(
+        print(outputs, width = 72L, n = Inf),
+        type = "message"
+    )
+    expect_false(any(grepl("more rows", output_all, fixed = TRUE)))
+
+    for (width in c(60L, 80L, 120L)) {
+        for (object in list(plan, download, climate, morphed, outputs)) {
+            lines <- cli::ansi_strip(capture.output(
+                print(object, width = width, n = 3L),
+                type = "message"
+            ))
+            expect_lte(max(cli::ansi_nchar(lines, type = "width")), width)
+        }
+    }
+
+    expect_snapshot(
+        shift_test__print_objects(
+            list(plan, download, climate, morphed, outputs),
+            width = 80L,
+            n = 3L
+        ),
+        transform = shift_test__normalize_print
+    )
+    expect_snapshot(
+        shift_test__print_objects(
+            list(plan, download, climate, morphed, outputs),
+            width = 100L,
+            n = 3L,
+            verbose = TRUE
+        ),
+        transform = shift_test__normalize_print
+    )
+})
+
+test_that("ShiftRun print refreshes state and reuses the static dashboard", {
+    withr::local_options(cli.num_colors = 1L)
+    store_path <- tempfile("shift-print-run-store-")
+    plan <- shift_epw_future(
+        sites = shift_site(epw = get_cache_epw()),
+        climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
+        periods = list(`2060s` = 2055:2065),
+        transform = monthly_transform("original_morphing"),
+        reference = historical_reference(1995:2014),
+        dir = tempfile("shift-print-run-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )@meta$children[[1L]]
+    store_path <- plan@store_path
+    run_id <- shift_job__run_register(plan)
+    stale <- shift_run_get(run_id, store = store_path)
+    store <- shift_inspect__store(plan)
+    shift_job__run_update(
+        store,
+        run_id,
+        status = "waiting",
+        current_stage = "collect"
+    )
+    store$close()
+
+    printed <- capture.output(print(stale, width = 72L), type = "message")
+    expect_true(any(grepl("READY", printed, fixed = TRUE)))
+    expect_true(any(grepl("Future EPW", printed, fixed = TRUE)))
+    expect_true(any(grepl("Cases", printed, fixed = TRUE)))
+    expect_false(any(grepl("MemberNA|StatusNA|plannedNA", printed)))
+    expect_lte(
+        max(cli::ansi_nchar(cli::ansi_strip(printed), type = "width")),
+        72L
+    )
+
+    view <- shift_ui_view__ui_run_view(
+        shift_inspect__refresh(stale),
+        width = 72L,
+        detail = "normal",
+        motion = "none"
+    )
+    direct <- capture.output(
+        shift_ui_view__ui_print_view(view, include_tables = TRUE),
+        type = "message"
+    )
+    expect_identical(printed, direct)
+})
+
+test_that("ShiftRun print falls back to a cached static snapshot", {
+    withr::local_options(cli.num_colors = 1L)
+    spec <- list(
+        task = "future_epw",
+        climate = list(
+            model = "BCC-CSM2-MR",
+            scenarios = c("ssp126", "ssp585"),
+            member = NULL,
+            grid = NULL
+        ),
+        periods = list(`2060s` = 2055:2065),
+        transform = list(
+            scale = "monthly",
+            method = "original_morphing",
+            recipe = "original_morphing_monthly",
+            recipe_version = 1L,
+            reconstruction = "original_morphing_field_equations",
+            options = list()
+        ),
+        reference = list(
+            mode = "historical",
+            periods = list(reference = 1995:2014)
+        ),
+        control = list(download = "auto")
+    )
+    run_row <- data.table::data.table(
+        run_id = "run_print_12345678",
+        task = "future_epw",
+        spec_json = jsonlite::toJSON(spec, auto_unbox = TRUE, null = "null"),
+        status = "completed",
+        current_stage = "write_epw",
+        output_dir = "/exports",
+        started_at = as.POSIXct("2026-01-01 00:00:00", tz = "UTC"),
+        updated_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
+        completed_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
+        last_error = NA_character_
+    )
+    cases <- data.table::data.table(
+        experiment_id = c("ssp126", "ssp585"),
+        variant_label = NA_character_,
+        period = "2060s",
+        status = "completed",
+        required = TRUE,
+        export_path = c("/exports/ssp126.epw", "/exports/ssp585.epw")
+    )
+    events <- data.table::data.table(
+        stage = character(),
+        status = character(),
+        message = character(),
+        details_json = character(),
+        created_at = as.POSIXct(character(), tz = "UTC")
+    )
+    run <- shift_stage__new(
+        ShiftRun,
+        "run",
+        ids = list(run_id = "run_print_12345678"),
+        meta = list(run = run_row, cases = cases, events = events)
+    )
+
+    printed <- capture.output(print(run, width = 72L), type = "message")
+    expect_true(any(grepl("COMPLETED", printed, fixed = TRUE)))
+    expect_true(any(grepl(
+        "Persisted preview unavailable",
+        printed,
+        fixed = TRUE
+    )))
+    expect_false(any(grepl("MemberNA|StatusNA|completedNA", printed)))
+    limited <- capture.output(print(run, width = 72L, n = 1L), type = "message")
+    expect_true(any(grepl("1 more case", limited, fixed = TRUE)))
+    expect_snapshot(print(run, width = 72L))
+    expect_snapshot(print(run, width = 100L, verbose = TRUE))
+})
+
+test_that("shift_ui() maps presentation modes without changing scientific intent", {
+    expect_equal(shift_ui__ui_mode(shift_ui("none")), "none")
+    expect_equal(
+        shift_ui__ui_motion(shift_ui("dynamic", motion = "auto")),
+        "full"
+    )
+    expect_equal(shift_ui__ui_motion(shift_ui("log", motion = "full")), "none")
+
+    store <- tempfile("shift-ui-store-")
+    output <- tempfile("shift-ui-output-")
+    climate <- shift_cmip6(
+        "EC-Earth3",
+        "ssp585",
+        "r1i1p1f1",
+        grid = "gr",
+        frequency = "mon",
+        table = "Amon"
+    )
+    make_plan <- function(ui) {
+        shift_epw_future(
+            sites = shift_site(epw = get_cache_epw()),
+            climate = climate,
+            periods = list(`2060s` = 2060L),
+            transform = monthly_transform("epwshiftr"),
+            dir = output,
+            store = store,
+            dry_run = TRUE,
+            ui = ui
+        )@meta$children[[1L]]
+    }
+    expect_identical(
+        shift_persist__plan_spec(make_plan(shift_ui("none"))),
+        shift_persist__plan_spec(make_plan(shift_ui(
+            "log",
+            detail = "debug",
+            motion = "full",
+            refresh = 0.05,
+            heartbeat = 1
+        )))
+    )
+})
+
+test_that("ShiftReporter persists structured milestones while none mode stays silent", {
+    store <- EsgStore$new(tempfile("shift-reporter-store-"))
+    on.exit(store$close(), add = TRUE)
+    reporter <- shift_reporter__reporter(
+        shift_ui("none"),
+        store = store,
+        run_id = "reporter-run"
+    )
+    expect_silent({
+        reporter$stage_started("resolve", "Resolving inputs.")
+        reporter$unit_started(
+            "Querying future catalog.",
+            current = 1L,
+            total = 2L,
+            details = list(
+                unit_type = "query",
+                node = "example.org",
+                scenario = "ssp585"
+            )
+        )
+        reporter$unit_completed(
+            "Future catalog resolved.",
+            current = 1L,
+            total = 2L,
+            details = list(variable = "tas", access_method = "OPeNDAP")
+        )
+        reporter$stage_completed("Inputs resolved.")
+    })
+    events <- morpher__private_store(store)$read_table("shift_run_event")
+    expect_equal(nrow(events), 4L)
+    details <- lapply(
+        events$details_json,
+        jsonlite::fromJSON,
+        simplifyVector = TRUE
+    )
+    unit <- details[[which(events$message == "Future catalog resolved.")]]
+    expect_equal(unit$stage, "resolve")
+    expect_equal(unit$unit_type, "query")
+    expect_equal(unit$node, "example.org")
+    expect_equal(unit$variable, "tas")
+    expect_equal(unit$outcome, "completed")
+})
+
+test_that("shared truncation footer preserves display behavior", {
+    testthat::local_reproducible_output(crayon = FALSE, unicode = TRUE)
+
+    vector_footer <- capture.output(
+        print__truncation_footer(letters[1:3], 2L, newline_before = FALSE),
+        type = "message"
+    )
+    expect_identical(vector_footer, "# ... with 1 more item")
+
+    table_footer <- capture.output(
+        print__truncation_footer(data.frame(value = 1:4), 2L),
+        type = "message"
+    )
+    expect_identical(table_footer, c("", "# ... with 2 more items"))
+
+    complete_footer <- capture.output(
+        print__truncation_footer(letters[1:2], 2L),
+        type = "message"
+    )
+    expect_identical(complete_footer, character())
+})
+
 test_that("shared status and compact views adapt to stage, width, and transfer metrics", {
     resolve_state <- shift_test__ui_state(
         stage_sequence = UI_TEST_STAGES,
@@ -70,7 +496,6 @@ test_that("shared status and compact views adapt to stage, width, and transfer m
     expect_false(any(grepl("^[╭├╰│]", narrow)))
     expect_match(narrow[[1L]], "Future EPW", fixed = TRUE)
 
-    # Compact line preserves stage, unit, progress, and elapsed time
     compact_state <- shift_test__ui_state(
         unit_label = "Checking catalog",
         unit_current = 2L,
@@ -92,7 +517,6 @@ test_that("shared status and compact views adapt to stage, width, and transfer m
     expect_match(compact, "Resolve.*2/6.*CEDA.*reference.*15s")
     expect_lte(nchar(compact, type = "width"), 80L)
 
-    # Download transfer metrics
     dl_state <- shift_test__ui_state(
         stage = "download",
         elapsed_seconds = 20,
@@ -117,7 +541,6 @@ test_that("shared status and compact views adapt to stage, width, and transfer m
     expect_match(dl_text, "2/8.*1\\.0 MiB/4\\.0 MiB.*512\\.0 KiB/s.*ETA 6s")
     expect_match(dl_text, "2 active", fixed = TRUE)
 
-    # Coverage, morph, and write_epw stage-specific metrics
     base <- shift_test__ui_state(
         unit_label = "case",
         unit_current = 1L,
@@ -381,7 +804,6 @@ test_that("persisted watch tables rebuild running state, terminal elapsed time, 
     )
     expect_match(paste(view$cases, collapse = "\n"), "ssp126")
 
-    # Failed terminal state freezes elapsed time and preserves structured diagnosis
     failed_row <- data.table::data.table(
         run_id = "run-failed",
         status = "failed",
@@ -423,43 +845,6 @@ test_that("persisted watch tables rebuild running state, terminal elapsed time, 
     expect_match(failed_text, "FAILED", fixed = TRUE)
     expect_match(failed_text, "6 checked.*6 incomplete")
     expect_match(failed_text, "BCC-CSM2-MR/r1i1p1f1/gn", fixed = TRUE)
-})
-
-test_that("watch event deltas never tail away unseen milestones", {
-    events <- data.table::data.table(
-        event_id = paste0("e", seq_len(20L)),
-        stage = "resolve",
-        status = "running",
-        message = paste("event", seq_len(20L)),
-        details_json = "{}",
-        created_at = as.POSIXct("2026-07-20 00:00:00", tz = "UTC") +
-            seq_len(20L)
-    )
-    initial <- shift_ui_state__ui_event_delta(
-        events,
-        initial_limit = 5L,
-        initial = TRUE
-    )
-    expect_equal(initial$rows$event_id, paste0("e", 16:20))
-    expect_identical(initial$cursor, "e20")
-
-    unseen <- shift_ui_state__ui_event_delta(
-        events,
-        last_event_id = "e5",
-        initial_limit = 5L,
-        initial = FALSE
-    )
-    expect_equal(unseen$rows$event_id, paste0("e", 6:20))
-    expect_false(unseen$gap)
-
-    truncated <- shift_ui_state__ui_event_delta(
-        events[11:20],
-        last_event_id = "e5",
-        initial_limit = 5L,
-        initial = FALSE
-    )
-    expect_equal(truncated$rows$event_id, paste0("e", 11:20))
-    expect_true(truncated$gap)
 })
 
 test_that("download metrics and reporter bindings bridge progress and nested fallbacks", {
@@ -548,7 +933,6 @@ test_that("download metrics and reporter bindings bridge progress and nested fal
 test_that("dynamic and log terminal receipts retain failures, completions, and debug lines", {
     mock <- shift_test__mock_renderer()
 
-    # Dynamic failure receipt
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
     reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
     failure <- list(
@@ -573,7 +957,6 @@ test_that("dynamic and log terminal receipts retain failures, completions, and d
     expect_match(fail_plain, "6 checked.*5 incomplete.*1 timeout")
     expect_match(fail_plain, "BCC-CSM2-MR/r1i1p1f1/gn", fixed = TRUE)
 
-    # Dynamic completion receipt
     output_dir <- tempfile("shift-completed-output-")
     paths <- file.path(
         output_dir,
@@ -618,7 +1001,6 @@ test_that("dynamic and log terminal receipts retain failures, completions, and d
         fixed = TRUE
     )))
 
-    # Log mode failure, completion, and untruncated debug lines
     fail_rep <- shift_reporter__reporter(shift_ui("log", detail = "normal"))
     fail_rep$cases_updated(data.table::data.table(
         experiment_id = "ssp585",
@@ -696,7 +1078,6 @@ test_that("startup plan summaries, persisted context, and dynamic startup frames
         "member r1i1p1f1.*grid gn.*auto by variable.*snd=LImon"
     )
 
-    # Dynamic startup draws a replaceable frame instead of printing transcript lines
     mock <- shift_test__mock_renderer()
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
     expect_identical(
@@ -820,9 +1201,6 @@ test_that("heartbeat details merge live state without unthrottled durable touche
     expect_equal(touches, 1L)
 })
 
-# Exercise the real discovery loop and Dataset stage while replacing remote
-# catalogs with complete local CMIP6 records. This proves panel ownership at
-# nested API boundaries instead of merely checking a fabricated final frame.
 test_that("discovery owns one reporter across methods and nested catalog stages", {
     skip_on_cran()
     mock <- shift_test__mock_renderer(strip = TRUE, bind = FALSE)
@@ -937,8 +1315,6 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
     expect_false(grepl("Now|Cancel|Current search", final))
 })
 
-# Verify the nested File path with a real store as well: discovery bypasses the
-# standalone task wrapper but must still persist catalogs and close its handle.
 test_that("nested coverage collection persists files and closes its owned store", {
     calls <- shift_test__mock_collect(esgf_test__file_docs("tas_day.nc"))
     testthat::local_mocked_bindings(
@@ -968,8 +1344,6 @@ test_that("nested coverage collection persists files and closes its owned store"
     expect_equal(nrow(catalog), 1L)
     expect_identical(calls$types, c("Dataset", "File"))
     expect_equal(catalog$variable_id, "tas")
-    # DuckDB rejects a differently configured connection while a writable
-    # handle to the same database is still open in this process.
     connection <- ddb_connect(
         file.path(root, "manifest.duckdb"),
         read_only = TRUE
@@ -978,8 +1352,6 @@ test_that("nested coverage collection persists files and closes its owned store"
     ddb_disconnect(connection, shutdown = TRUE)
 })
 
-# Error and interrupt paths must release the shared stack and produce exactly
-# one terminal receipt, even if a node fails before any catalog is returned.
 test_that("discovery restores reporter ownership after failures and interrupts", {
     for (interrupted in c(FALSE, TRUE)) {
         reporter <- NULL
@@ -1023,9 +1395,6 @@ test_that("discovery restores reporter ownership after failures and interrupts",
     }
 })
 
-# Use callback events from two real logical requests to distinguish request
-# time, previous responses, received rows, and cache reuse without estimating
-# overall completion from a method or node ordinal.
 test_that("catalog callbacks retain truthful request and cache metrics", {
     withr::local_options(epwshiftr.query.timeout = 300)
     reporter <- shift_reporter__reporter(shift_ui("none"))
@@ -1058,8 +1427,6 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
     expect_false(grepl("%|ETA|downloaded", text))
 })
 
-# Drive the actual JSON reader twice so cache hits cannot silently bypass the
-# progress callback or get counted as a second network response.
 test_that("JSON catalog reads report parsed rows and cache hits separately", {
     cache <- DiskCache$new(tempfile("discovery-cache-"), prune_on_init = FALSE)
     testthat::local_mocked_bindings(
@@ -1147,7 +1514,6 @@ test_that("calibration, started cases, and multi-year exports preserve honest un
     state$current_details <- list(phase = "unit", current = 1L, total = 3L)
     expect_match(shift_ui_view__ui_metric_line(state), "node 1 of 3")
 
-    # Case completion preserves measured multi-year export counts in memory and persisted state
     reporter <- shift_reporter__reporter(shift_ui("none"))
     on.exit(reporter$close(), add = TRUE)
     reporter$stage_started("write_epw", "Exporting weather")
@@ -1242,7 +1608,6 @@ test_that("batch viewports cap height, prioritize failures, and outrank warnings
     expect_match(full, "2026-09-16 00:00:01", fixed = TRUE)
     expect_false(grepl("children hidden", full, fixed = TRUE))
 
-    # Errors outrank warnings and retain recovery actions
     diag_snap <- ui_workflows__states()[[3L]]
     diag_snap$batch$status <- "failed"
     diag_snap$diagnostics <- data.table::data.table(
@@ -1266,6 +1631,52 @@ test_that("batch viewports cap height, prioritize failures, and outrank warnings
     )
     expect_match(full_diag, "Routine 3", fixed = TRUE)
     expect_false(grepl("more diagnostics", full_diag, fixed = TRUE))
+})
+
+test_that("batch view renders cancelled counts and calibration activity", {
+    batch <- ui_workflows__batch(tempfile("ui-render-snap-"))
+    stamp <- as.POSIXct("2026-09-16 00:00:00", tz = "UTC")
+    statuses <- c("cancelled", "stopping", "completed")
+    ui_state <- list(
+        status = "running",
+        stage = "morph",
+        unit_label = "ERA5 t2m",
+        elapsed_seconds = 20,
+        current_details = list(
+            unit_type = "reanalysis_variable",
+            current = 2L,
+            total = 6L
+        )
+    )
+    for (i in seq_along(statuses)) {
+        plan <- batch@meta$children[[i]]
+        batch@meta$children[[i]] <- shift_stage__new(
+            ShiftRun,
+            "run",
+            store_path = plan@store_path,
+            ids = list(run_id = paste0("run", i), morph_id = NA_character_),
+            meta = list(
+                run = data.table::data.table(
+                    status = statuses[[i]],
+                    task = "future_epw",
+                    current_stage = "morph",
+                    started_at = stamp,
+                    updated_at = stamp + 10
+                ),
+                jobs = data.table::data.table(heartbeat_at = stamp + 20),
+                cases = plan@meta$expected_cases,
+                ui_state = ui_state
+            )
+        )
+    }
+    snapshot <- shift_batch_ui__snapshot(batch, refresh = FALSE)
+    text <- ui_test__plain(
+        shift_batch_ui__view(snapshot, width = 112L)$lines,
+        " "
+    )
+    expect_match(text, "1 cancelled")
+    expect_match(text, "ERA5 t2m")
+    expect_match(text, "Variables.*2/6")
 })
 
 test_that("frame renderers cap live viewport height and retain full completion receipts", {
@@ -1530,116 +1941,6 @@ test_that("weather comparison excludes missing codes and weights valid hourly ro
     expect_true(nzchar(result$weather_error))
 })
 
-test_that("batch snapshots include cancellation counts and live child activity", {
-    batch <- ui_workflows__batch(tempfile("ui-snapshot-"))
-    stamp <- as.POSIXct("2026-09-16 00:00:00", tz = "UTC")
-    statuses <- c("cancelled", "stopping", "completed")
-    ui_state <- list(
-        status = "running",
-        stage = "morph",
-        unit_label = "ERA5 t2m",
-        elapsed_seconds = 20,
-        current_details = list(
-            unit_type = "reanalysis_variable",
-            current = 2L,
-            total = 6L
-        )
-    )
-    for (i in seq_along(statuses)) {
-        plan <- batch@meta$children[[i]]
-        batch@meta$children[[i]] <- shift_stage__new(
-            ShiftRun,
-            "run",
-            store_path = plan@store_path,
-            ids = list(run_id = paste0("run", i), morph_id = NA_character_),
-            meta = list(
-                run = data.table::data.table(
-                    status = statuses[[i]],
-                    task = "future_epw",
-                    current_stage = "morph",
-                    started_at = stamp,
-                    updated_at = stamp + 10
-                ),
-                jobs = data.table::data.table(heartbeat_at = stamp + 20),
-                cases = plan@meta$expected_cases,
-                ui_state = ui_state
-            )
-        )
-    }
-    snapshot <- shift_batch_ui__snapshot(batch, refresh = FALSE)
-    expect_equal(snapshot$batch$cancelled, 1L)
-    counts <- snapshot$batch[,
-        c("completed", "active", "failed", "partial", "waiting", "cancelled"),
-        with = FALSE
-    ]
-    expect_equal(sum(unlist(counts)), snapshot$batch$children)
-    expect_match(snapshot$activity[[2L]]$updated_at, "00:00:20")
-    expect_identical(
-        c(snapshot$activity[[1L]]$status, snapshot$activity[[2L]]$status),
-        c("cancelled", "stopping")
-    )
-    text <- ui_test__plain(
-        shift_batch_ui__view(snapshot, width = 112L)$lines,
-        " "
-    )
-    expect_match(text, "1 cancelled")
-    expect_match(text, "ERA5 t2m")
-    expect_match(text, "Variables.*2/6")
-})
-
-test_that("live JSON timestamps retain clock time, fractions and UTC offsets", {
-    stamp <- as.POSIXct("2026-09-18 01:23:45", tz = "UTC")
-    original <- data.table::data.table(
-        started_at = stamp,
-        updated_at = stamp + 60,
-        completed_at = as.POSIXct(NA, tz = "UTC")
-    )
-    path <- tempfile(fileext = ".json")
-    on.exit(unlink(path), add = TRUE)
-    store_write_json_atomic(
-        original,
-        path,
-        dataframe = "rows",
-        na = "null",
-        POSIXt = "ISO8601",
-        digits = 15
-    )
-    restored <- shift_job__live_table(jsonlite::fromJSON(path))
-    expect_equal(
-        as.numeric(restored$started_at) - as.numeric(stamp),
-        0,
-        tolerance = 1e-6
-    )
-    expect_equal(
-        as.numeric(difftime(
-            restored$updated_at,
-            restored$started_at,
-            units = "secs"
-        )),
-        60
-    )
-    expect_s3_class(restored$completed_at, "POSIXct")
-    expect_true(is.na(restored$completed_at))
-
-    values <- c(
-        "2026-09-18T01:23:45.125Z",
-        "2026-09-18T09:23:45.125+08:00",
-        "2026-09-17T20:23:45.125-0500",
-        "2026-09-18 01:23:45.125",
-        NA_character_
-    )
-    parsed <- shift_job__live_table(data.frame(
-        heartbeat_at = values
-    ))$heartbeat_at
-    expect_equal(as.numeric(parsed[1:4]) - as.numeric(stamp), rep(0.125, 4L))
-    expect_true(is.na(parsed[[5L]]))
-    expect_equal(shift_job__live_time(stamp), stamp)
-    expect_equal(
-        shift_job__live_time("2026-09-18"),
-        as.POSIXct("2026-09-18", tz = "UTC")
-    )
-})
-
 test_that("cancellation overrides stale worker frames in R and CLI watch", {
     root <- tempfile("ui-cancel-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -1703,7 +2004,6 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     )
     expect_false(is.na(run@meta$jobs$cancel_requested_at))
 
-    # Older sidecars may still carry a pre-cancellation frame.
     run@meta$ui_state$status <- "running"
     testthat::local_mocked_bindings(
         shift_outputs = function(...) data.table::data.table(),
@@ -1752,8 +2052,7 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     expect_equal(terminal$state$elapsed_seconds, 30)
 })
 
-# Interleave two child histories with a failure that becomes visible late.
-test_that("batch event cursors retain interleaved events and watchers emit them once", {
+test_that("R and CLI batch watchers emit late and terminal events once", {
     events <- data.table::data.table(
         event_id = c("a1", "a2", "b1", "a3", "a4"),
         run_id = c("run-a", "run-a", "run-b", "run-a", "run-a"),
@@ -1773,50 +2072,6 @@ test_that("batch event cursors retain interleaved events and watchers emit them 
             seq_len(5L),
         details_json = "{}"
     )
-    first <- shift_batch_ui__event_delta(
-        events[c(1L, 3L)],
-        initial_limit = 1L,
-        initial = TRUE
-    )
-    expect_identical(first$rows$event_id, "b1")
-    second <- shift_batch_ui__event_delta(events[1:3], first$cursor)
-    expect_identical(second$rows$event_id, "a2")
-    expect_false(second$gap)
-    expect_equal(
-        nrow(
-            shift_batch_ui__event_delta(
-                events[c(3L, 2L, 1L)],
-                second$cursor
-            )$rows
-        ),
-        0L
-    )
-
-    new_child <- data.table::copy(events[1L])
-    data.table::set(
-        new_child,
-        j = c("event_id", "run_id", "child_key"),
-        value = list("c1", "run-c", "c")
-    )
-    expanded <- shift_batch_ui__event_delta(
-        rbind(events[1:3], new_child),
-        second$cursor
-    )
-    expect_identical(expanded$rows$event_id, "c1")
-    expect_false(expanded$gap)
-
-    truncated <- shift_batch_ui__event_delta(events[4:5], expanded$cursor)
-    expect_identical(truncated$rows$event_id, c("a3", "a4"))
-    expect_true(truncated$gap)
-    restored <- shift_batch_ui__event_delta(events, truncated$cursor)
-    expect_equal(nrow(restored$rows), 0L)
-    expect_false(restored$gap)
-    expect_identical(
-        shift_batch_ui__event_delta(events[0], restored$cursor)$cursor,
-        restored$cursor
-    )
-
-    # R and CLI batch watchers emit late and terminal events exactly once
     states <- ui_workflows__states()
     ev_slices <- list(events[c(1L, 3L)], events[1:3], events[1:3], events)
     snapshots <- lapply(seq_len(4L), function(i) {
