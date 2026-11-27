@@ -882,4 +882,410 @@ dict__download_dreq <- function(
 }
 # }}}
 
+# gh_token {{{
+gh_token <- function(token = NULL, header = TRUE) {
+    checkmate::assert_string(token, null.ok = TRUE)
+
+    if (is.null(token)) {
+        token <- Sys.getenv("GITHUB_PAT")
+
+        if (token == "") {
+            token <- Sys.getenv("GITHUB_TOKEN")
+        }
+
+        if (token == "") return(NULL)
+    }
+
+    token <- trimws(token)
+    if (!nchar(token)) {
+        return(NULL)
+    }
+
+    if (
+        !grepl("^gh[pousr]_[A-Za-z0-9_]{36,251}$", token) &&
+            !grepl("[[:xdigit:]]{40}", token)
+    ) {
+        return(NULL)
+    } else {
+        if (!header) {
+            return(token)
+        } else {
+            return(c("Authorization" = paste("token", token)))
+        }
+    }
+}
+# }}}
+
+# gh {{{
+gh <- function(path, token = NULL) {
+    base_url <- "https://api.github.com"
+    link <- file.path(base_url, path)
+
+    cache__url("gh", link, function() {
+        # use GitHub token if possible
+        headers <- c("Accept" = "application/vnd.github+json")
+
+        if (!is.null(token <- gh_token(token))) {
+            headers <- c(headers, token)
+        }
+
+        jsonlite::fromJSON(base::url(link, headers = headers))
+    })
+}
+# }}}
+
+# TODO: pagination for tags
+# gh_tags {{{
+gh_tags <- function(repo, token = NULL) {
+    gh(sprintf("repos/%s/tags", repo), token)
+}
+# }}}
+
+# gh__download {{{
+gh__download <- function(url, dest, token = NULL) {
+    cache__download(url, dest, function() {
+        utils::download.file(
+            url,
+            dest,
+            mode = "wb",
+            headers = gh_token(token),
+            quiet = TRUE
+        )
+        dest
+    })
+}
+# }}}
+
+# download_gh_file {{{
+download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
+    url <- sprintf(
+        "https://raw.githubusercontent.com/%s/%s/%s",
+        repo,
+        tag,
+        file
+    )
+    gh__download(url, file.path(dir, file), token)
+}
+# }}}
+
+# download_gh_tag {{{
+download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
+    url <- sprintf(
+        "https://api.github.com/repos/%s/zipball/refs/tags/%s",
+        repo,
+        tag
+    )
+    dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), tag))
+    gh__download(url, dest, token)
+}
+# }}}
+
+# download_gh_ref {{{
+download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
+    url <- sprintf("https://api.github.com/repos/%s/zipball/%s", repo, ref)
+    ref_file <- gsub("[/\\\\]", "-", ref)
+    dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), ref_file))
+    gh__download(url, dest, token)
+}
+# }}}
+
+# dict__nest {{{
+dict__nest <- function(json) {
+    transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
+    data.table::setnames(
+        data.table::as.data.table(transposed),
+        names(json[[1L]])
+    )
+}
+# }}}
+
+# dict__parse_cv_version {{{
+dict__parse_cv_version <- function(lst) {
+    res <- list()
+
+    ori <- Sys.getlocale("LC_TIME")
+    on.exit(Sys.setlocale("LC_TIME", ori), add = TRUE)
+    Sys.setlocale("LC_TIME", "C")
+
+    res$CV_collection_version <- as.numeric_version(lst$CV_collection_version)
+    res$CV_collection_modified <- as.POSIXct(
+        lst$CV_collection_modified,
+        format = "%c %z",
+        tz = "UTC"
+    )
+
+    type_modified <- names(lst)[endsWith(names(lst), "CV_modified")]
+    res$CV_modified <- gsub(" 0(\\d{4})$", " -\\1", lst[[type_modified]])
+    res$CV_modified <- gsub("Tues", "Tue", res$CV_modified, fixed = TRUE)
+    res$CV_modified <- as.POSIXct(res$CV_modified, format = "%c %z", tz = "UTC")
+
+    res$CV_note <- lst[[names(lst)[endsWith(names(lst), "CV_note")]]]
+
+    res
+}
+# }}}
+
+# dict__parse_cv_vec {{{
+dict__parse_cv_vec <- function(file, subclass = NULL) {
+    json <- jsonlite::read_json(file)
+    res <- unlst(json[[1L]])
+    data.table::setattr(
+        res,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
+
+    structure(res, class = c(subclass, "Cmip6CV", typeof(res)))
+}
+# }}}
+
+# dict__parse_cv_list {{{
+dict__parse_cv_list <- function(file, subclass = NULL) {
+    json <- jsonlite::read_json(file)
+    res <- json[[1L]]
+    data.table::setattr(
+        res,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
+
+    structure(res, class = c(subclass, "Cmip6CV", "list"))
+}
+# }}}
+
+# dict__parse_cv_drs {{{
+dict__parse_cv_drs <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_DRS")
+}
+# }}}
+
+# dict__parse_cv_activity_id {{{
+dict__parse_cv_activity_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_ActivityId")
+}
+# }}}
+
+# dict__parse_cv_experiment_id {{{
+dict__parse_cv_experiment_id <- function(file) {
+    json <- jsonlite::read_json(file)
+    d <- dict__nest(json[[1L]])
+
+    data.table::setcolorder(d, "experiment_id")
+
+    cols_lst <- c(
+        "activity_id",
+        "additional_allowed_model_components",
+        "parent_activity_id",
+        "parent_experiment_id",
+        "required_model_components",
+        "sub_experiment_id"
+    )
+    for (col in cols_lst) {
+        data.table::set(d, NULL, col, lapply(d[[col]], unlist, FALSE, FALSE))
+    }
+
+    cols_flat <- c(
+        "experiment_id",
+        "description",
+        "end_year",
+        "experiment",
+        "min_number_yrs_per_sim",
+        "start_year",
+        "tier"
+    )
+    for (col in cols_flat) {
+        data.table::set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
+    }
+
+    cols_int <- c("end_year", "min_number_yrs_per_sim", "start_year", "tier")
+    for (col in cols_int) {
+        data.table::set(d, NULL, col, suppressWarnings(as.integer(d[[col]])))
+    }
+
+    data.table::setcolorder(
+        d,
+        c(
+            "experiment_id",
+            "experiment",
+            "description",
+            "tier",
+            "start_year",
+            "end_year",
+            "min_number_yrs_per_sim",
+            "required_model_components",
+            "parent_experiment_id",
+            "sub_experiment_id",
+            "activity_id",
+            "parent_activity_id",
+            "additional_allowed_model_components"
+        )
+    )
+    data.table::setattr(
+        d,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
+
+    structure(d, class = c("Cmip6CV_ExperimentId", "Cmip6CV", class(d)))
+}
+# }}}
+
+# dict__parse_cv_frequency {{{
+dict__parse_cv_frequency <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_Frequency")
+}
+# }}}
+
+# dict__parse_cv_grid_label {{{
+dict__parse_cv_grid_label <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_GridLabel")
+}
+# }}}
+
+# dict__parse_cv_institution_id {{{
+dict__parse_cv_institution_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_InstitutionId")
+}
+# }}}
+
+# dict__parse_cv_nominal_resolution {{{
+dict__parse_cv_nominal_resolution <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_Resolution")
+}
+# }}}
+
+# dict__parse_cv_realm {{{
+dict__parse_cv_realm <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_Realm")
+}
+# }}}
+
+# dict__parse_cv_required_global_attributes {{{
+dict__parse_cv_required_global_attributes <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
+}
+# }}}
+
+# dict__parse_cv_source_id {{{
+dict__parse_cv_source_id <- function(file) {
+    json <- jsonlite::read_json(file)
+    d <- dict__nest(json[[1L]])
+
+    data.table::setcolorder(d, "source_id")
+
+    cols_lst <- c("activity_participation", "institution_id")
+    for (col in cols_lst) {
+        data.table::set(d, NULL, col, lapply(d[[col]], unlst))
+    }
+
+    cols_flat <- c(
+        "source_id",
+        "release_year",
+        "cohort",
+        "label",
+        "label_extended"
+    )
+    for (col in cols_flat) {
+        data.table::set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
+    }
+
+    data.table::set(
+        d,
+        NULL,
+        "release_year",
+        suppressWarnings(as.integer(d$release_year))
+    )
+
+    data.table::setcolorder(
+        d,
+        c(
+            "source_id",
+            "release_year",
+            "institution_id",
+            "label",
+            "label_extended",
+            "cohort",
+            "activity_participation",
+            "model_component",
+            "license_info"
+        )
+    )
+    data.table::setattr(
+        d,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
+
+    structure(d, class = c("Cmip6CV_SourceId", "Cmip6CV", class(d)))
+}
+# }}}
+
+# dict__parse_cv_source_type {{{
+dict__parse_cv_source_type <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_SourceType")
+}
+# }}}
+
+# dict__parse_cv_sub_experiment_id {{{
+dict__parse_cv_sub_experiment_id <- function(file) {
+    dict__parse_cv_list(file, "Cmip6CV_SubExperimentId")
+}
+# }}}
+
+# dict__parse_cv_table_id {{{
+dict__parse_cv_table_id <- function(file) {
+    dict__parse_cv_vec(file, "Cmip6CV_TableId")
+}
+# }}}
+
+# dict__parse_dreq_header {{{
+dict__parse_dreq_header <- function(lst) {
+    res <- list()
+
+    ori <- Sys.getlocale("LC_TIME")
+    on.exit(Sys.setlocale("LC_TIME", ori), add = TRUE)
+    Sys.setlocale("LC_TIME", "C")
+
+    res$dreq_version <- numeric_version(lst$data_specs_version)
+    res$cmor_version <- numeric_version(lst$cmor_version)
+    res$table_id <- sub("Table ", "", lst$table_id, fixed = TRUE)
+    res$table_date <- as.Date(lst$table_date, format = "%d %b %Y")
+    res$realm <- lst$realm
+    res$dbl_missing_value <- as.double(lst$missing_value)
+    res$int_missing_value <- as.integer(lst$int_missing_value)
+    res$mip_era <- lst$mip_era
+    res$conventions <- lst$Conventions
+
+    res
+}
+# }}}
+
+# dict__parse_dreq {{{
+dict__parse_dreq <- function(file) {
+    json <- jsonlite::read_json(file)
+    header <- dict__parse_dreq_header(json[["Header"]])
+
+    d <- dict__nest(json[["variable_entry"]])
+    data.table::set(d, NULL, "variable", names(json[["variable_entry"]]))
+    data.table::setcolorder(d, "variable")
+
+    empty_to_na <- function(x) {
+        x[x == ""] <- NA_character_
+        x
+    }
+    for (col in names(d)) {
+        data.table::set(
+            d,
+            NULL,
+            col,
+            empty_to_na(unlist(d[[col]], FALSE, FALSE))
+        )
+    }
+
+    data.table::setattr(d, "metadata", header)
+
+    d
+}
+# }}}
+
 # vim: fdm=marker :

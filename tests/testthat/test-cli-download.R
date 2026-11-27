@@ -339,4 +339,257 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
 })
 # }}}
 
+# epwshiftr_cli_storage() / epwshiftr_cli_esgf() {{{
+test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and ESGF commands", {
+    fixture <- cli_test_store(label = "cli esgf")
+    dir <- fixture$dir
+    store <- fixture$store
+    query_id <- fixture$query_id
+    on.exit(store$close(), add = TRUE)
+
+    file_docs <- esgf_test__file_docs(
+        "cli-file.nc",
+        opendap_url = "https://example.org/dods/cli-file.nc.html",
+        download_url = "https://example.org/fileServer/cli-file.nc"
+    )
+    cli_test_mock_query_collect(file_docs)
+
+    updated <- cli_run(dir, "query", "update", query_id)
+    expect_equal(updated$status, 0L)
+
+    esgf_help <- cli_run(dir, "esgf", "help")
+    expect_equal(esgf_help$status, 0L)
+    expect_match(esgf_help$result[[1L]], "Usage: epwshiftr esgf")
+
+    status <- cli_run(dir, "esgf", "report", "--query", query_id)
+    expect_equal(status$status, 0L)
+    expect_named(
+        status$result,
+        c("summary", "updates", "changes", "downloads", "nodes")
+    )
+    expect_equal(status$result$summary$query_id, query_id)
+
+    esgf_text <- capture.output(
+        esgf_rendered <- cli_run(
+            dir,
+            "esgf",
+            "report",
+            "--query",
+            query_id,
+            quiet = FALSE
+        ),
+        type = "message"
+    )
+    expect_equal(esgf_rendered$status, 0L)
+    expect_true(any(grepl("ESGF report", esgf_text)))
+    expect_true(any(grepl("Summary", esgf_text)))
+    expect_true(any(grepl("Downloads", esgf_text)))
+    expect_false(any(grepl("^\\$summary", esgf_text)))
+
+    old_workflow <- cli_run(dir, "workflow", "report", "--query", query_id)
+    expect_equal(old_workflow$status, 2L)
+
+    storage <- cli_run(dir, "storage", "report", "--detail")
+    expect_equal(storage$status, 0L)
+    expect_named(
+        storage$result,
+        c(
+            "summary",
+            "downloads",
+            "registered",
+            "untracked_files",
+            "missing_records",
+            "tmp",
+            "orphan_records"
+        )
+    )
+
+    layout <- cli_run(dir, "storage", "layout", "show")
+    expect_equal(layout$status, 0L)
+    expect_equal(layout$result$layout, "flat")
+
+    layout_set <- cli_run(
+        dir,
+        "storage",
+        "layout",
+        "set",
+        "--layout",
+        "drs",
+        "--include-version",
+        "false",
+        "--collision",
+        "suffix"
+    )
+    expect_equal(layout_set$status, 0L)
+    expect_equal(layout_set$result$layout, "drs")
+    expect_false(layout_set$result$include_version)
+    expect_equal(layout_set$result$collision, "suffix")
+
+    validated <- cli_run(
+        dir,
+        "storage",
+        "validate",
+        "--query",
+        query_id,
+        "--checksum"
+    )
+    expect_equal(validated$status, 0L)
+    expect_named(
+        validated$result,
+        c("summary", "files", "artifacts", "untracked", "actions")
+    )
+
+    repaired <- cli_run(dir, "storage", "repair")
+    expect_equal(repaired$status, 0L)
+    expect_true(all(repaired$result$dry_run))
+
+    cleanup <- cli_run(
+        dir,
+        "storage",
+        "cleanup",
+        "--scope",
+        "tmp,missing_records",
+        "--older-than",
+        "0"
+    )
+    expect_equal(cleanup$status, 0L)
+    expect_s3_class(cleanup$result, "data.table")
+})
+# }}}
+
+test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
+    skip_on_cran()
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")
+    on.exit(unlink(nc), add = TRUE)
+    setup <- cli_shift_test_store_with_query(nc)
+
+    plan <- cli_run(
+        setup$dir,
+        "extract",
+        "plan",
+        "--query",
+        setup$query_id,
+        "--site-id",
+        "SIN",
+        "--lon",
+        "103.98",
+        "--lat",
+        "1.37",
+        "--time",
+        "2060-01-02T00:00:00Z,2060-01-03T23:59:59Z",
+        "--variable",
+        "tas",
+        "--method",
+        "nearest",
+        "--filter",
+        "source_id=EC-Earth3"
+    )
+    expect_equal(plan$status, 0L)
+    expect_true(length(plan$result$plan_id) >= 1L)
+    expect_equal(unique(plan$result$site_id), "SIN")
+
+    plan_ids <- paste(plan$result$plan_id, collapse = ",")
+    run <- cli_run(
+        setup$dir,
+        "extract",
+        "run",
+        "--plan",
+        plan_ids,
+        "--fallback",
+        "auto"
+    )
+    expect_equal(run$status, 0L)
+    expect_true(all(run$result$status == "done"))
+    expect_true(all(c("run_id", "step_id") %in% names(run$result)))
+
+    coverage <- cli_run(setup$dir, "extract", "coverage", "--plan", plan_ids)
+    expect_equal(coverage$status, 0L)
+    expect_true(all(coverage$result$complete))
+
+    artifacts <- cli_run(setup$dir, "extract", "artifacts", "--plan", plan_ids)
+    expect_equal(artifacts$status, 0L)
+    expect_true(nrow(artifacts$result) >= 1L)
+    expect_true(all(artifacts$result$role %in% "derived"))
+
+    store <- EsgStore$new(setup$dir)
+    suppressWarnings(store$query(sprintf(
+        "UPDATE extraction_plan SET status = 'failed', last_error = 'forced failure' WHERE plan_id = %s",
+        shift_stage__sql_string(plan$result$plan_id[[1L]])
+    )))
+    store$close()
+
+    first_plan <- plan$result$plan_id[[1L]]
+    retry_preview <- cli_run(
+        setup$dir,
+        "extract",
+        "retry",
+        "--plan",
+        first_plan
+    )
+    expect_equal(retry_preview$status, 0L)
+    expect_equal(retry_preview$result$status, "failed")
+    expect_true(retry_preview$result$dry_run)
+
+    retry_other_status <- cli_run(
+        setup$dir,
+        "extract",
+        "retry",
+        "--plan",
+        first_plan,
+        "--status",
+        "done"
+    )
+    expect_equal(retry_other_status$status, 0L)
+    expect_equal(nrow(retry_other_status$result), 0L)
+
+    retry_bad_status <- cli_run(
+        setup$dir,
+        "extract",
+        "retry",
+        "--status",
+        "bogus"
+    )
+    expect_equal(retry_bad_status$status, 2L)
+    expect_match(retry_bad_status$error, "--status")
+
+    retry_run <- cli_run(
+        setup$dir,
+        "extract",
+        "retry",
+        "--plan",
+        first_plan,
+        "--run",
+        "--overwrite"
+    )
+    expect_equal(retry_run$status, 0L)
+    expect_equal(retry_run$result$status, "done")
+
+    rendered <- capture.output(
+        rendered_cov <- cli_run(
+            setup$dir,
+            "extract",
+            "coverage",
+            "--plan",
+            plan_ids,
+            quiet = FALSE
+        ),
+        type = "message"
+    )
+    expect_equal(rendered_cov$status, 0L)
+    expect_true(any(grepl("Extraction coverage", rendered)))
+    expect_false(any(grepl("^\\$", rendered)))
+
+    missing <- cli_run(
+        setup$dir,
+        "extract",
+        "plan",
+        "--query",
+        setup$query_id
+    )
+    expect_equal(missing$status, 2L)
+    expect_match(missing$error, "--site-id")
+})
+
 # vim: fdm=marker :
