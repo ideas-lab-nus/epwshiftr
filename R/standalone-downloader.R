@@ -1544,1136 +1544,1139 @@ downloader__range_probe_url <- function(
 }
 # }}}
 
-# Build the self-contained helper bundle serialized with downloader worker tasks.
-# downloader__worker_dependencies {{{
-downloader__worker_dependencies <- function() {
-    # Normalize tabular worker inputs without requiring package helpers.
-    as_df <- function(x) {
-        as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
+# Normalize optional numeric transfer settings inside an isolated worker process.
+# downloader__worker_normalize_count {{{
+downloader__worker_normalize_count <- function(x) {
+    if (!length(x) || is.na(x)) {
+        return(NULL)
     }
+    as.numeric(x)
+}
+# }}}
 
-    # Read one usable scalar string from worker input or return a missing value.
-    one_chr <- function(x) {
-        if (!length(x)) {
+# Resolve the common worker transfer settings and optional piece concurrency.
+# downloader__worker_normalize_transfer_policy {{{
+downloader__worker_normalize_transfer_policy <- function(
+    policy,
+    include_piece_concurrency = FALSE
+) {
+    if (is.null(policy)) {
+        policy <- list()
+    }
+    out <- list(
+        chunk_size = downloader__worker_normalize_count(policy$chunk_size),
+        bandwidth_limit = downloader__worker_normalize_count(
+            policy$bandwidth_limit
+        ),
+        low_speed_limit = downloader__worker_normalize_count(
+            policy$low_speed_limit
+        ),
+        low_speed_time = downloader__worker_normalize_count(
+            policy$low_speed_time
+        )
+    )
+    if (isTRUE(include_piece_concurrency)) {
+        piece_concurrency <- downloader__worker_normalize_count(
+            policy$piece_concurrency
+        )
+        if (is.null(piece_concurrency)) {
+            piece_concurrency <- 1L
+        }
+        out$piece_concurrency <- max(1L, as.integer(piece_concurrency))
+    }
+    out
+}
+# }}}
+
+# Treat an absent checksum as valid and otherwise verify the completed file.
+# downloader__worker_verify_checksum {{{
+downloader__worker_verify_checksum <- function(
+    path,
+    expected,
+    algo = "sha256"
+) {
+    if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
+        return(TRUE)
+    }
+    if (!file.exists(path)) {
+        return(FALSE)
+    }
+    identical(
+        tolower(downloader__checksum_file(path, algo)),
+        tolower(expected)
+    )
+}
+# }}}
+
+# Create a curl handle from the normalized transfer policy used by either worker.
+# downloader__worker_curl_handle {{{
+downloader__worker_curl_handle <- function(
+    timeout,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy,
+    nobody = FALSE
+) {
+    downloader__curl_handle(
+        timeout = timeout,
+        connect_timeout = connect_timeout,
+        ssl_verifypeer = ssl_verifypeer,
+        proxy = proxy,
+        useragent = useragent,
+        nobody = nobody,
+        chunk_size = transfer_policy$chunk_size,
+        bandwidth_limit = transfer_policy$bandwidth_limit,
+        low_speed_limit = transfer_policy$low_speed_limit,
+        low_speed_time = transfer_policy$low_speed_time
+    )
+}
+# }}}
+
+# Format byte offsets without scientific notation for HTTP Range headers.
+# downloader__worker_format_byte {{{
+downloader__worker_format_byte <- function(x) {
+    format(as.numeric(x), scientific = FALSE, trim = TRUE)
+}
+# }}}
+
+# Confirm that an interrupted HTTP transfer can resume at the requested byte.
+# downloader__worker_resume_supported {{{
+downloader__worker_resume_supported <- function(
+    url,
+    start_byte,
+    timeout,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy
+) {
+    downloader__resume_supported(
+        url = url,
+        start_byte = start_byte,
+        timeout = timeout,
+        connect_timeout = connect_timeout,
+        ssl_verifypeer = ssl_verifypeer,
+        proxy = proxy,
+        useragent = useragent,
+        chunk_size = transfer_policy$chunk_size,
+        bandwidth_limit = transfer_policy$bandwidth_limit,
+        low_speed_limit = transfer_policy$low_speed_limit,
+        low_speed_time = transfer_policy$low_speed_time
+    )
+}
+# }}}
+
+# Build a case-insensitive header lookup scoped strictly to the final HTTP block.
+# Redirect/proxy blocks must not supply missing headers for the final response.
+# downloader__worker_response_headers {{{
+downloader__worker_response_headers <- function(headers) {
+    lines <- strsplit(downloader__headers_text(headers), "\r?\n")[[1L]]
+    statuses <- grep("^HTTP/", lines)
+    if (length(statuses)) {
+        lines <- lines[seq.int(utils::tail(statuses, 1L), length(lines))]
+    }
+    function(name) {
+        hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
+        if (!length(hit)) {
             return(NA_character_)
         }
-        value <- as.character(x[[1L]])
-        if (is.na(value) || !nzchar(value)) NA_character_ else value
+        trimws(sub("^[^:]+:", "", lines[[utils::tail(hit, 1L)]]))
     }
+}
+# }}}
 
-    # Normalize optional numeric transfer settings inside an isolated process.
-    normalize_count <- function(x) {
-        if (!length(x) || is.na(x)) {
-            return(NULL)
-        }
-        as.numeric(x)
+# Parse an exact finite HTTP Content-Range byte span within double precision.
+# downloader__worker_parse_byte_range {{{
+downloader__worker_parse_byte_range <- function(text) {
+    if (is.na(text)) {
+        return(NULL)
     }
-
-    # Resolve the common worker transfer settings and optional piece concurrency.
-    normalize_transfer_policy <- function(
-        policy,
-        include_piece_concurrency = FALSE
+    parts <- regmatches(
+        text,
+        regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
+    )[[1L]]
+    bounds <- suppressWarnings(as.numeric(parts[-1L]))
+    if (
+        length(bounds) != 3L ||
+            any(!is.finite(bounds)) ||
+            any(bounds > 2^53 - 1)
     ) {
-        if (is.null(policy)) {
-            policy <- list()
-        }
-        out <- list(
-            chunk_size = normalize_count(policy$chunk_size),
-            bandwidth_limit = normalize_count(policy$bandwidth_limit),
-            low_speed_limit = normalize_count(policy$low_speed_limit),
-            low_speed_time = normalize_count(policy$low_speed_time)
-        )
-        if (isTRUE(include_piece_concurrency)) {
-            piece_concurrency <- normalize_count(policy$piece_concurrency)
-            if (is.null(piece_concurrency)) {
-                piece_concurrency <- 1L
-            }
-            out$piece_concurrency <- max(1L, as.integer(piece_concurrency))
-        }
-        out
+        return(NULL)
     }
+    bounds
+}
+# }}}
 
-    # Calculate the checksum algorithms accepted by downloader workers.
-    checksum_file <- function(path, algo = "sha256") {
-        out <- if (identical(algo, "sha256")) {
-            tools::sha256sum(path)
-        } else {
-            tools::md5sum(path)
+# Check the actual GET before appending any resumed bytes. HEAD negotiation
+# alone cannot protect a partial when a gateway changes its response later.
+# downloader__worker_resume_guard {{{
+downloader__worker_resume_guard <- function(handle, start_byte) {
+    stopifnot(
+        length(start_byte) == 1L,
+        is.finite(start_byte),
+        start_byte >= 0,
+        start_byte <= 2^53 - 1,
+        start_byte == floor(start_byte)
+    )
+    received <- 0
+    expected <- NULL
+    validated <- FALSE
+    validate <- function(response) {
+        if (start_byte == 0 || validated) {
+            return(invisible(NULL))
         }
-        unname(as.character(out))
-    }
-
-    # Treat an absent checksum as valid and otherwise verify the completed file.
-    verify_checksum <- function(path, expected, algo = "sha256") {
-        if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
-            return(TRUE)
-        }
-        if (!file.exists(path)) {
-            return(FALSE)
-        }
-        identical(
-            tolower(checksum_file(path, algo)),
-            tolower(expected)
-        )
-    }
-
-    # Convert empty optional worker settings to NULL before curl configuration.
-    null_if_empty <- function(x) {
-        if (is.null(x)) {
-            return(NULL)
-        }
-        if (length(x) == 0L || is.na(x) || !nzchar(x)) {
-            return(NULL)
-        }
-        x
-    }
-
-    # Create a curl handle from the normalized transfer policy used by either worker.
-    curl_handle <- function(
-        timeout,
-        connect_timeout,
-        ssl_verifypeer,
-        proxy,
-        useragent,
-        transfer_policy,
-        nobody = FALSE
-    ) {
-        handle <- curl::new_handle()
-        opts <- list(
-            timeout = timeout,
-            followlocation = TRUE,
-            ssl_verifypeer = isTRUE(ssl_verifypeer)
-        )
-        if (!is.null(connect_timeout)) {
-            opts$connecttimeout <- connect_timeout
-        }
-        proxy <- null_if_empty(proxy)
-        if (!is.null(proxy)) {
-            opts$proxy <- proxy
-        }
-        useragent <- null_if_empty(useragent)
-        if (!is.null(useragent)) {
-            opts$useragent <- useragent
-        }
-        if (!is.null(transfer_policy$chunk_size)) {
-            opts$buffersize <- as.integer(transfer_policy$chunk_size)
-        }
-        if (!is.null(transfer_policy$bandwidth_limit)) {
-            opts$max_recv_speed_large <- as.numeric(
-                transfer_policy$bandwidth_limit
+        value <- downloader__worker_response_headers(response$headers)
+        bounds <- downloader__worker_parse_byte_range(value("content-range"))
+        valid <- !is.null(bounds) &&
+            bounds[[1L]] == start_byte &&
+            bounds[[2L]] >= start_byte &&
+            bounds[[2L]] == bounds[[3L]] - 1
+        if (!identical(as.integer(response$status_code), 206L) || !valid) {
+            stop(
+                "HTTP resume GET did not return the exact remaining Content-Range.",
+                call. = FALSE
             )
         }
-        if (!is.null(transfer_policy$low_speed_limit)) {
-            opts$low_speed_limit <- as.integer(transfer_policy$low_speed_limit)
-        }
-        if (!is.null(transfer_policy$low_speed_time)) {
-            opts$low_speed_time <- as.integer(transfer_policy$low_speed_time)
-        }
-        if (isTRUE(nobody)) {
-            opts$nobody <- TRUE
-        }
-        do.call(curl::handle_setopt, c(list(handle = handle), opts))
-        handle
-    }
-
-    # Format byte offsets without scientific notation for HTTP Range headers.
-    format_byte <- function(x) {
-        format(as.numeric(x), scientific = FALSE, trim = TRUE)
-    }
-
-    # Convert raw or character response headers to searchable text.
-    headers_text <- function(headers) {
-        if (is.raw(headers)) {
-            return(rawToChar(headers))
-        }
-        paste(headers, collapse = "\n")
-    }
-
-    # Confirm that an interrupted HTTP transfer can resume at the requested byte.
-    resume_supported <- function(
-        url,
-        start_byte,
-        timeout,
-        connect_timeout,
-        ssl_verifypeer,
-        proxy,
-        useragent,
-        transfer_policy
-    ) {
-        if (start_byte <= 0 || !grepl("^https?://", url)) {
-            return(TRUE)
-        }
-        handle <- curl_handle(
-            timeout = min(timeout, 30L),
-            connect_timeout = connect_timeout,
-            ssl_verifypeer = ssl_verifypeer,
-            proxy = proxy,
-            useragent = useragent,
-            transfer_policy = transfer_policy,
-            nobody = TRUE
-        )
-        curl::handle_setheaders(
-            handle,
-            Range = sprintf("bytes=%.0f-", start_byte)
-        )
-        response <- tryCatch(
-            curl::curl_fetch_memory(url, handle = handle),
-            error = function(e) NULL
-        )
+        expected <<- bounds[[2L]] - bounds[[1L]] + 1
+        length_header <- value("content-length")
+        encoding <- value("content-encoding")
         if (
-            is.null(response) ||
-                !identical(as.integer(response$status_code), 206L)
+            (!is.na(length_header) &&
+                !identical(
+                    suppressWarnings(as.numeric(length_header)),
+                    expected
+                )) ||
+                (!is.na(encoding) && tolower(encoding) != "identity")
         ) {
-            return(FALSE)
-        }
-        pattern <- sprintf(
-            "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
-            start_byte
-        )
-        grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
-    }
-
-    # Check the actual GET before appending any resumed bytes. HEAD negotiation
-    # alone cannot protect a partial when a gateway changes its response later.
-    resume_guard <- function(handle, start_byte) {
-        stopifnot(
-            length(start_byte) == 1L,
-            is.finite(start_byte),
-            start_byte >= 0,
-            start_byte <= 2^53 - 1,
-            start_byte == floor(start_byte)
-        )
-        received <- 0
-        expected <- NULL
-        validated <- FALSE
-        validate <- function(response) {
-            if (start_byte == 0 || validated) {
-                return(invisible(NULL))
-            }
-            lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
-            # Redirect/proxy response blocks must not supply missing headers for
-            # the final GET. Only that final block describes appended bytes.
-            status_lines <- grep("^HTTP/", lines)
-            if (length(status_lines)) {
-                lines <- lines[seq.int(tail(status_lines, 1L), length(lines))]
-            }
-            value <- function(name) {
-                hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
-                if (!length(hit)) {
-                    return(NA_character_)
-                }
-                trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
-            }
-            text <- value("content-range")
-            parts <- if (!is.na(text)) {
-                regmatches(
-                    text,
-                    regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
-                )[[1L]]
-            } else {
-                character()
-            }
-            bounds <- suppressWarnings(as.numeric(parts[-1L]))
-            valid <- length(bounds) == 3L &&
-                all(is.finite(bounds)) &&
-                all(bounds <= 2^53 - 1) &&
-                bounds[[1L]] == start_byte &&
-                bounds[[2L]] >= start_byte &&
-                bounds[[2L]] == bounds[[3L]] - 1
-            if (!identical(as.integer(response$status_code), 206L) || !valid) {
-                stop(
-                    "HTTP resume GET did not return the exact remaining Content-Range.",
-                    call. = FALSE
-                )
-            }
-            expected <<- bounds[[2L]] - bounds[[1L]] + 1
-            length_header <- value("content-length")
-            encoding <- value("content-encoding")
-            if (
-                (!is.na(length_header) &&
-                    !identical(
-                        suppressWarnings(as.numeric(length_header)),
-                        expected
-                    )) ||
-                    (!is.na(encoding) && tolower(encoding) != "identity")
-            ) {
-                stop(
-                    "HTTP resume GET has inconsistent length or encoding.",
-                    call. = FALSE
-                )
-            }
-            validated <<- TRUE
-            invisible(NULL)
-        }
-        # curl exposes the final response headers before its first body callback.
-        accept <- function(chunk) {
-            if (start_byte == 0) {
-                return(invisible(NULL))
-            }
-            validate(curl::handle_data(handle))
-            if (received + length(chunk) > expected) {
-                stop(
-                    "HTTP resume GET exceeded its declared byte range.",
-                    call. = FALSE
-                )
-            }
-            received <<- received + length(chunk)
-            invisible(NULL)
-        }
-        # Keep an interrupted valid prefix, but never seal an incomplete tail.
-        finish <- function(response) {
-            if (start_byte == 0) {
-                return(invisible(NULL))
-            }
-            validate(response)
-            if (!identical(received, expected)) {
-                stop(
-                    "HTTP resume GET ended before its declared byte range.",
-                    call. = FALSE
-                )
-            }
-            invisible(NULL)
-        }
-        list(accept = accept, finish = finish)
-    }
-
-    # Normalize the final actual response, keeping opaque values unchanged and
-    # deriving date validators only when no entity tag was provided.
-    transfer_response <- function(response, url) {
-        lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
-        statuses <- grep("^HTTP/", lines)
-        if (length(statuses)) {
-            lines <- lines[seq.int(tail(statuses, 1L), length(lines))]
-        }
-        field <- function(name) {
-            hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
-            if (!length(hit)) {
-                return(NA_character_)
-            }
-            trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
-        }
-        etag <- field("etag")
-        modified <- field("last-modified")
-        date <- field("date")
-        kind <- value <- NA_character_
-        if (!is.na(etag) && grepl('^"[^"[:cntrl:]]*"$', etag)) {
-            kind <- "etag"
-            value <- etag
-        } else if (is.na(etag) && !is.na(modified) && !is.na(date)) {
-            elapsed <- suppressWarnings(
-                as.numeric(curl::parse_date(date)) -
-                    as.numeric(curl::parse_date(modified))
+            stop(
+                "HTTP resume GET has inconsistent length or encoding.",
+                call. = FALSE
             )
-            if (length(elapsed) == 1L && is.finite(elapsed) && elapsed >= 60) {
-                kind <- "last-modified"
-                value <- modified
-            }
         }
-        final_url <- one_chr(response$url)
-        if (is.na(final_url)) {
-            final_url <- url
-        }
-        list(
-            request_url = url,
-            final_url = final_url,
-            etag = etag,
-            last_modified = modified,
-            date = date,
-            validator_kind = kind,
-            validator_value = value,
-            content_range = field("content-range"),
-            content_length = field("content-length"),
-            content_encoding = field("content-encoding"),
-            status = as.integer(response$status_code)
-        )
+        validated <<- TRUE
+        invisible(NULL)
     }
-
-    # Bounded range pieces preserve their concurrency while validating the same
-    # actual response identity used by ordinary downloads before any body write.
-    piece_guard <- function(handle, url, row, tmp, bind_evidence) {
-        state <- NULL
-        full_response <- NULL
-        received <- 0
-        validate <- function(response) {
-            if (!is.null(state)) {
-                return(invisible(NULL))
-            }
-            evidence <- transfer_response(response, url)
-            # A complete response cannot enter a piece writer. Capture its
-            # actual identity and let the caller retire the entire batch before
-            # opening the shared zero-based stream.
-            if (evidence$status == 200L) {
-                evidence$size <- suppressWarnings(as.numeric(
-                    evidence$content_length
-                ))
-                if (
-                    !is.na(evidence$content_encoding) &&
-                        tolower(evidence$content_encoding) != "identity"
-                ) {
-                    stop(
-                        "HTTP piece GET has incompatible content encoding.",
-                        call. = FALSE
-                    )
-                }
-                bind_evidence(evidence)
-                full_response <<- evidence
-                stop(
-                    "HTTP piece GET returned a complete response; restart required.",
-                    call. = FALSE
-                )
-            }
-            text <- evidence$content_range
-            parts <- if (!is.na(text)) {
-                regmatches(
-                    text,
-                    regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
-                )[[1L]]
-            } else {
-                character()
-            }
-            bounds <- suppressWarnings(as.numeric(parts[-1L]))
-            if (
-                evidence$status != 206L ||
-                    length(bounds) != 3L ||
-                    any(!is.finite(bounds)) ||
-                    any(bounds > 2^53 - 1) ||
-                    bounds[[1L]] != row$start_byte[[1L]] ||
-                    bounds[[2L]] != row$end_byte[[1L]] ||
-                    bounds[[3L]] <= bounds[[2L]]
-            ) {
-                stop(
-                    "HTTP piece GET has an inconsistent Content-Range.",
-                    call. = FALSE
-                )
-            }
-            length_header <- suppressWarnings(as.numeric(
-                evidence$content_length
-            ))
-            if (
-                (!is.na(evidence$content_length) &&
-                    (!is.finite(length_header) ||
-                        length_header != row$byte_count[[1L]])) ||
-                    (!is.na(evidence$content_encoding) &&
-                        tolower(evidence$content_encoding) != "identity")
-            ) {
-                stop(
-                    "HTTP piece GET has inconsistent length or encoding.",
-                    call. = FALSE
-                )
-            }
-            evidence$size <- bounds[[3L]]
-            bind_evidence(evidence)
-            evidence$validator_bound <- !is.na(evidence$validator_kind)
-            evidence$generation <- basename(tempfile("piece-"))
-            evidence$path <- tmp
-            evidence$bytes <- 0
-            evidence$sha256 <- NA_character_
-            evidence$complete <- FALSE
-            evidence$checksum_verified <- FALSE
-            transfer_write(tmp, evidence)
-            state <<- evidence
-            invisible(NULL)
+    # curl exposes the final response headers before its first body callback.
+    accept <- function(chunk) {
+        if (start_byte == 0) {
+            return(invisible(NULL))
         }
-        accept <- function(chunk) {
-            validate(curl::handle_data(handle))
-            if (received + length(chunk) > row$byte_count[[1L]]) {
-                stop(
-                    "HTTP piece GET exceeded its declared range.",
-                    call. = FALSE
-                )
-            }
-            received <<- received + length(chunk)
-            invisible(NULL)
+        validate(curl::handle_data(handle))
+        if (received + length(chunk) > expected) {
+            stop(
+                "HTTP resume GET exceeded its declared byte range.",
+                call. = FALSE
+            )
         }
-        finish <- function(response) {
-            validate(response)
-            if (received != row$byte_count[[1L]]) {
-                stop(
-                    "HTTP piece GET ended before its declared range.",
-                    call. = FALSE
-                )
-            }
-            # Each chunk is flushed before completion. Checkpoint its exact
-            # retained bytes before the caller closes and seals the piece.
-            state$bytes <<- received
-            state$sha256 <<- checksum_file(tmp, "sha256")
-            transfer_write(tmp, state)
-            invisible(NULL)
-        }
-        list(accept = accept, finish = finish, full_response = function() {
-            full_response
-        })
+        received <<- received + length(chunk)
+        invisible(NULL)
     }
-
-    # A sidecar belongs to one generation of retained bytes. Atomic replacement
-    # prevents a torn metadata write from assigning a new validator to old bytes.
-    transfer_read <- function(tmp_part) {
-        if (!file.exists(sub("[.]part$", ".transfer.json", tmp_part))) {
-            return(NULL)
+    # Keep an interrupted valid prefix, but never seal an incomplete tail.
+    finish <- function(response) {
+        if (start_byte == 0) {
+            return(invisible(NULL))
         }
-        tryCatch(
-            jsonlite::read_json(
-                sub("[.]part$", ".transfer.json", tmp_part),
-                simplifyVector = TRUE
-            ),
-            error = function(e) NULL
-        )
-    }
-
-    # Readback is checked before a body callback is allowed to write any bytes.
-    transfer_write <- function(tmp_part, state) {
-        path <- sub("[.]part$", ".transfer.json", tmp_part)
-        staged <- tempfile(paste0(basename(path), "."), dirname(path))
-        on.exit(unlink(staged), add = TRUE)
-        jsonlite::write_json(
-            state,
-            staged,
-            auto_unbox = TRUE,
-            null = "null",
-            na = "null",
-            digits = NA
-        )
-        if (
-            is.null(tryCatch(jsonlite::read_json(staged), error = function(e) {
-                NULL
-            })) ||
-                !file.rename(staged, path)
-        ) {
-            stop("Cannot publish HTTP transfer evidence.", call. = FALSE)
-        }
-        invisible(state)
-    }
-
-    # Keep unsafe or superseded data and its evidence together; a new response
-    # may only acquire the canonical pathname after the old generation is moved.
-    transfer_preserve <- function(tmp_part) {
-        suffix <- paste0(".retained-", basename(tempfile()))
-        for (path in c(tmp_part, sub("[.]part$", ".transfer.json", tmp_part))) {
-            if (file.exists(path) && !file.rename(path, paste0(path, suffix))) {
-                stop(
-                    "Cannot preserve the previous HTTP transfer generation.",
-                    call. = FALSE
-                )
-            }
+        validate(response)
+        if (!identical(received, expected)) {
+            stop(
+                "HTTP resume GET ended before its declared byte range.",
+                call. = FALSE
+            )
         }
         invisible(NULL)
     }
+    list(accept = accept, finish = finish)
+}
+# }}}
 
-    # Publish complete-file evidence only after the expected publisher checksum
-    # has been checked by the caller. Missing checksums remain explicitly false.
-    transfer_seal <- function(tmp_part, path, checksum, checksum_type) {
-        state <- transfer_read(tmp_part)
-        if (is.null(state)) {
+# Normalize the final actual response, keeping opaque values unchanged and
+# deriving date validators only when no entity tag was provided.
+# downloader__worker_transfer_response {{{
+downloader__worker_transfer_response <- function(response, url) {
+    field <- downloader__worker_response_headers(response$headers)
+    etag <- field("etag")
+    modified <- field("last-modified")
+    date <- field("date")
+    kind <- value <- NA_character_
+    if (!is.na(etag) && grepl('^"[^"[:cntrl:]]*"$', etag)) {
+        kind <- "etag"
+        value <- etag
+    } else if (is.na(etag) && !is.na(modified) && !is.na(date)) {
+        elapsed <- suppressWarnings(
+            as.numeric(curl::parse_date(date)) -
+                as.numeric(curl::parse_date(modified))
+        )
+        if (length(elapsed) == 1L && is.finite(elapsed) && elapsed >= 60) {
+            kind <- "last-modified"
+            value <- modified
+        }
+    }
+    final_url <- downloader__one_chr(response$url)
+    if (is.na(final_url)) {
+        final_url <- url
+    }
+    list(
+        request_url = url,
+        final_url = final_url,
+        etag = etag,
+        last_modified = modified,
+        date = date,
+        validator_kind = kind,
+        validator_value = value,
+        content_range = field("content-range"),
+        content_length = field("content-length"),
+        content_encoding = field("content-encoding"),
+        status = as.integer(response$status_code)
+    )
+}
+# }}}
+
+# Bounded range pieces preserve their concurrency while validating the same
+# actual response identity used by ordinary downloads before any body write.
+# downloader__worker_piece_guard {{{
+downloader__worker_piece_guard <- function(
+    handle,
+    url,
+    row,
+    tmp,
+    bind_evidence
+) {
+    state <- NULL
+    full_response <- NULL
+    received <- 0
+    validate <- function(response) {
+        if (!is.null(state)) {
             return(invisible(NULL))
         }
-        actual_bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
-        actual_sha256 <- checksum_file(path, "sha256")
-        if (is.null(state$sha256) || is.na(state$sha256)) {
-            return(invisible(NULL))
-        }
-        if (
-            state$bytes != actual_bytes ||
-                !identical(state$sha256, actual_sha256)
-        ) {
+        evidence <- downloader__worker_transfer_response(response, url)
+        # A complete response cannot enter a piece writer. Capture its
+        # actual identity and let the caller retire the entire batch before
+        # opening the shared zero-based stream.
+        if (evidence$status == 200L) {
+            evidence$size <- suppressWarnings(as.numeric(
+                evidence$content_length
+            ))
+            if (
+                !is.na(evidence$content_encoding) &&
+                    tolower(evidence$content_encoding) != "identity"
+            ) {
+                stop(
+                    "HTTP piece GET has incompatible content encoding.",
+                    call. = FALSE
+                )
+            }
+            bind_evidence(evidence)
+            full_response <<- evidence
             stop(
-                "source_changed: Retained file does not match its saved transfer checkpoint.",
+                "HTTP piece GET returned a complete response; restart required.",
                 call. = FALSE
             )
         }
-        state$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
-        state$bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
-        state$sha256 <- actual_sha256
-        if (is.null(state$size) || !is.finite(state$size)) {
-            state$size <- state$bytes
+        bounds <- downloader__worker_parse_byte_range(evidence$content_range)
+        if (
+            evidence$status != 206L ||
+                is.null(bounds) ||
+                bounds[[1L]] != row$start_byte[[1L]] ||
+                bounds[[2L]] != row$end_byte[[1L]] ||
+                bounds[[3L]] <= bounds[[2L]]
+        ) {
+            stop(
+                "HTTP piece GET has an inconsistent Content-Range.",
+                call. = FALSE
+            )
         }
-        state$complete <- TRUE
-        state$checksum_verified <- !is.null(null_if_empty(checksum)) &&
-            verify_checksum(path, checksum, checksum_type)
-        transfer_write(tmp_part, state)
+        length_header <- suppressWarnings(as.numeric(
+            evidence$content_length
+        ))
+        if (
+            (!is.na(evidence$content_length) &&
+                (!is.finite(length_header) ||
+                    length_header != row$byte_count[[1L]])) ||
+                (!is.na(evidence$content_encoding) &&
+                    tolower(evidence$content_encoding) != "identity")
+        ) {
+            stop(
+                "HTTP piece GET has inconsistent length or encoding.",
+                call. = FALSE
+            )
+        }
+        evidence$size <- bounds[[3L]]
+        bind_evidence(evidence)
+        evidence$validator_bound <- !is.na(evidence$validator_kind)
+        evidence$generation <- basename(tempfile("piece-"))
+        evidence$path <- tmp
+        evidence$bytes <- 0
+        evidence$sha256 <- NA_character_
+        evidence$complete <- FALSE
+        evidence$checksum_verified <- FALSE
+        downloader__worker_transfer_write(tmp, evidence)
+        state <<- evidence
+        invisible(NULL)
     }
+    accept <- function(chunk) {
+        validate(curl::handle_data(handle))
+        if (received + length(chunk) > row$byte_count[[1L]]) {
+            stop(
+                "HTTP piece GET exceeded its declared range.",
+                call. = FALSE
+            )
+        }
+        received <<- received + length(chunk)
+        invisible(NULL)
+    }
+    finish <- function(response) {
+        validate(response)
+        if (received != row$byte_count[[1L]]) {
+            stop(
+                "HTTP piece GET ended before its declared range.",
+                call. = FALSE
+            )
+        }
+        # Each chunk is flushed before completion. Checkpoint its exact
+        # retained bytes before the caller closes and seals the piece.
+        state$bytes <<- received
+        state$sha256 <<- downloader__checksum_file(tmp, "sha256")
+        downloader__worker_transfer_write(tmp, state)
+        invisible(NULL)
+    }
+    list(accept = accept, finish = finish, full_response = function() {
+        full_response
+    })
+}
+# }}}
 
-    # Both ordinary and mirai downloads use this byte boundary. Response headers
-    # are checked before opening append mode, and only a validated prefix is kept.
-    transfer_stream <- function(
-        url,
-        tmp_part,
-        tmp_done,
+# A sidecar belongs to one generation of retained bytes. Atomic replacement
+# prevents a torn metadata write from assigning a new validator to old bytes.
+# downloader__worker_transfer_read {{{
+downloader__worker_transfer_read <- function(tmp_part) {
+    if (!file.exists(sub("[.]part$", ".transfer.json", tmp_part))) {
+        return(NULL)
+    }
+    tryCatch(
+        jsonlite::read_json(
+            sub("[.]part$", ".transfer.json", tmp_part),
+            simplifyVector = TRUE
+        ),
+        error = function(e) NULL
+    )
+}
+# }}}
+
+# Readback is checked before a body callback is allowed to write any bytes.
+# downloader__worker_transfer_write {{{
+downloader__worker_transfer_write <- function(tmp_part, state) {
+    path <- sub("[.]part$", ".transfer.json", tmp_part)
+    staged <- tempfile(paste0(basename(path), "."), dirname(path))
+    on.exit(unlink(staged), add = TRUE)
+    jsonlite::write_json(
+        state,
+        staged,
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
+    )
+    if (
+        is.null(tryCatch(jsonlite::read_json(staged), error = function(e) {
+            NULL
+        })) ||
+            !file.rename(staged, path)
+    ) {
+        stop("Cannot publish HTTP transfer evidence.", call. = FALSE)
+    }
+    invisible(state)
+}
+# }}}
+
+# Keep unsafe or superseded data and its evidence together; a new response
+# may only acquire the canonical pathname after the old generation is moved.
+# downloader__worker_transfer_preserve {{{
+downloader__worker_transfer_preserve <- function(tmp_part) {
+    suffix <- paste0(".retained-", basename(tempfile()))
+    for (path in c(tmp_part, sub("[.]part$", ".transfer.json", tmp_part))) {
+        if (file.exists(path) && !file.rename(path, paste0(path, suffix))) {
+            stop(
+                "Cannot preserve the previous HTTP transfer generation.",
+                call. = FALSE
+            )
+        }
+    }
+    invisible(NULL)
+}
+# }}}
+
+# Publish complete-file evidence only after the expected publisher checksum
+# has been checked by the caller. Missing checksums remain explicitly false.
+# downloader__worker_transfer_seal {{{
+downloader__worker_transfer_seal <- function(
+    tmp_part,
+    path,
+    checksum,
+    checksum_type
+) {
+    state <- downloader__worker_transfer_read(tmp_part)
+    if (is.null(state)) {
+        return(invisible(NULL))
+    }
+    actual_bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
+    actual_sha256 <- downloader__checksum_file(path, "sha256")
+    if (is.null(state$sha256) || is.na(state$sha256)) {
+        return(invisible(NULL))
+    }
+    if (
+        state$bytes != actual_bytes ||
+            !identical(state$sha256, actual_sha256)
+    ) {
+        stop(
+            "source_changed: Retained file does not match its saved transfer checkpoint.",
+            call. = FALSE
+        )
+    }
+    state$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    state$bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
+    state$sha256 <- actual_sha256
+    if (is.null(state$size) || !is.finite(state$size)) {
+        state$size <- state$bytes
+    }
+    state$complete <- TRUE
+    state$checksum_verified <- !is.null(downloader__null_if_empty(checksum)) &&
+        downloader__worker_verify_checksum(path, checksum, checksum_type)
+    downloader__worker_transfer_write(tmp_part, state)
+}
+# }}}
+
+# Both ordinary and mirai downloads use this byte boundary. Response headers
+# are checked before opening append mode, and only a validated prefix is kept.
+# downloader__worker_transfer_stream {{{
+downloader__worker_transfer_stream <- function(
+    url,
+    tmp_part,
+    tmp_done,
+    timeout,
+    start_byte,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy,
+    checksum = NULL,
+    resume = TRUE,
+    on_progress = function(bytes) NULL,
+    representation = NULL
+) {
+    http <- grepl("^https?://", url, ignore.case = TRUE)
+    checksum <- downloader__null_if_empty(checksum)
+    prior <- downloader__worker_transfer_read(tmp_part)
+    current_size <- if (file.exists(tmp_part)) {
+        as.numeric(file.info(tmp_part, extra_cols = FALSE)$size)
+    } else {
+        0
+    }
+    start_byte <- if (isTRUE(resume)) current_size else 0
+    if (current_size == 0) {
+        prior <- NULL
+    }
+    # A checkpoint hashes the file once at attempt close, rather than once
+    # per small curl chunk. A crash tail without that checkpoint is retained
+    # separately and never gets certified by the older saved hash.
+    if (http && current_size > 0) {
+        checkpoint_ok <- !is.null(prior) &&
+            !is.null(prior$bytes) &&
+            identical(as.numeric(prior$bytes), current_size) &&
+            !is.null(prior$sha256) &&
+            identical(
+                prior$sha256,
+                downloader__checksum_file(tmp_part, "sha256")
+            )
+        eligible <- !is.null(checksum) ||
+            (checkpoint_ok &&
+                identical(prior$request_url, url) &&
+                isTRUE(prior$validator_bound) &&
+                !is.null(downloader__null_if_empty(prior$validator_kind)))
+        if (
+            !isTRUE(resume) ||
+                !eligible ||
+                (!is.null(prior) && !checkpoint_ok)
+        ) {
+            downloader__worker_transfer_preserve(tmp_part)
+            prior <- NULL
+            start_byte <- 0
+        }
+    } else if (!isTRUE(resume) && file.exists(tmp_part)) {
+        downloader__worker_transfer_preserve(tmp_part)
+        prior <- NULL
+    }
+    handle <- downloader__worker_curl_handle(
         timeout,
-        start_byte,
         connect_timeout,
         ssl_verifypeer,
         proxy,
         useragent,
-        transfer_policy,
-        checksum = NULL,
-        resume = TRUE,
-        on_progress = function(bytes) NULL,
-        representation = NULL
-    ) {
-        http <- grepl("^https?://", url, ignore.case = TRUE)
-        checksum <- null_if_empty(checksum)
-        prior <- transfer_read(tmp_part)
-        current_size <- if (file.exists(tmp_part)) {
-            as.numeric(file.info(tmp_part, extra_cols = FALSE)$size)
-        } else {
-            0
+        downloader__worker_normalize_transfer_policy(transfer_policy)
+    )
+    curl::handle_setopt(handle, failonerror = !http)
+    if (http) {
+        curl::handle_setopt(handle, http_content_decoding = FALSE)
+    }
+    headers <- list(`Accept-Encoding` = "identity")
+    if (start_byte > 0) {
+        headers$Range <- sprintf("bytes=%.0f-", start_byte)
+        if (
+            !is.null(prior) &&
+                identical(prior$request_url, url) &&
+                !is.null(downloader__null_if_empty(prior$validator_value))
+        ) {
+            headers$`If-Range` <- prior$validator_value
         }
-        start_byte <- if (isTRUE(resume)) current_size else 0
-        if (current_size == 0) {
-            prior <- NULL
+        if (!http) {
+            curl::handle_setopt(handle, resume_from_large = start_byte)
         }
-        # A checkpoint hashes the file once at attempt close, rather than once
-        # per small curl chunk. A crash tail without that checkpoint is retained
-        # separately and never gets certified by the older saved hash.
-        if (http && current_size > 0) {
-            checkpoint_ok <- !is.null(prior) &&
-                !is.null(prior$bytes) &&
-                identical(as.numeric(prior$bytes), current_size) &&
-                !is.null(prior$sha256) &&
-                identical(prior$sha256, checksum_file(tmp_part, "sha256"))
-            eligible <- !is.null(checksum) ||
-                (checkpoint_ok &&
-                    identical(prior$request_url, url) &&
-                    isTRUE(prior$validator_bound) &&
-                    !is.null(null_if_empty(prior$validator_kind)))
-            if (
-                !isTRUE(resume) ||
-                    !eligible ||
-                    (!is.null(prior) && !checkpoint_ok)
-            ) {
-                transfer_preserve(tmp_part)
-                prior <- NULL
-                start_byte <- 0
+    }
+    do.call(curl::handle_setheaders, c(list(handle = handle), headers))
+    state <- prior
+    con <- NULL
+    validated <- FALSE
+    expected <- NA_real_
+    received <- 0
+    write_start <- start_byte
+    range_complete <- FALSE
+    changed <- function(message) {
+        stop(paste0("source_changed: ", message), call. = FALSE)
+    }
+    validate <- function(response) {
+        if (validated) {
+            return(invisible(NULL))
+        }
+        evidence <- downloader__worker_transfer_response(response, url)
+        final_url <- evidence$final_url
+        status <- evidence$status
+        etag <- evidence$etag
+        modified <- evidence$last_modified
+        date <- evidence$date
+        validator_kind <- evidence$validator_kind
+        validator_value <- evidence$validator_value
+        encoding <- evidence$content_encoding
+        length_text <- evidence$content_length
+        length_header <- suppressWarnings(as.numeric(length_text))
+        if (http && !is.na(encoding) && tolower(encoding) != "identity") {
+            stop(
+                "HTTP GET has incompatible content encoding.",
+                call. = FALSE
+            )
+        }
+        total <- length_header
+        if (http && status == 416L) {
+            text <- evidence$content_range
+            size <- if (!is.na(text) && grepl("^bytes [*]/[0-9]+$", text)) {
+                as.numeric(sub("^bytes [*]/", "", text))
+            } else {
+                NA_real_
             }
-        } else if (!isTRUE(resume) && file.exists(tmp_part)) {
-            transfer_preserve(tmp_part)
-            prior <- NULL
-        }
-        handle <- curl_handle(
-            timeout,
-            connect_timeout,
-            ssl_verifypeer,
-            proxy,
-            useragent,
-            normalize_transfer_policy(transfer_policy)
-        )
-        curl::handle_setopt(handle, failonerror = !http)
-        if (http) {
-            curl::handle_setopt(handle, http_content_decoding = FALSE)
-        }
-        headers <- list(`Accept-Encoding` = "identity")
-        if (start_byte > 0) {
-            headers$Range <- sprintf("bytes=%.0f-", start_byte)
+            complete_hash <- !is.null(checksum) &&
+                downloader__worker_verify_checksum(
+                    tmp_part,
+                    checksum,
+                    if (nchar(checksum) == 32L) "md5" else "sha256"
+                )
+            complete_saved <- !is.null(prior) &&
+                !is.null(prior$size) &&
+                prior$size == start_byte &&
+                isTRUE(prior$validator_bound) &&
+                identical(prior$request_url, url) &&
+                identical(prior$final_url, final_url) &&
+                identical(prior$validator_kind, validator_kind) &&
+                identical(prior$validator_value, validator_value) &&
+                !is.na(validator_kind) &&
+                identical(
+                    prior$sha256,
+                    downloader__checksum_file(tmp_part, "sha256")
+                )
+            if (
+                !is.finite(size) ||
+                    size != start_byte ||
+                    !(complete_hash || complete_saved)
+            ) {
+                stop(
+                    "HTTP 416 does not establish a complete local representation.",
+                    call. = FALSE
+                )
+            }
             if (
                 !is.null(prior) &&
-                    identical(prior$request_url, url) &&
-                    !is.null(null_if_empty(prior$validator_value))
+                    !is.null(prior$size) &&
+                    prior$size != size
             ) {
-                headers$`If-Range` <- prior$validator_value
+                changed("HTTP total length changed.")
             }
-            if (!http) {
-                curl::handle_setopt(handle, resume_from_large = start_byte)
-            }
-        }
-        do.call(curl::handle_setheaders, c(list(handle = handle), headers))
-        state <- prior
-        con <- NULL
-        validated <- FALSE
-        expected <- NA_real_
-        received <- 0
-        write_start <- start_byte
-        range_complete <- FALSE
-        changed <- function(message) {
-            stop(paste0("source_changed: ", message), call. = FALSE)
-        }
-        validate <- function(response) {
-            if (validated) {
-                return(invisible(NULL))
-            }
-            evidence <- transfer_response(response, url)
-            final_url <- evidence$final_url
-            status <- evidence$status
-            etag <- evidence$etag
-            modified <- evidence$last_modified
-            date <- evidence$date
-            validator_kind <- evidence$validator_kind
-            validator_value <- evidence$validator_value
-            encoding <- evidence$content_encoding
-            length_text <- evidence$content_length
-            length_header <- suppressWarnings(as.numeric(length_text))
-            if (http && !is.na(encoding) && tolower(encoding) != "identity") {
-                stop(
-                    "HTTP GET has incompatible content encoding.",
-                    call. = FALSE
-                )
-            }
-            total <- length_header
-            if (http && status == 416L) {
-                text <- evidence$content_range
-                size <- if (!is.na(text) && grepl("^bytes [*]/[0-9]+$", text)) {
-                    as.numeric(sub("^bytes [*]/", "", text))
-                } else {
-                    NA_real_
-                }
-                complete_hash <- !is.null(checksum) &&
-                    verify_checksum(
-                        tmp_part,
-                        checksum,
-                        if (nchar(checksum) == 32L) "md5" else "sha256"
-                    )
-                complete_saved <- !is.null(prior) &&
-                    !is.null(prior$size) &&
-                    prior$size == start_byte &&
-                    isTRUE(prior$validator_bound) &&
-                    identical(prior$request_url, url) &&
-                    identical(prior$final_url, final_url) &&
-                    identical(prior$validator_kind, validator_kind) &&
-                    identical(prior$validator_value, validator_value) &&
-                    !is.na(validator_kind) &&
-                    identical(prior$sha256, checksum_file(tmp_part, "sha256"))
-                if (
-                    !is.finite(size) ||
-                        size != start_byte ||
-                        !(complete_hash || complete_saved)
-                ) {
-                    stop(
-                        "HTTP 416 does not establish a complete local representation.",
-                        call. = FALSE
-                    )
-                }
-                if (
-                    !is.null(prior) &&
-                        !is.null(prior$size) &&
-                        prior$size != size
-                ) {
-                    changed("HTTP total length changed.")
-                }
-                state <<- if (is.null(prior)) {
-                    list(
-                        generation = basename(tempfile("transfer-")),
-                        request_url = url,
-                        final_url = final_url,
-                        etag = NA_character_,
-                        last_modified = NA_character_,
-                        date = NA_character_,
-                        validator_kind = NA_character_,
-                        validator_value = NA_character_,
-                        origin = "checksum-existing",
-                        validator_bound = FALSE
-                    )
-                } else {
-                    prior
-                }
-                state$size <<- size
-                state$bytes <<- start_byte
-                state$sha256 <<- checksum_file(tmp_part, "sha256")
-                state$path <<- tmp_part
-                state$complete <<- FALSE
-                state$checksum_verified <<- FALSE
-                state$completion_response <<- evidence
-                transfer_write(tmp_part, state)
-                range_complete <<- TRUE
-                expected <<- 0
-                validated <<- TRUE
-                return(invisible(NULL))
-            }
-            if (http && !status %in% c(200L, 206L)) {
-                stop(
-                    sprintf("HTTP GET failed with status %d.", status),
-                    call. = FALSE
-                )
-            }
-            if (http && status == 206L) {
-                text <- evidence$content_range
-                parts <- if (!is.na(text)) {
-                    regmatches(
-                        text,
-                        regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
-                    )[[1L]]
-                } else {
-                    character()
-                }
-                bounds <- suppressWarnings(as.numeric(parts[-1L]))
-                if (
-                    length(bounds) != 3L ||
-                        any(!is.finite(bounds)) ||
-                        any(bounds > 2^53 - 1) ||
-                        bounds[[1L]] != start_byte ||
-                        bounds[[2L]] < start_byte ||
-                        bounds[[2L]] != bounds[[3L]] - 1
-                ) {
-                    stop(
-                        "HTTP GET did not return the exact remaining Content-Range.",
-                        call. = FALSE
-                    )
-                }
-                total <- bounds[[3L]]
-                if (
-                    start_byte > 0 &&
-                        !is.null(prior$size) &&
-                        prior$size != total
-                ) {
-                    changed("HTTP total length changed.")
-                }
-                expected <<- bounds[[2L]] - bounds[[1L]] + 1
-                if (
-                    !is.na(length_text) &&
-                        (!is.finite(length_header) || length_header != expected)
-                ) {
-                    stop(
-                        "HTTP GET has inconsistent Content-Length.",
-                        call. = FALSE
-                    )
-                }
-            } else {
-                expected <<- if (!http && is.finite(length_header)) {
-                    length_header - start_byte
-                } else {
-                    length_header
-                }
-            }
-            if (start_byte > 0 && !is.null(prior)) {
-                if (
-                    !is.null(prior$size) &&
-                        is.finite(total) &&
-                        prior$size != total
-                ) {
-                    changed("HTTP total length changed.")
-                }
-                if (is.null(checksum)) {
-                    if (
-                        !identical(prior$request_url, url) ||
-                            !identical(prior$final_url, final_url)
-                    ) {
-                        changed("HTTP resource changed.")
-                    }
-                    if (
-                        !identical(prior$validator_kind, validator_kind) ||
-                            !identical(prior$validator_value, validator_value)
-                    ) {
-                        changed("HTTP validator changed or is missing.")
-                    }
-                }
-            }
-            # Segmented recovery carries the original actual-GET anchors into
-            # this common byte path. They constrain a fresh GET even though no
-            # earlier piece is appended to the new file.
-            if (!is.null(representation)) {
-                if (is.finite(total) && total != representation$size) {
-                    changed(
-                        "HTTP total length changed during complete-response recovery."
-                    )
-                }
-                if (is.null(checksum)) {
-                    for (anchor in representation$anchors) {
-                        if (
-                            !identical(anchor$request_url, url) ||
-                                !identical(anchor$final_url, final_url) ||
-                                is.null(null_if_empty(anchor$validator_kind)) ||
-                                !identical(
-                                    anchor$validator_kind,
-                                    validator_kind
-                                ) ||
-                                !identical(
-                                    anchor$validator_value,
-                                    validator_value
-                                )
-                        ) {
-                            changed(
-                                "HTTP validator or resource changed during complete-response recovery."
-                            )
-                        }
-                    }
-                }
-            }
-            # A full response to Range always starts a fresh generation. Save
-            # the former bytes before publishing the replacement's metadata.
-            if (http && start_byte > 0 && status == 200L) {
-                if (is.null(checksum) && is.null(prior)) {
-                    changed("Cannot verify the full replacement response.")
-                }
-                transfer_preserve(tmp_part)
-                write_start <<- 0
-                prior <<- NULL
-            }
-            # The full-200 decision resets write_start. A chunked replacement
-            # must therefore use the entire anchored total, not the old suffix.
-            if (!is.null(representation) && !is.finite(expected)) {
-                expected <<- representation$size - write_start
-            }
-            if (is.null(prior)) {
-                if (file.exists(tmp_part) && write_start == 0) {
-                    transfer_preserve(tmp_part)
-                }
-                state <<- list(
+            state <<- if (is.null(prior)) {
+                list(
                     generation = basename(tempfile("transfer-")),
-                    bytes = 0,
-                    sha256 = NA_character_
+                    request_url = url,
+                    final_url = final_url,
+                    etag = NA_character_,
+                    last_modified = NA_character_,
+                    date = NA_character_,
+                    validator_kind = NA_character_,
+                    validator_value = NA_character_,
+                    origin = "checksum-existing",
+                    validator_bound = FALSE
                 )
             } else {
-                state <<- prior
+                prior
             }
-            state$origin <<- if (http) "get" else "file"
-            state$request_url <<- url
-            state$final_url <<- final_url
-            state$etag <<- etag
-            state$last_modified <<- modified
-            state$date <<- date
-            state$validator_kind <<- validator_kind
-            state$validator_value <<- validator_value
-            state$size <<- if (is.finite(total)) total else NA_real_
+            state$size <<- size
+            state$bytes <<- start_byte
+            state$sha256 <<- downloader__checksum_file(tmp_part, "sha256")
             state$path <<- tmp_part
             state$complete <<- FALSE
             state$checksum_verified <<- FALSE
-            state$replaces_prior <<- !is.null(representation) ||
-                (http && start_byte > 0 && status == 200L)
-            if (!is.null(representation)) {
-                state$range_fallback <<- representation
-            }
-            # A resumed GET describes its suffix. Keep the original producer's
-            # identity and record a differing replica response separately; only
-            # the expected publisher checksum may certify that mixed transfer.
-            same_identity <- !is.null(prior) &&
-                identical(prior$request_url, url) &&
-                identical(prior$final_url, final_url) &&
-                identical(one_chr(prior$validator_kind), validator_kind) &&
-                identical(one_chr(prior$validator_value), validator_value)
-            state$validator_bound <<- write_start == 0 ||
-                (isTRUE(prior$validator_bound) && same_identity)
-            if (write_start > 0) {
-                state$origin <<- if (isTRUE(state$validator_bound)) {
-                    "get"
-                } else {
-                    "checksum-resume"
-                }
-                state$append_response <<- evidence
-                state$append_response$start_byte <<- write_start
-                if (!is.null(prior)) {
-                    if (!same_identity) {
-                        state$previous_checkpoint <<- prior
-                    }
-                    for (name in c(
-                        "request_url",
-                        "final_url",
-                        "etag",
-                        "last_modified",
-                        "date",
-                        "validator_kind",
-                        "validator_value"
-                    )) {
-                        state[[name]] <<- one_chr(prior[[name]])
-                    }
-                }
-                old_sources <- if (!is.null(prior$sources)) {
-                    tryCatch(
-                        jsonlite::fromJSON(prior$sources),
-                        error = function(e) character()
-                    )
-                } else {
-                    one_chr(prior$request_url)
-                }
-                state$sources <<- as.character(jsonlite::toJSON(
-                    unique(c(old_sources[!is.na(old_sources)], url)),
-                    auto_unbox = FALSE
-                ))
-                state$source_changed_candidate <<- isTRUE(
-                    prior$source_changed_candidate
-                ) ||
-                    (!is.null(prior) && !same_identity)
-            }
-            transfer_write(tmp_part, state)
-            con <<- file(tmp_part, if (write_start > 0) "ab" else "wb")
+            state$completion_response <<- evidence
+            downloader__worker_transfer_write(tmp_part, state)
+            range_complete <<- TRUE
+            expected <<- 0
             validated <<- TRUE
-            invisible(NULL)
+            return(invisible(NULL))
         }
-        # Closing and checkpointing also run after a short read or timeout.
-        # Failed header validation leaves both the old bytes and evidence intact.
-        checkpoint <- function() {
-            if (!is.null(con)) {
-                close(con)
-                con <<- NULL
-                state$bytes <<- as.numeric(
-                    file.info(tmp_part, extra_cols = FALSE)$size
+        if (http && !status %in% c(200L, 206L)) {
+            stop(
+                sprintf("HTTP GET failed with status %d.", status),
+                call. = FALSE
+            )
+        }
+        if (http && status == 206L) {
+            bounds <- downloader__worker_parse_byte_range(
+                evidence$content_range
+            )
+            if (
+                is.null(bounds) ||
+                    bounds[[1L]] != start_byte ||
+                    bounds[[2L]] < start_byte ||
+                    bounds[[2L]] != bounds[[3L]] - 1
+            ) {
+                stop(
+                    "HTTP GET did not return the exact remaining Content-Range.",
+                    call. = FALSE
                 )
-                state$sha256 <<- checksum_file(tmp_part, "sha256")
-                transfer_write(tmp_part, state)
+            }
+            total <- bounds[[3L]]
+            if (
+                start_byte > 0 &&
+                    !is.null(prior$size) &&
+                    prior$size != total
+            ) {
+                changed("HTTP total length changed.")
+            }
+            expected <<- bounds[[2L]] - bounds[[1L]] + 1
+            if (
+                !is.na(length_text) &&
+                    (!is.finite(length_header) || length_header != expected)
+            ) {
+                stop(
+                    "HTTP GET has inconsistent Content-Length.",
+                    call. = FALSE
+                )
+            }
+        } else {
+            expected <<- if (!http && is.finite(length_header)) {
+                length_header - start_byte
+            } else {
+                length_header
             }
         }
-        on.exit(checkpoint(), add = TRUE)
-        response <- curl::curl_fetch_stream(
-            url,
-            function(chunk) {
-                validate(curl::handle_data(handle))
-                if (range_complete) {
-                    return(TRUE)
+        if (start_byte > 0 && !is.null(prior)) {
+            if (
+                !is.null(prior$size) &&
+                    is.finite(total) &&
+                    prior$size != total
+            ) {
+                changed("HTTP total length changed.")
+            }
+            if (is.null(checksum)) {
+                if (
+                    !identical(prior$request_url, url) ||
+                        !identical(prior$final_url, final_url)
+                ) {
+                    changed("HTTP resource changed.")
                 }
                 if (
-                    is.finite(expected) && received + length(chunk) > expected
+                    !identical(prior$validator_kind, validator_kind) ||
+                        !identical(prior$validator_value, validator_value)
                 ) {
-                    stop(
-                        "HTTP GET exceeded its declared byte range.",
-                        call. = FALSE
-                    )
+                    changed("HTTP validator changed or is missing.")
                 }
-                writeBin(chunk, con)
-                flush(con)
-                received <<- received + length(chunk)
-                on_progress(write_start + received)
-                TRUE
-            },
-            handle = handle
-        )
-        validate(response)
-        if (!range_complete && is.finite(expected) && received != expected) {
-            stop(
-                "HTTP GET ended before its declared byte range.",
-                call. = FALSE
+            }
+        }
+        # Segmented recovery carries the original actual-GET anchors into
+        # this common byte path. They constrain a fresh GET even though no
+        # earlier piece is appended to the new file.
+        if (!is.null(representation)) {
+            if (is.finite(total) && total != representation$size) {
+                changed(
+                    "HTTP total length changed during complete-response recovery."
+                )
+            }
+            if (is.null(checksum)) {
+                for (anchor in representation$anchors) {
+                    if (
+                        !identical(anchor$request_url, url) ||
+                            !identical(anchor$final_url, final_url) ||
+                            is.null(downloader__null_if_empty(
+                                anchor$validator_kind
+                            )) ||
+                            !identical(
+                                anchor$validator_kind,
+                                validator_kind
+                            ) ||
+                            !identical(
+                                anchor$validator_value,
+                                validator_value
+                            )
+                    ) {
+                        changed(
+                            "HTTP validator or resource changed during complete-response recovery."
+                        )
+                    }
+                }
+            }
+        }
+        # A full response to Range always starts a fresh generation. Save
+        # the former bytes before publishing the replacement's metadata.
+        if (http && start_byte > 0 && status == 200L) {
+            if (is.null(checksum) && is.null(prior)) {
+                changed("Cannot verify the full replacement response.")
+            }
+            downloader__worker_transfer_preserve(tmp_part)
+            write_start <<- 0
+            prior <<- NULL
+        }
+        # The full-200 decision resets write_start. A chunked replacement
+        # must therefore use the entire anchored total, not the old suffix.
+        if (!is.null(representation) && !is.finite(expected)) {
+            expected <<- representation$size - write_start
+        }
+        if (is.null(prior)) {
+            if (file.exists(tmp_part) && write_start == 0) {
+                downloader__worker_transfer_preserve(tmp_part)
+            }
+            state <<- list(
+                generation = basename(tempfile("transfer-")),
+                bytes = 0,
+                sha256 = NA_character_
             )
+        } else {
+            state <<- prior
         }
-        checkpoint()
-        if (!file.rename(tmp_part, tmp_done)) {
-            stop("Cannot publish completed HTTP bytes.", call. = FALSE)
+        state$origin <<- if (http) "get" else "file"
+        state$request_url <<- url
+        state$final_url <<- final_url
+        state$etag <<- etag
+        state$last_modified <<- modified
+        state$date <<- date
+        state$validator_kind <<- validator_kind
+        state$validator_value <<- validator_value
+        state$size <<- if (is.finite(total)) total else NA_real_
+        state$path <<- tmp_part
+        state$complete <<- FALSE
+        state$checksum_verified <<- FALSE
+        state$replaces_prior <<- !is.null(representation) ||
+            (http && start_byte > 0 && status == 200L)
+        if (!is.null(representation)) {
+            state$range_fallback <<- representation
         }
-        invisible(tmp_done)
+        # A resumed GET describes its suffix. Keep the original producer's
+        # identity and record a differing replica response separately; only
+        # the expected publisher checksum may certify that mixed transfer.
+        same_identity <- !is.null(prior) &&
+            identical(prior$request_url, url) &&
+            identical(prior$final_url, final_url) &&
+            identical(
+                downloader__one_chr(prior$validator_kind),
+                validator_kind
+            ) &&
+            identical(
+                downloader__one_chr(prior$validator_value),
+                validator_value
+            )
+        state$validator_bound <<- write_start == 0 ||
+            (isTRUE(prior$validator_bound) && same_identity)
+        if (write_start > 0) {
+            state$origin <<- if (isTRUE(state$validator_bound)) {
+                "get"
+            } else {
+                "checksum-resume"
+            }
+            state$append_response <<- evidence
+            state$append_response$start_byte <<- write_start
+            if (!is.null(prior)) {
+                if (!same_identity) {
+                    state$previous_checkpoint <<- prior
+                }
+                for (name in c(
+                    "request_url",
+                    "final_url",
+                    "etag",
+                    "last_modified",
+                    "date",
+                    "validator_kind",
+                    "validator_value"
+                )) {
+                    state[[name]] <<- downloader__one_chr(prior[[name]])
+                }
+            }
+            old_sources <- if (!is.null(prior$sources)) {
+                tryCatch(
+                    jsonlite::fromJSON(prior$sources),
+                    error = function(e) character()
+                )
+            } else {
+                downloader__one_chr(prior$request_url)
+            }
+            state$sources <<- as.character(jsonlite::toJSON(
+                unique(c(old_sources[!is.na(old_sources)], url)),
+                auto_unbox = FALSE
+            ))
+            state$source_changed_candidate <<- isTRUE(
+                prior$source_changed_candidate
+            ) ||
+                (!is.null(prior) && !same_identity)
+        }
+        downloader__worker_transfer_write(tmp_part, state)
+        con <<- file(tmp_part, if (write_start > 0) "ab" else "wb")
+        validated <<- TRUE
+        invisible(NULL)
     }
-
-    # Copy one byte range from a local file URL into an atomic piece file.
-    copy_file_range <- function(
-        url,
-        start_byte,
-        byte_count,
-        path,
-        chunk_size = 1024L^2L
-    ) {
-        src <- sub("^file://", "", url, ignore.case = TRUE)
-        src <- utils::URLdecode(src)
-        if (!file.exists(src)) {
-            stop(
-                sprintf("Local source file does not exist: %s", src),
-                call. = FALSE
+    # Closing and checkpointing also run after a short read or timeout.
+    # Failed header validation leaves both the old bytes and evidence intact.
+    checkpoint <- function() {
+        if (!is.null(con)) {
+            close(con)
+            con <<- NULL
+            state$bytes <<- as.numeric(
+                file.info(tmp_part, extra_cols = FALSE)$size
             )
+            state$sha256 <<- downloader__checksum_file(tmp_part, "sha256")
+            downloader__worker_transfer_write(tmp_part, state)
         }
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-        tmp <- paste0(path, ".part")
-        in_con <- file(src, "rb")
-        on.exit(close(in_con), add = TRUE)
-        out_con <- file(tmp, "wb")
-        on.exit(close(out_con), add = TRUE)
-        seek(in_con, where = start_byte, origin = "start")
-        remaining <- as.numeric(byte_count)
-        while (remaining > 0) {
-            n <- min(chunk_size, remaining)
-            chunk <- readBin(in_con, "raw", n = as.integer(n))
+    }
+    on.exit(checkpoint(), add = TRUE)
+    response <- curl::curl_fetch_stream(
+        url,
+        function(chunk) {
+            validate(curl::handle_data(handle))
+            if (range_complete) {
+                return(TRUE)
+            }
+            if (is.finite(expected) && received + length(chunk) > expected) {
+                stop(
+                    "HTTP GET exceeded its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            writeBin(chunk, con)
+            flush(con)
+            received <<- received + length(chunk)
+            on_progress(write_start + received)
+            TRUE
+        },
+        handle = handle
+    )
+    validate(response)
+    if (!range_complete && is.finite(expected) && received != expected) {
+        stop(
+            "HTTP GET ended before its declared byte range.",
+            call. = FALSE
+        )
+    }
+    checkpoint()
+    if (!file.rename(tmp_part, tmp_done)) {
+        stop("Cannot publish completed HTTP bytes.", call. = FALSE)
+    }
+    invisible(tmp_done)
+}
+# }}}
+
+# Copy one byte range from a local file URL into an atomic piece file.
+# downloader__worker_copy_file_range {{{
+downloader__worker_copy_file_range <- function(
+    url,
+    start_byte,
+    byte_count,
+    path,
+    chunk_size = 1024L^2L
+) {
+    src <- sub("^file://", "", url, ignore.case = TRUE)
+    src <- utils::URLdecode(src)
+    if (!file.exists(src)) {
+        stop(
+            sprintf("Local source file does not exist: %s", src),
+            call. = FALSE
+        )
+    }
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    tmp <- paste0(path, ".part")
+    in_con <- file(src, "rb")
+    on.exit(close(in_con), add = TRUE)
+    out_con <- file(tmp, "wb")
+    on.exit(close(out_con), add = TRUE)
+    seek(in_con, where = start_byte, origin = "start")
+    remaining <- as.numeric(byte_count)
+    while (remaining > 0) {
+        n <- min(chunk_size, remaining)
+        chunk <- readBin(in_con, "raw", n = as.integer(n))
+        if (!length(chunk)) {
+            break
+        }
+        writeBin(chunk, out_con)
+        remaining <- remaining - length(chunk)
+    }
+    close(out_con)
+    close(in_con)
+    on.exit(NULL, add = FALSE)
+    size <- if (file.exists(tmp)) {
+        as.numeric(file.info(tmp, extra_cols = FALSE)$size)
+    } else {
+        NA_real_
+    }
+    if (!identical(size, as.numeric(byte_count))) {
+        unlink(tmp)
+        stop(
+            "Local range read produced an unexpected byte count.",
+            call. = FALSE
+        )
+    }
+    if (file.exists(path)) {
+        unlink(path)
+    }
+    if (!file.rename(tmp, path)) {
+        file.copy(tmp, path, overwrite = TRUE)
+        unlink(tmp)
+    }
+    invisible(path)
+}
+# }}}
+
+# Merge completed piece files in byte-range order into one atomic result.
+# downloader__worker_merge_piece_files {{{
+downloader__worker_merge_piece_files <- function(
+    pieces,
+    tmp_done,
+    chunk_size = 1024L^2L
+) {
+    pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
+    dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
+    tmp_merge <- paste0(tmp_done, ".merge")
+    out_con <- file(tmp_merge, "wb")
+    on.exit(close(out_con), add = TRUE)
+    for (i in seq_len(nrow(pieces))) {
+        path <- pieces$path[[i]]
+        in_con <- file(path, "rb")
+        repeat {
+            chunk <- readBin(in_con, "raw", n = as.integer(chunk_size))
             if (!length(chunk)) {
                 break
             }
             writeBin(chunk, out_con)
-            remaining <- remaining - length(chunk)
         }
-        close(out_con)
         close(in_con)
-        on.exit(NULL, add = FALSE)
-        size <- if (file.exists(tmp)) {
-            as.numeric(file.info(tmp, extra_cols = FALSE)$size)
-        } else {
-            NA_real_
-        }
-        if (!identical(size, as.numeric(byte_count))) {
-            unlink(tmp)
-            stop(
-                "Local range read produced an unexpected byte count.",
-                call. = FALSE
-            )
-        }
-        if (file.exists(path)) {
-            unlink(path)
-        }
-        if (!file.rename(tmp, path)) {
-            file.copy(tmp, path, overwrite = TRUE)
-            unlink(tmp)
-        }
-        invisible(path)
     }
-
-    # Merge completed piece files in byte-range order into one atomic result.
-    merge_piece_files <- function(pieces, tmp_done, chunk_size = 1024L^2L) {
-        pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
-        dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
-        tmp_merge <- paste0(tmp_done, ".merge")
-        out_con <- file(tmp_merge, "wb")
-        on.exit(close(out_con), add = TRUE)
-        for (i in seq_len(nrow(pieces))) {
-            path <- pieces$path[[i]]
-            in_con <- file(path, "rb")
-            repeat {
-                chunk <- readBin(in_con, "raw", n = as.integer(chunk_size))
-                if (!length(chunk)) {
-                    break
-                }
-                writeBin(chunk, out_con)
-            }
-            close(in_con)
-        }
-        close(out_con)
-        on.exit(NULL, add = FALSE)
-        if (file.exists(tmp_done)) {
-            unlink(tmp_done)
-        }
-        if (!file.rename(tmp_merge, tmp_done)) {
-            file.copy(tmp_merge, tmp_done, overwrite = TRUE)
-            unlink(tmp_merge)
-        }
-        invisible(tmp_done)
+    close(out_con)
+    on.exit(NULL, add = FALSE)
+    if (file.exists(tmp_done)) {
+        unlink(tmp_done)
     }
-
-    # Resolve the final download target from its optional relative subdirectory.
-    target_path <- function(dest, subdir, filename) {
-        if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
-            file.path(dest, filename)
-        } else {
-            file.path(dest, subdir, filename)
-        }
+    if (!file.rename(tmp_merge, tmp_done)) {
+        file.copy(tmp_merge, tmp_done, overwrite = TRUE)
+        unlink(tmp_merge)
     }
+    invisible(tmp_done)
+}
+# }}}
 
-    # Move a verified temporary file into place with a copy fallback across filesystems.
-    finalize <- function(tmp_done, target_path) {
-        dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
-        renamed <- tryCatch(
-            file.rename(tmp_done, target_path),
-            error = function(e) FALSE
-        )
-        if (!isTRUE(renamed)) {
-            file.copy(tmp_done, target_path, overwrite = TRUE)
-            unlink(tmp_done)
-        }
-        normalizePath(target_path, mustWork = TRUE, winslash = "/")
+# Resolve the final download target from its optional relative subdirectory.
+# downloader__worker_target_path {{{
+downloader__worker_target_path <- function(dest, subdir, filename) {
+    if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
+        file.path(dest, filename)
+    } else {
+        file.path(dest, subdir, filename)
     }
+}
+# }}}
 
-    list(
-        as_df = as_df,
-        one_chr = one_chr,
-        normalize_count = normalize_count,
-        normalize_transfer_policy = normalize_transfer_policy,
-        checksum_file = checksum_file,
-        verify_checksum = verify_checksum,
-        null_if_empty = null_if_empty,
-        curl_handle = curl_handle,
-        format_byte = format_byte,
-        headers_text = headers_text,
-        resume_supported = resume_supported,
-        resume_guard = resume_guard,
-        transfer_response = transfer_response,
-        piece_guard = piece_guard,
-        transfer_preserve = transfer_preserve,
-        transfer_read = transfer_read,
-        transfer_write = transfer_write,
-        transfer_seal = transfer_seal,
-        transfer_stream = transfer_stream,
-        copy_file_range = copy_file_range,
-        merge_piece_files = merge_piece_files,
-        target_path = target_path,
-        finalize = finalize
+# Move a verified temporary file into place with a copy fallback across filesystems.
+# downloader__worker_finalize {{{
+downloader__worker_finalize <- function(tmp_done, target_path) {
+    dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
+    renamed <- tryCatch(
+        file.rename(tmp_done, target_path),
+        error = function(e) FALSE
     )
+    if (!isTRUE(renamed)) {
+        file.copy(tmp_done, target_path, overwrite = TRUE)
+        unlink(tmp_done)
+    }
+    normalizePath(target_path, mustWork = TRUE, winslash = "/")
+}
+# }}}
+
+# Build the self-contained helper bundle serialized with downloader worker tasks
+# by cloning canonical top-level helpers into a baseenv()-parented environment.
+# downloader__worker_dependencies {{{
+downloader__worker_dependencies <- function() {
+    source_env <- parent.env(environment())
+    worker_env <- new.env(parent = baseenv())
+
+    export_map <- c(
+        as_df = "downloader__as_df",
+        one_chr = "downloader__one_chr",
+        normalize_count = "downloader__worker_normalize_count",
+        normalize_transfer_policy = "downloader__worker_normalize_transfer_policy",
+        checksum_file = "downloader__checksum_file",
+        verify_checksum = "downloader__worker_verify_checksum",
+        null_if_empty = "downloader__null_if_empty",
+        curl_handle = "downloader__worker_curl_handle",
+        format_byte = "downloader__worker_format_byte",
+        headers_text = "downloader__headers_text",
+        resume_supported = "downloader__worker_resume_supported",
+        resume_guard = "downloader__worker_resume_guard",
+        transfer_response = "downloader__worker_transfer_response",
+        piece_guard = "downloader__worker_piece_guard",
+        transfer_preserve = "downloader__worker_transfer_preserve",
+        transfer_read = "downloader__worker_transfer_read",
+        transfer_write = "downloader__worker_transfer_write",
+        transfer_seal = "downloader__worker_transfer_seal",
+        transfer_stream = "downloader__worker_transfer_stream",
+        copy_file_range = "downloader__worker_copy_file_range",
+        merge_piece_files = "downloader__worker_merge_piece_files",
+        target_path = "downloader__worker_target_path",
+        finalize = "downloader__worker_finalize"
+    )
+    internal_helpers <- c(
+        "downloader__curl_handle",
+        "downloader__resume_supported",
+        "downloader__worker_response_headers",
+        "downloader__worker_parse_byte_range"
+    )
+
+    for (fn_name in unique(c(unname(export_map), internal_helpers))) {
+        fn <- get(fn_name, envir = source_env, inherits = FALSE)
+        environment(fn) <- worker_env
+        assign(fn_name, fn, envir = worker_env)
+    }
+
+    out <- vector("list", length(export_map))
+    names(out) <- names(export_map)
+    for (export_name in names(export_map)) {
+        out[[export_name]] <- get(
+            export_map[[export_name]],
+            envir = worker_env,
+            inherits = FALSE
+        )
+    }
+    out
 }
 # }}}
 
@@ -4114,7 +4117,7 @@ Downloader <- R6::R6Class(
 
             # if file is verified and exists, return it
             if (status == FileStatus$Verified && !overwrite) {
-                downloader__worker_dependencies()$transfer_seal(
+                downloader__worker_transfer_seal(
                     tmp_part,
                     dest,
                     checksum,
@@ -4143,7 +4146,7 @@ Downloader <- R6::R6Class(
                     "Moving completed download to final location..."
                 ))
                 private$finalize_download(tmp_done, dest)
-                downloader__worker_dependencies()$transfer_seal(
+                downloader__worker_transfer_seal(
                     tmp_part,
                     dest,
                     checksum,
@@ -4216,7 +4219,7 @@ Downloader <- R6::R6Class(
                         )
 
                         if (!is_valid) {
-                            evidence <- downloader__worker_dependencies()$transfer_read(
+                            evidence <- downloader__worker_transfer_read(
                                 tmp_part
                             )
                             if (
@@ -4298,7 +4301,7 @@ Downloader <- R6::R6Class(
 
                     # move to final location
                     private$finalize_download(tmp_done, dest)
-                    downloader__worker_dependencies()$transfer_seal(
+                    downloader__worker_transfer_seal(
                         tmp_part,
                         dest,
                         checksum,
@@ -7621,7 +7624,7 @@ Downloader <- R6::R6Class(
                 "checksum_verified"
             )
             evidence <- lapply(tasks$task_id, function(id) {
-                downloader__worker_dependencies()$transfer_read(file.path(
+                downloader__worker_transfer_read(file.path(
                     private$temp,
                     paste0(id, ".part")
                 ))
@@ -8962,7 +8965,7 @@ Downloader <- R6::R6Class(
             checksum <- downloader__one_chr(task$checksum[[1L]])
             tryCatch(
                 {
-                    downloader__worker_dependencies()$transfer_seal(
+                    downloader__worker_transfer_seal(
                         file.path(
                             private$temp,
                             paste0(task$task_id[[1L]], ".part")
@@ -9108,6 +9111,10 @@ Downloader <- R6::R6Class(
             }
             segmented <- !is.null(segmented_attempt)
             private$ensure_mirai_daemons()
+            worker_fun <- downloader__worker_download
+            environment(worker_fun) <- baseenv()
+            segmented_worker_fun <- downloader__worker_segmented_download
+            environment(segmented_worker_fun) <- baseenv()
             mirai_obj <- mirai::mirai(
                 {
                     tryCatch(
@@ -9161,8 +9168,8 @@ Downloader <- R6::R6Class(
                     )
                 },
                 .compute = private$compute_profile,
-                worker_fun = downloader__worker_download,
-                segmented_worker_fun = downloader__worker_segmented_download,
+                worker_fun = worker_fun,
+                segmented_worker_fun = segmented_worker_fun,
                 worker_dependencies = downloader__worker_dependencies(),
                 url = candidate$url[[1L]],
                 filename = task$filename[[1L]],
@@ -9743,7 +9750,7 @@ Downloader <- R6::R6Class(
             }
 
             # Download with streaming
-            downloader__worker_dependencies()$transfer_stream(
+            downloader__worker_transfer_stream(
                 url = url,
                 tmp_part = tmp_part,
                 tmp_done = tmp_done,
