@@ -1,3 +1,14 @@
+# Close and clear an active dataset handle owned by a source state environment.
+# source__close_opened {{{
+source__close_opened <- function(source) {
+    if (!is.null(source$opened)) {
+        source$opened$dataset$close()
+        source$opened <- NULL
+    }
+    invisible(NULL)
+}
+# }}}
+
 # Read source files without serializing a store connection into a worker.
 # Payload publication is shared; plan status and Parquet persistence stay with
 # the process that owns the manifest.
@@ -93,6 +104,8 @@ store__read_extract_dataset <- function(
         }
     )
     requested_time <- c(plan$time_start[[1L]], plan$time_stop[[1L]])
+    variable <- plan$variable_id[[1L]]
+    scenario <- store__chr1(file$experiment_id[[1L]])
     # Count the same calendar-native indices that read_region() will
     # extract; surrogate POSIXct years are wrong at 360-day boundaries.
     available_time_count <- length(cf_time__range_indices(
@@ -110,8 +123,8 @@ store__read_extract_dataset <- function(
             reporter$heartbeat(
                 details = list(
                     unit_type = "extraction_plan",
-                    scenario = store__chr1(file$experiment_id[[1L]]),
-                    variable = plan$variable_id[[1L]],
+                    scenario = scenario,
+                    variable = variable,
                     period = sprintf(
                         "%s/%s",
                         format(plan$time_start[[1L]], "%Y"),
@@ -132,7 +145,7 @@ store__read_extract_dataset <- function(
     dataset_private$progress_callback <- callback
     on.exit(dataset_private$progress_callback <- old_callback, add = TRUE)
     read_args <- list(
-        variable = plan$variable_id[[1L]],
+        variable = variable,
         lon = plan$lon[[1L]],
         lat = plan$lat[[1L]],
         time = requested_time,
@@ -155,10 +168,8 @@ store__read_extract_dataset <- function(
                     outcome = "fallback",
                     details = list(
                         unit_type = "extraction_plan",
-                        scenario = store__chr1(
-                            file$experiment_id[[1L]]
-                        ),
-                        variable = plan$variable_id[[1L]],
+                        scenario = scenario,
+                        variable = variable,
                         access_method = opened$access_method,
                         reason = conditionMessage(error)
                     )
@@ -180,7 +191,7 @@ store__read_extract_dataset <- function(
     grid_sources <- attr(dt, "grid_sources", exact = TRUE)
     units <- tryCatch(
         as.character(ds$att_get(
-            plan$variable_id[[1L]],
+            variable,
             "units",
             index = 1L
         ))[[1L]],
@@ -211,13 +222,13 @@ store__read_source <- function(
     reporter = NULL,
     overwrite = FALSE
 ) {
+    can_fallback <- function(error) {
+        inherits(error, "epwshiftr_store_access_error") &&
+            identical(error$service, "OPeNDAP") &&
+            !is.null(download)
+    }
     remote_error <- source$remote_error
-    if (
-        !is.null(remote_error) &&
-            (!inherits(remote_error, "epwshiftr_store_access_error") ||
-                !identical(remote_error$service, "OPeNDAP") ||
-                is.null(download))
-    ) {
+    if (!is.null(remote_error) && !can_fallback(remote_error)) {
         stop(remote_error)
     }
     # Read through the same CF implementation for both access methods. Handles
@@ -272,16 +283,12 @@ store__read_source <- function(
             }
         }
         if (is.null(source$remote_error) && !isTRUE(source$resume_http)) {
-            if (!is.na(source$target) && nzchar(source$target)) {
+            if (source__has_text(source$target)) {
                 result <- tryCatch(read(), error = identity)
                 if (!inherits(result, "error")) {
                     return(result)
                 }
-                if (
-                    !inherits(result, "epwshiftr_store_access_error") ||
-                        !identical(result$service, "OPeNDAP") ||
-                        is.null(download)
-                ) {
+                if (!can_fallback(result)) {
                     stop(result)
                 }
                 source$remote_error <- result
@@ -306,10 +313,7 @@ store__read_source <- function(
                             attempt = 1L
                         )
                     }
-                    if (!is.null(source$opened)) {
-                        source$opened$dataset$close()
-                        source$opened <- NULL
-                    }
+                    source__close_opened(source)
                     started <- proc.time()[["elapsed"]]
                     local <- tryCatch(
                         download(),
@@ -391,22 +395,21 @@ source__apply <- function(
     if (!length(jobs)) {
         return(invisible(NULL))
     }
+    dispatch <- function(job, value) {
+        if (inherits(value, "error")) {
+            if (is.null(on_error)) {
+                stop(value)
+            }
+            on_error(job, value)
+        } else {
+            collect(job, value)
+        }
+    }
     # A visible workflow still needs one asynchronous reader so its caller can
     # refresh progress and cancel while the native request is waiting.
     if (workers == 1L && is.null(reporter)) {
         for (job in jobs) {
-            if (!is.null(reporter)) {
-                reporter$check_cancel()
-            }
-            value <- tryCatch(read(job), error = base::identity)
-            if (inherits(value, "error")) {
-                if (is.null(on_error)) {
-                    stop(value)
-                }
-                on_error(job, value)
-            } else {
-                collect(job, value)
-            }
+            dispatch(job, tryCatch(read(job), error = base::identity))
         }
         return(invisible(NULL))
     }
@@ -421,13 +424,12 @@ source__apply <- function(
     mirai__start_pool(workers, dispatcher = workers > 1L, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
     library_paths <- shift_execution__library_paths()
-    worker_options <- shift_execution__options()
+    worker_options <- source__worker_settings()
     setup <- mirai::everywhere(
         {
             .libPaths(library_paths)
             loadNamespace("epwshiftr")
             options(worker_options)
-            options(epwshiftr.progress = FALSE, epwshiftr.mirai_workers = 1L)
             data.table::setDTthreads(1L)
             TRUE
         },
@@ -452,24 +454,13 @@ source__apply <- function(
         for (slot in seq_len(workers)) {
             task <- tasks[[slot]]
             if (!is.null(task) && !mirai::unresolved(task)) {
-                value <- mirai::collect_mirai(task)
-                error <- mirai_error_message(value)
-                if (nzchar(error)) {
-                    value <- simpleError(error)
-                }
+                value <- source__collect_mirai(task)
                 # Collector failures must drain peers just like reader failures.
                 # A file-isolation callback may record an expected source error
                 # and permit independent files to continue.
                 outcome <- tryCatch(
                     {
-                        if (inherits(value, "error")) {
-                            if (is.null(on_error)) {
-                                stop(value)
-                            }
-                            on_error(jobs[[indices[[slot]]]], value)
-                        } else {
-                            collect(jobs[[indices[[slot]]]], value)
-                        }
+                        dispatch(jobs[[indices[[slot]]]], value)
                         NULL
                     },
                     error = base::identity
@@ -499,7 +490,8 @@ source__apply <- function(
                 next_job <- next_job + 1L
             }
         }
-        if (all(vapply(tasks, is.null, logical(1L)))) {
+        empty <- vapply(tasks, is.null, logical(1L))
+        if (all(empty)) {
             break
         }
         if (!is.null(reporter)) {
@@ -509,10 +501,7 @@ source__apply <- function(
                     unit_type = "source_reads",
                     current = completed,
                     total = length(jobs),
-                    active = sum(
-                        indices > 0L &
-                            !vapply(tasks, is.null, logical(1L))
-                    )
+                    active = sum(indices > 0L & !empty)
                 )
             )
         }
@@ -543,10 +532,10 @@ store__read_task <- function(job) {
     download <- if (!is.null(job$http)) {
         function() store__pool_http_download(job)
     }
-    on.exit(
-        if (!is.null(source$opened)) source$opened$dataset$close(),
-        add = TRUE
-    )
+    on.exit(source__close_opened(source), add = TRUE)
+    plan_file <- function(index) {
+        if (is.null(job$files)) job$file else job$files[[index]]
+    }
     results <- vector("list", nrow(job$plans))
     failure <- NULL
     for (index in seq_len(nrow(job$plans))) {
@@ -555,11 +544,7 @@ store__read_task <- function(job) {
                 list(
                     plan = job$plans[index],
                     overwrite = job$overwrite,
-                    file = if (is.null(job$files)) {
-                        job$file
-                    } else {
-                        job$files[[index]]
-                    }
+                    file = plan_file(index)
                 ),
                 source,
                 download = download
@@ -592,7 +577,7 @@ store__read_task <- function(job) {
                 results[[
                     index
                 ]]$download_receipt <- source_recovery__receipt_for(
-                    if (is.null(job$files)) job$file else job$files[[index]],
+                    plan_file(index),
                     download_receipt
                 )
             }
@@ -609,8 +594,9 @@ store__read_task <- function(job) {
 # Give each physical content identity its own recoverable Downloader manifest.
 # Full native files may live outside a synchronized extraction store, and the
 # SHA-256 directory key does not depend on a query, city or requested year.
+# store__pool_download_config {{{
 store__pool_download_config <- function(file, directory, timeout) {
-    key <- source_recovery__key(source_recovery__describe(file))
+    key <- source__physical_key(file)
     directory <- file.path(directory, "_source_pool", key)
     config <- list(
         dest = directory,
@@ -658,10 +644,12 @@ store__pool_download_config <- function(file, directory, timeout) {
     )
     config
 }
+# }}}
 
 # Reuse one exact persistent session, including its .part file after a worker
 # deadline. This runs synchronously inside the reserved reader, with no nested
 # reader pool and no access to the extraction manifest connection.
+# store__pool_http_download {{{
 store__pool_http_download <- function(job) {
     source_recovery__download(
         job$file,
@@ -669,11 +657,13 @@ store__pool_http_download <- function(job) {
         overwrite = isTRUE(job$overwrite)
     )
 }
+# }}}
 
 # Import store-owned downloads normally. An external shared cache instead gets
 # a small provenance artifact inside this store: its native bytes must not be
 # copied into every city/year store or admitted as a store-relative artifact.
 # The exact reader receipt separates publisher verification from local hashes.
+# store__sync_pool_download {{{
 store__sync_pool_download <- function(
     store,
     manifest,
@@ -683,6 +673,7 @@ store__sync_pool_download <- function(
     if (is.null(receipt)) {
         # Old internal idempotent calls may recheck a previously published
         # reference, but may not import every task from an arbitrary manifest.
+        target_manifest <- store_normalize_path(manifest)
         references <- list.files(
             file.path(store$path, "sources"),
             "^pool-download-.*[.]json$",
@@ -693,7 +684,7 @@ store__sync_pool_download <- function(
             function(path) {
                 identical(
                     jsonlite::read_json(path)$cache_manifest,
-                    store_normalize_path(manifest)
+                    target_manifest
                 )
             },
             logical(1L)
@@ -708,6 +699,7 @@ store__sync_pool_download <- function(
     }
     source_recovery__register(store, file, receipt)
 }
+# }}}
 
 # One batch task shares all of its sites and writes recoverable windows. No
 # child manifest is opened in the source worker.

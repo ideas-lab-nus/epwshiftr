@@ -1,3 +1,57 @@
+# Verify a native/artifact file's existence, optional byte length, and digest.
+# Reuses a precomputed SHA-256 when verifying a SHA-256 publisher checksum.
+# source_recovery__file_ok {{{
+source_recovery__file_ok <- function(
+    path,
+    checksum,
+    algo = "sha256",
+    bytes = NULL,
+    sha256 = NULL,
+    ignore_case = FALSE
+) {
+    if (!file.exists(path)) {
+        return(FALSE)
+    }
+    if (!is.null(bytes)) {
+        size <- as.double(file.info(path)$size)
+        expected <- as.double(bytes)
+        if (
+            length(size) != 1L ||
+                is.na(size) ||
+                length(expected) != 1L ||
+                is.na(expected) ||
+                !identical(size, expected)
+        ) {
+            return(FALSE)
+        }
+    }
+    actual <- if (identical(algo, "sha256") && !is.null(sha256)) {
+        sha256
+    } else {
+        checksum_file(path, algo)
+    }
+    if (isTRUE(ignore_case)) {
+        identical(tolower(actual), tolower(checksum))
+    } else {
+        identical(actual, checksum)
+    }
+}
+# }}}
+
+# Wrap a validated HTTPServer transfer receipt in the canonical lineage envelope
+# expected by source_recovery__check().
+# source_recovery__receipt_lineage {{{
+source_recovery__receipt_lineage <- function(receipt) {
+    list(
+        schema = "epwshiftr-source-lineage-v1",
+        request = receipt$request,
+        receipt = receipt,
+        access_method = "HTTPServer",
+        target = receipt$path
+    )
+}
+# }}}
+
 # Describe a selected climate file independently of extraction mode. Publisher
 # content evidence can identify replicas; weak records retain their full HTTP
 # request and catalogue identity, including resource-selecting query strings.
@@ -23,10 +77,7 @@ source_recovery__describe <- function(file) {
     )
     algorithm <- tolower(store__chr1(file$checksum_type))
     checksum <- tolower(store__chr1(file$checksum))
-    supported <- !is.na(algorithm) &&
-        algorithm %in% c("md5", "sha256") &&
-        !is.na(checksum) &&
-        nzchar(checksum)
+    supported <- algorithm %in% c("md5", "sha256") && source__has_text(checksum)
     list(
         schema = "epwshiftr-source-request-v1",
         identity = identity,
@@ -65,13 +116,14 @@ source_recovery__compatible <- function(request, owner) {
         return(FALSE)
     }
     # Empty or missing metadata cannot establish a source identity claim.
-    known <- function(x) {
-        !is.null(x) && length(x) == 1L && !is.na(x) && nzchar(x)
-    }
     for (name in names(request$identity)) {
         wanted <- request$identity[[name]]
         saved <- owner$identity[[name]]
-        if (known(wanted) && known(saved) && !identical(wanted, saved)) {
+        if (
+            source__has_text(wanted) &&
+                source__has_text(saved) &&
+                !identical(wanted, saved)
+        ) {
             return(FALSE)
         }
     }
@@ -79,8 +131,8 @@ source_recovery__compatible <- function(request, owner) {
     # expectations saved for that resource's earlier acquisition. Different
     # algorithms must instead be resolved against saved byte evidence.
     if (
-        known(request$checksum) &&
-            known(owner$checksum) &&
+        source__has_text(request$checksum) &&
+            source__has_text(owner$checksum) &&
             identical(request$checksum_type, owner$checksum_type) &&
             !identical(request$checksum, owner$checksum)
     ) {
@@ -92,12 +144,12 @@ source_recovery__compatible <- function(request, owner) {
         return(TRUE)
     }
     if (
-        !known(request$checksum) ||
-            !known(owner$checksum) ||
+        !source__has_text(request$checksum) ||
+            !source__has_text(owner$checksum) ||
             !identical(request$checksum_type, owner$checksum_type) ||
             !identical(request$checksum, owner$checksum) ||
-            !known(request$identity$version) ||
-            !known(owner$identity$version)
+            !source__has_text(request$identity$version) ||
+            !source__has_text(owner$identity$version)
     ) {
         return(FALSE)
     }
@@ -105,7 +157,8 @@ source_recovery__compatible <- function(request, owner) {
         names(request$identity),
         function(name) {
             wanted <- request$identity[[name]]
-            !known(wanted) || identical(wanted, owner$identity[[name]])
+            !source__has_text(wanted) ||
+                identical(wanted, owner$identity[[name]])
         },
         logical(1L)
     ))
@@ -191,14 +244,7 @@ source_recovery__select <- function(
             downloader$manifest,
             task$task_id[[1L]]
         )
-        owner <- if (file.exists(owner_path)) {
-            tryCatch(
-                jsonlite::read_json(owner_path, simplifyVector = TRUE),
-                error = function(error) NULL
-            )
-        } else {
-            NULL
-        }
+        owner <- source__read_json_or_null(owner_path)
         if (!is.null(owner)) {
             # JSON nulls represent missing source evidence, not a distinct
             # identity. Restore the descriptor's scalar missing-value contract.
@@ -266,19 +312,21 @@ source_recovery__select <- function(
         # Reject an edited retained generation before Downloader can requeue an
         # error task and overwrite its target. Explicit recomputation instead
         # selects a fresh task/target, preserving old final bytes and evidence.
-        target <- task$target_path[[1L]]
-        if (file.exists(target)) {
+        task_target <- task$target_path[[1L]]
+        if (file.exists(task_target)) {
             saved_hash <- store__chr1(task$transfer_sha256)
             intact <- if (!is.na(saved_hash)) {
-                identical(checksum_file(target), saved_hash) &&
-                    identical(
-                        as.double(file.info(target)$size),
-                        as.double(task$transfer_bytes[[1L]])
-                    )
+                source_recovery__file_ok(
+                    task_target,
+                    saved_hash,
+                    bytes = task$transfer_bytes[[1L]]
+                )
             } else if (!is.na(request$checksum)) {
-                identical(
-                    tolower(checksum_file(target, request$checksum_type)),
-                    request$checksum
+                source_recovery__file_ok(
+                    task_target,
+                    request$checksum,
+                    request$checksum_type,
+                    ignore_case = TRUE
                 )
             } else {
                 FALSE
@@ -289,7 +337,7 @@ source_recovery__select <- function(
                 }
                 source_recovery__error(
                     "source_changed: retained native source integrity failed",
-                    target
+                    task_target
                 )
             }
         }
@@ -338,15 +386,12 @@ source_recovery__task_receipt <- function(file, task, manifest, path, owner) {
     request <- source_recovery__describe(file)
     local_sha256 <- checksum_file(path)
     publisher_verified <- !is.na(request$checksum) &&
-        identical(
-            tolower(
-                if (request$checksum_type == "sha256") {
-                    local_sha256
-                } else {
-                    checksum_file(path, request$checksum_type)
-                }
-            ),
-            request$checksum
+        source_recovery__file_ok(
+            path,
+            request$checksum,
+            request$checksum_type,
+            sha256 = local_sha256,
+            ignore_case = TRUE
         )
     if (!is.na(request$checksum) && !publisher_verified) {
         stop(
@@ -435,13 +480,7 @@ source_recovery__downloaded_receipt <- function(
                 selected$owner
             )
             source_recovery__check(
-                list(
-                    schema = "epwshiftr-source-lineage-v1",
-                    request = receipt$request,
-                    receipt = receipt,
-                    access_method = "HTTPServer",
-                    target = receipt$path
-                ),
+                source_recovery__receipt_lineage(receipt),
                 file,
                 context
             )
@@ -532,11 +571,6 @@ source_recovery__download <- function(
                     task$task_id[[1L]]
                 )
                 if (!file.exists(owner_path)) {
-                    dir.create(
-                        dirname(owner_path),
-                        recursive = TRUE,
-                        showWarnings = FALSE
-                    )
                     store_write_json_atomic(
                         list(
                             schema = "epwshiftr-source-owner-v1",
@@ -642,6 +676,9 @@ source_recovery__download <- function(
             }
         )
     }
+    # Inspect every existing candidate (canonical first, then legacy) before
+    # creating a new task. Only create on the first pass when config$manifest is
+    # the sole/last entry; otherwise fall back to creating after legacy checks.
     for (manifest in manifests) {
         result <- recover(
             manifest,
@@ -686,10 +723,7 @@ source_recovery__register <- function(store, file, receipt) {
         )
     }
     path <- receipt$path
-    if (
-        !file.exists(path) ||
-            !identical(checksum_file(path), receipt$local_sha256)
-    ) {
+    if (!source_recovery__file_ok(path, receipt$local_sha256)) {
         stop(
             "Source receipt local content hash does not match its native file.",
             call. = FALSE
@@ -914,19 +948,18 @@ source_recovery__current_content <- function(wanted, proof, context) {
             !is.na(proof$bytes)
     ) {
         # A changed native file cannot validate the old extraction's values.
-        if (
-            as.double(file.info(path)$size) != as.double(proof$bytes) ||
-                !identical(checksum_file(path), sha256)
-        ) {
+        if (!source_recovery__file_ok(path, sha256, bytes = proof$bytes)) {
             source_recovery__error(
                 "source_changed: retained native content differs",
                 context
             )
         }
         if (
-            !identical(
-                tolower(checksum_file(path, wanted$checksum_type)),
-                wanted$checksum
+            !source_recovery__file_ok(
+                path,
+                wanted$checksum,
+                wanted$checksum_type,
+                ignore_case = TRUE
             )
         ) {
             source_recovery__error(
@@ -1089,12 +1122,13 @@ source_recovery__artifact_check <- function(artifact, path, context) {
         )
     }
     if (
-        !file.exists(path) ||
-            file.info(path)$size != artifact$size[[1L]] ||
-            !identical(
-                tolower(checksum_file(path, artifact$checksum_type[[1L]])),
-                tolower(artifact$checksum[[1L]])
-            )
+        !source_recovery__file_ok(
+            path,
+            artifact$checksum[[1L]],
+            artifact$checksum_type[[1L]],
+            bytes = artifact$size[[1L]],
+            ignore_case = TRUE
+        )
     ) {
         source_recovery__error(
             "source_changed: retained artifact bytes differ",
@@ -1116,11 +1150,7 @@ source_recovery__cache_read <- function(path, file, overwrite = FALSE) {
     checked <- tryCatch(
         {
             sidecar <- paste0(path, ".json")
-            integrity <- if (file.exists(sidecar)) {
-                tryCatch(jsonlite::read_json(sidecar), error = function(e) NULL)
-            } else {
-                NULL
-            }
+            integrity <- source__read_json_or_null(sidecar, simplify = FALSE)
             if (!is.list(integrity) || is.na(store__chr1(integrity$sha256))) {
                 source_recovery__error(
                     "insufficient cache integrity evidence",
@@ -1219,26 +1249,28 @@ source_recovery__local_open <- function(store, file, path) {
     if (is.null(receipt)) {
         if (
             is.na(request$checksum) ||
-                !identical(
-                    tolower(checksum_file(path, request$checksum_type)),
-                    request$checksum
+                !source_recovery__file_ok(
+                    path,
+                    request$checksum,
+                    request$checksum_type,
+                    ignore_case = TRUE
                 ) ||
                 !identical(store__chr1(artifact$source_url), request$endpoint)
         ) {
             source_recovery__error("insufficient local source lineage", context)
         }
     } else {
-        lineage <- list(
-            schema = "epwshiftr-source-lineage-v1",
-            request = receipt$request,
-            receipt = receipt,
-            access_method = "HTTPServer",
-            target = receipt$path
+        source_recovery__check(
+            source_recovery__receipt_lineage(receipt),
+            file,
+            context
         )
-        source_recovery__check(lineage, file, context)
         if (
-            !identical(checksum_file(path), receipt$local_sha256) ||
-                file.info(path)$size != receipt$bytes
+            !source_recovery__file_ok(
+                path,
+                receipt$local_sha256,
+                bytes = receipt$bytes
+            )
         ) {
             source_recovery__error(
                 "source_changed: native receipt bytes differ",
@@ -1259,10 +1291,7 @@ source_recovery__cache_available <- function(path, file) {
     if (!store__extract_cache_available(path)) {
         return(FALSE)
     }
-    record <- tryCatch(
-        jsonlite::read_json(paste0(path, ".json"), simplifyVector = TRUE),
-        error = function(e) NULL
-    )
+    record <- source__read_json_or_null(paste0(path, ".json"))
     tryCatch(
         {
             source_recovery__check(record$source_lineage, file, path)
