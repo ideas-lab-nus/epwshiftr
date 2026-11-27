@@ -522,6 +522,18 @@ test_that("serialized downloader worker dependencies support both worker algorit
         downloader__worker_dependencies(),
         NULL
     ))
+    expect_true(all(
+        c(
+            "transfer_response",
+            "piece_guard",
+            "transfer_preserve",
+            "transfer_read",
+            "transfer_write",
+            "transfer_seal",
+            "transfer_stream"
+        ) %in%
+            names(dependencies)
+    ))
     ordinary <- downloader__worker_download(
         url = file_url,
         filename = "ordinary.bin",
@@ -1136,10 +1148,7 @@ test_that("Downloader$run() falls back across candidate URLs", {
     )
 
     session_id <- dl$enqueue(plan, session_label = "fallback")
-    expect_warning(
-        tasks <- dl$run(session_id = session_id, progress = FALSE),
-        "Failed to open|Download failed|HTTP"
-    )
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "done")
     expect_identical(tasks$selected_url, plan$url[[2L]])
     nodes <- dl$data_nodes()
@@ -1479,10 +1488,10 @@ test_that("Downloader$download() handles HTTP errors", {
 
     url <- server$url("/files/missing.bin")
 
-    expect_warning(expect_error(
+    expect_error(
         dl$download(url, filename = "nonexistent.nc", progress = FALSE),
         "Failed to download"
-    ))
+    )
 
     unlink(temp_dir, recursive = TRUE)
 })
@@ -1726,13 +1735,30 @@ test_that("ordinary HTTP resume validates GETs and retries at the written offset
     for (mode in c("ignore", "wrong")) {
         partial <- file.path(temp, paste0(mode, ".part"))
         writeBin(prefix, partial)
-        expect_error(suppressWarnings(downloader$download(
-            server$url(paste0("/", mode)),
-            filename = paste0(mode, ".bin"),
-            progress = FALSE,
-            .tmp_id = mode
-        )))
-        expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+        attempt <- function() {
+            downloader$download(
+                server$url(paste0("/", mode)),
+                filename = paste0(mode, ".bin"),
+                progress = FALSE,
+                .tmp_id = mode,
+                checksum = checksum_bytes(app$locals$bytes, "md5"),
+                checksum_type = "md5"
+            )
+        }
+        if (mode == "ignore") {
+            path <- attempt()
+            expect_identical(readBin(path, "raw", n = 8192L), app$locals$bytes)
+            retained <- list.files(
+                temp,
+                "^ignore[.]part[.]retained-",
+                full.names = TRUE
+            )
+            expect_length(retained, 1L)
+            expect_identical(readBin(retained, "raw", n = 8192L), prefix)
+        } else {
+            expect_error(suppressWarnings(attempt()), "Content-Range")
+            expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+        }
     }
     # Check the real server response at a large offset without allocating a
     # multi-gigabyte file in the test filesystem.
@@ -2316,6 +2342,186 @@ test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify() live ES
         expect_true(length(ds$get_variables()) > 0L)
         expect_true(length(ds$get_dimensions()) > 0L)
     }
+})
+# }}}
+
+# HTTP response evidence & range fallback {{{
+test_that("transfer_response() parses final HTTP validators and Downloader$verify() classifies integrity_evidence", {
+    deps <- downloader__worker_dependencies()
+    # Final redirect block supplies strong ETag validator; weak/stale values stay unbound.
+    res_etag <- deps$transfer_response(
+        list(
+            url = "https://mirror.example/final.nc",
+            status_code = 200L,
+            headers = charToRaw(paste(
+                "HTTP/1.1 302 Found",
+                "ETag: \"redirect-tag\"",
+                "",
+                "HTTP/1.1 200 OK",
+                "ETag: \"v1-etag\"",
+                "Content-Length: 2048",
+                "Content-Encoding: identity",
+                sep = "\r\n"
+            ))
+        ),
+        "https://origin.example/orig.nc"
+    )
+    expect_identical(res_etag$request_url, "https://origin.example/orig.nc")
+    expect_identical(res_etag$final_url, "https://mirror.example/final.nc")
+    expect_identical(res_etag$validator_kind, "etag")
+    expect_identical(res_etag$validator_value, '"v1-etag"')
+    expect_identical(res_etag$status, 200L)
+
+    res_lm <- deps$transfer_response(
+        list(
+            url = "https://mirror.example/lm.nc",
+            status_code = 200L,
+            headers = charToRaw(paste(
+                "HTTP/1.1 200 OK",
+                "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT",
+                "Date: Wed, 21 Oct 2015 07:30:00 GMT",
+                sep = "\r\n"
+            ))
+        ),
+        "https://mirror.example/lm.nc"
+    )
+    expect_identical(res_lm$validator_kind, "last-modified")
+    expect_identical(
+        res_lm$validator_value,
+        "Wed, 21 Oct 2015 07:28:00 GMT"
+    )
+
+    res_weak <- deps$transfer_response(
+        list(
+            url = "https://mirror.example/weak.nc",
+            status_code = 200L,
+            headers = charToRaw(paste(
+                "HTTP/1.1 200 OK",
+                "ETag: W/\"weak-tag\"",
+                "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT",
+                "Date: Wed, 21 Oct 2015 07:30:00 GMT",
+                sep = "\r\n"
+            ))
+        ),
+        "https://mirror.example/weak.nc"
+    )
+    expect_true(is.na(res_weak$validator_kind))
+    expect_true(is.na(res_weak$validator_value))
+
+    # End-to-end manifest evidence & integrity_evidence classification (file://, runs everywhere).
+    fx <- downloader_test__fixture()
+    bytes <- as.raw(rep(0:255, 8L))
+    src <- file.path(fx$root, "evidence-src.bin")
+    writeBin(bytes, src)
+    file_url <- paste0("file://", normalizePath(src, winslash = "/"))
+    expected_md5 <- checksum_bytes(bytes, "md5")
+    expected_sha256 <- checksum_bytes(bytes, "sha256")
+    plan <- downloader_test_df(
+        logical_file_id = c("tracking:with-cs", "tracking:no-cs"),
+        filename = c("with-cs.bin", "no-cs.bin"),
+        url = rep(file_url, 2L),
+        checksum = c(expected_md5, NA_character_),
+        checksum_type = c("md5", NA_character_),
+        priority = c(1L, 1L)
+    )
+    sid <- fx$dl$enqueue(plan, session_label = "evidence")
+    tasks <- fx$dl$run(session_id = sid, progress = FALSE)
+    expect_true(all(tasks$status == "done"))
+
+    status <- fx$dl$tasks(session_id = sid)
+    status <- status[match(c("with-cs.bin", "no-cs.bin"), status$filename), ]
+    expect_identical(status$transfer_origin, c("file", "file"))
+    expect_identical(status$transfer_complete, c(TRUE, TRUE))
+    expect_identical(status$transfer_checksum_verified, c(TRUE, FALSE))
+    expect_identical(
+        status$transfer_sha256,
+        c(expected_sha256, expected_sha256)
+    )
+
+    verified <- fx$dl$verify(session_id = sid)
+    verified <- verified[
+        match(c("with-cs.bin", "no-cs.bin"), verified$filename),
+    ]
+    expect_identical(verified$checksum_ok, c(TRUE, TRUE))
+    expect_identical(
+        verified$integrity_evidence,
+        c("publisher_checksum", "saved_transfer")
+    )
+
+    # Tampering with a no-checksum target must be caught by saved transfer evidence.
+    no_cs_id <- status$task_id[[2L]]
+    writeBin(as.raw(rep(1L, 16L)), file.path(fx$dest, "no-cs.bin"))
+    tampered <- fx$dl$verify(task_id = no_cs_id)
+    expect_false(tampered$checksum_ok)
+    expect_identical(tampered$status, "error")
+    expect_match(tampered$last_error, "source_changed")
+
+    # Removing transfer evidence from an untouched legacy task classifies it as missing.
+    plan_legacy <- downloader_test_df(
+        logical_file_id = "tracking:legacy",
+        filename = "legacy.bin",
+        url = file_url,
+        priority = 1L
+    )
+    sid_legacy <- fx$dl$enqueue(plan_legacy, session_label = "legacy")
+    done_legacy <- fx$dl$run(session_id = sid_legacy, progress = FALSE)
+    unlink(file.path(
+        fx$temp,
+        paste0(done_legacy$task_id[[1L]], ".transfer.json")
+    ))
+    verified_legacy <- fx$dl$verify(session_id = sid_legacy)
+    expect_true(verified_legacy$checksum_ok)
+    expect_identical(verified_legacy$integrity_evidence, "missing")
+})
+
+test_that("Downloader recovers complete 200 responses during configured range downloads", {
+    skip_on_cran()
+    skip_if_not_installed("webfakes")
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 8L))
+    total <- length(app$locals$bytes)
+    app$get("/fallback.bin", function(req, res, locals) {
+        rng <- req$get_header("Range")
+        if (identical(rng, "bytes=0-0")) {
+            res$set_status(206L)$set_header(
+                "Content-Range",
+                sprintf("bytes 0-0/%d", length(locals$bytes))
+            )$set_header("ETag", '"full-v1"')$send(locals$bytes[1L])
+            return(invisible(NULL))
+        }
+        res$set_status(200L)$set_header("ETag", '"full-v1"')$send(locals$bytes)
+    })
+    server <- webfakes::new_app_process(app)
+    withr::defer(server$stop())
+
+    tp <- list(range_mode = "single", piece_size = 512L, piece_concurrency = 2L)
+    fx <- downloader_test__fixture(transfer_policy = tp)
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:range-fallback",
+        filename = "fallback.bin",
+        url = server$url("/fallback.bin"),
+        checksum = checksum_bytes(app$locals$bytes, "md5"),
+        checksum_type = "md5",
+        size = total,
+        priority = 1L
+    )
+    sid <- fx$dl$enqueue(plan, session_label = "range-fallback")
+    tasks <- fx$dl$run(session_id = sid, progress = FALSE)
+    expect_identical(tasks$status, "done")
+    expect_identical(
+        readBin(file.path(fx$dest, "fallback.bin"), "raw", n = total + 1L),
+        app$locals$bytes
+    )
+
+    status <- fx$dl$tasks(session_id = sid)
+    expect_true(isTRUE(status$transfer_complete[[1L]]))
+    expect_true(isTRUE(status$transfer_checksum_verified[[1L]]))
+    expect_identical(status$transfer_validator_kind[[1L]], "etag")
+    expect_identical(status$transfer_validator_value[[1L]], '"full-v1"')
+    expect_identical(
+        status$transfer_sha256[[1L]],
+        checksum_bytes(app$locals$bytes, "sha256")
+    )
 })
 # }}}
 
