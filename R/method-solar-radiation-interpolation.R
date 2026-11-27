@@ -1,4 +1,4 @@
-#' @include calendar-subdaily.R weather-solar.R
+#' @include calendar.R epw-physics.R
 NULL
 
 # Shortwave variables used by the published solar-angle temporal allocation.

@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R distribution-quantile.R
+#' @include signal-adjustment.R distribution.R
 NULL
 
 # Identify the daily Africa application separately because it supplies the

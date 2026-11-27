@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R distribution-parametric.R
+#' @include signal-adjustment.R distribution.R
 NULL
 
 # Equidistant CDF Matching uses the Li et al. monthly method and the Cannon et

@@ -1,4 +1,4 @@
-#' @include backend-registry.R epw-morph-context.R epw-physics.R weather-solar.R
+#' @include backend-registry.R epw-morph-context.R epw-physics.R
 NULL
 
 # Original morphing backends

@@ -1,4 +1,4 @@
-#' @include calendar-subdaily.R
+#' @include calendar.R
 NULL
 
 # Piecewise-linear interpolation is valid here only for continuous state or

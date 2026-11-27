@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R distribution-parametric.R
+#' @include signal-adjustment.R distribution.R
 NULL
 
 # Scaled Distribution Mapping follows the published daily temperature and

@@ -1,3 +1,26 @@
+#' @include epw-physics.R
+NULL
+
+# Geographic helpers
+# Ref: https://en.wikipedia.org/wiki/Geographical_distance#Tunnel_distance
+# tunnel_dist {{{
+tunnel_dist <- function(lat1, lon1, lat2, lon2) {
+    earth_radius <- 6371.009
+
+    lat1 <- solar__radians(lat1)
+    lon1 <- solar__radians(lon1)
+
+    lat2 <- solar__radians(lat2)
+    lon2 <- solar__radians(lon2)
+
+    delta_x <- cos(lat2) * cos(lon2) - cos(lat1) * cos(lon1)
+    delta_y <- cos(lat2) * sin(lon2) - cos(lat1) * sin(lon1)
+    delta_z <- sin(lat2) - sin(lat1)
+
+    sqrt(delta_x^2 + delta_y^2 + delta_z^2) * earth_radius
+}
+# }}}
+
 # Shared rectilinear source selection; weights operate on native fields before
 # nonlinear derived weather or typical-month selection. No height or land-mask
 # correction is implied. GCM tie order and missing-coordinate behavior are kept.
@@ -318,3 +341,5 @@ spatial__region_grid_sources <- function(
         cyclic
     )
 }
+
+# vim: fdm=marker :

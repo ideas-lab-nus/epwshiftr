@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R calendar-daily.R distribution-parametric.R distribution-quantile.R
+#' @include signal-adjustment.R calendar.R distribution.R
 NULL
 
 # ISIMIP3BASD settings follow the trend-preserving bias-adjustment method and

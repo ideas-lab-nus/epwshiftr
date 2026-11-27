@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R calendar-daily.R distribution-quantile.R
+#' @include signal-adjustment.R calendar.R distribution.R
 NULL
 
 # Quantile Mapping references identify the published transfer equation and
