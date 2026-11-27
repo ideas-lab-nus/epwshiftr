@@ -3600,6 +3600,7 @@ store_test__recovered_values <- function(store, plan) {
 # Equal catalogue identity and byte length cannot authorize another endpoint's
 # bytes. Keep this regression in both adapters, including their shared cache.
 test_that("Store recovery isolates same-record sources in both extraction modes", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.progress = FALSE, epwshiftr.cache = TRUE)
     root <- withr::local_tempdir()
     paths <- file.path(root, c("source.nc", "different.nc"))
@@ -3695,6 +3696,7 @@ test_that("Store recovery isolates same-record sources in both extraction modes"
 # A rejected shared native file must survive repeated default retries. Explicit
 # replacement gets an independent target and leaves the original producer proof.
 test_that("Store recovery preserves rejected native generations until replacement", {
+    skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     root <- withr::local_tempdir()
     path <- file.path(root, "source.nc")
