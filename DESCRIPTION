@@ -139,6 +139,7 @@ Collate:
     'shift-spec.R'
     'source-pool.R'
     'source-read.R'
+    'source-recovery.R'
     'spatial-grid.R'
     'standalone-cache.R'
     'standalone-downloader.R'

@@ -1441,6 +1441,15 @@ reuse its connection. With caching disabled, workers return one plan
 at a time to bound memory. Complete ordinary extraction caches are
 consumed directly without starting workers. Speedup depends on the
 number of independent tasks and the remote service.
+
+Ordinary and pooled extraction share source ownership and recovery checks.
+Complete outputs and extraction caches require matching saved acquisition
+lineage and local integrity evidence, which can support offline reuse.
+Missing evidence, source conflicts, and changed bytes identify the affected
+result without replacing its original source receipt. After checking the
+requested source, use \code{overwrite = TRUE} to recompute rejected results.
+Download byte continuation is qualified separately from output \code{resume};
+saved transfer settings and existing pool limits are preserved.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{EsgStore$extract(
