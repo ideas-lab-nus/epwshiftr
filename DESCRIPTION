@@ -143,7 +143,10 @@ Collate:
     'spatial-grid.R'
     'standalone-cache.R'
     'standalone-downloader.R'
+    'store-catalog.R'
+    'store-download.R'
     'store-exchange.R'
+    'store-extract.R'
     'zzz.R'
 Config/testthat/edition: 3
 Config/testthat/parallel: true
