@@ -598,13 +598,6 @@ DownloadTask <- R6::R6Class(
         },
         # }}}
 
-        # update_progress {{{
-        update_progress = function(current, total = NULL) {
-            self$progress <- current
-            if (!is.null(total)) self$total <- total
-        },
-        # }}}
-
         # mark_completed {{{
         mark_completed = function() {
             self$status <- DownloadStatus$Completed
@@ -641,15 +634,6 @@ DOWNLOADER_JOB_STATUS <- c(
     "stopping",
     "stale"
 )
-DOWNLOADER_DAEMON_STATUS <- c(
-    "starting",
-    "running",
-    "stopping",
-    "stopped",
-    "error",
-    "stale"
-)
-DOWNLOADER_CONTROL_STATUS <- c("queued", "handled", "error")
 DOWNLOADER_PROGRESS_INTERVAL <- 1
 DOWNLOADER_JOB_LEASE_SECONDS <- 60
 DOWNLOADER_NODE_POLICY_DEFAULT <- list(
@@ -729,6 +713,44 @@ downloader__id <- function(prefix) {
 downloader__hostname <- function() {
     host <- unname(Sys.info()[["nodename"]])
     if (is.na(host) || !nzchar(host)) "localhost" else host
+}
+# }}}
+
+# downloader__int0 {{{
+downloader__int0 <- function(x) {
+    if (!length(x)) {
+        return(0L)
+    }
+    val <- suppressWarnings(as.integer(x[[1L]]))
+    if (is.na(val)) 0L else val
+}
+# }}}
+
+# downloader__sql_where {{{
+downloader__sql_where <- function(conn, eq = list(), in_vals = list()) {
+    clauses <- character()
+    for (col in names(eq)) {
+        if (!is.null(eq[[col]])) {
+            clauses <- c(
+                clauses,
+                sprintf(
+                    "%s = %s",
+                    downloader__ddb_ident(conn, col),
+                    downloader__ddb_literal(conn, eq[[col]])
+                )
+            )
+        }
+    }
+    for (col in names(in_vals)) {
+        if (!is.null(in_vals[[col]])) {
+            clauses <- c(clauses, downloader__sql_in(conn, col, in_vals[[col]]))
+        }
+    }
+    if (length(clauses)) {
+        paste("WHERE", paste(clauses, collapse = " AND "))
+    } else {
+        ""
+    }
 }
 # }}}
 
@@ -1522,429 +1544,1139 @@ downloader__range_probe_url <- function(
 }
 # }}}
 
-# Build the self-contained helper bundle serialized with downloader worker tasks.
-# downloader__worker_dependencies {{{
-downloader__worker_dependencies <- function() {
-    # Normalize tabular worker inputs without requiring package helpers.
-    as_df <- function(x) {
-        as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
+# Normalize optional numeric transfer settings inside an isolated worker process.
+# downloader__worker_normalize_count {{{
+downloader__worker_normalize_count <- function(x) {
+    if (!length(x) || is.na(x)) {
+        return(NULL)
     }
+    as.numeric(x)
+}
+# }}}
 
-    # Read one usable scalar string from worker input or return a missing value.
-    one_chr <- function(x) {
-        if (!length(x)) {
+# Resolve the common worker transfer settings and optional piece concurrency.
+# downloader__worker_normalize_transfer_policy {{{
+downloader__worker_normalize_transfer_policy <- function(
+    policy,
+    include_piece_concurrency = FALSE
+) {
+    if (is.null(policy)) {
+        policy <- list()
+    }
+    out <- list(
+        chunk_size = downloader__worker_normalize_count(policy$chunk_size),
+        bandwidth_limit = downloader__worker_normalize_count(
+            policy$bandwidth_limit
+        ),
+        low_speed_limit = downloader__worker_normalize_count(
+            policy$low_speed_limit
+        ),
+        low_speed_time = downloader__worker_normalize_count(
+            policy$low_speed_time
+        )
+    )
+    if (isTRUE(include_piece_concurrency)) {
+        piece_concurrency <- downloader__worker_normalize_count(
+            policy$piece_concurrency
+        )
+        if (is.null(piece_concurrency)) {
+            piece_concurrency <- 1L
+        }
+        out$piece_concurrency <- max(1L, as.integer(piece_concurrency))
+    }
+    out
+}
+# }}}
+
+# Treat an absent checksum as valid and otherwise verify the completed file.
+# downloader__worker_verify_checksum {{{
+downloader__worker_verify_checksum <- function(
+    path,
+    expected,
+    algo = "sha256"
+) {
+    if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
+        return(TRUE)
+    }
+    if (!file.exists(path)) {
+        return(FALSE)
+    }
+    identical(
+        tolower(downloader__checksum_file(path, algo)),
+        tolower(expected)
+    )
+}
+# }}}
+
+# Create a curl handle from the normalized transfer policy used by either worker.
+# downloader__worker_curl_handle {{{
+downloader__worker_curl_handle <- function(
+    timeout,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy,
+    nobody = FALSE
+) {
+    downloader__curl_handle(
+        timeout = timeout,
+        connect_timeout = connect_timeout,
+        ssl_verifypeer = ssl_verifypeer,
+        proxy = proxy,
+        useragent = useragent,
+        nobody = nobody,
+        chunk_size = transfer_policy$chunk_size,
+        bandwidth_limit = transfer_policy$bandwidth_limit,
+        low_speed_limit = transfer_policy$low_speed_limit,
+        low_speed_time = transfer_policy$low_speed_time
+    )
+}
+# }}}
+
+# Format byte offsets without scientific notation for HTTP Range headers.
+# downloader__worker_format_byte {{{
+downloader__worker_format_byte <- function(x) {
+    format(as.numeric(x), scientific = FALSE, trim = TRUE)
+}
+# }}}
+
+# Confirm that an interrupted HTTP transfer can resume at the requested byte.
+# downloader__worker_resume_supported {{{
+downloader__worker_resume_supported <- function(
+    url,
+    start_byte,
+    timeout,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy
+) {
+    downloader__resume_supported(
+        url = url,
+        start_byte = start_byte,
+        timeout = timeout,
+        connect_timeout = connect_timeout,
+        ssl_verifypeer = ssl_verifypeer,
+        proxy = proxy,
+        useragent = useragent,
+        chunk_size = transfer_policy$chunk_size,
+        bandwidth_limit = transfer_policy$bandwidth_limit,
+        low_speed_limit = transfer_policy$low_speed_limit,
+        low_speed_time = transfer_policy$low_speed_time
+    )
+}
+# }}}
+
+# Build a case-insensitive header lookup scoped strictly to the final HTTP block.
+# Redirect/proxy blocks must not supply missing headers for the final response.
+# downloader__worker_response_headers {{{
+downloader__worker_response_headers <- function(headers) {
+    lines <- strsplit(downloader__headers_text(headers), "\r?\n")[[1L]]
+    statuses <- grep("^HTTP/", lines)
+    if (length(statuses)) {
+        lines <- lines[seq.int(utils::tail(statuses, 1L), length(lines))]
+    }
+    function(name) {
+        hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
+        if (!length(hit)) {
             return(NA_character_)
         }
-        value <- as.character(x[[1L]])
-        if (is.na(value) || !nzchar(value)) NA_character_ else value
+        trimws(sub("^[^:]+:", "", lines[[utils::tail(hit, 1L)]]))
     }
+}
+# }}}
 
-    # Normalize optional numeric transfer settings inside an isolated process.
-    normalize_count <- function(x) {
-        if (!length(x) || is.na(x)) {
-            return(NULL)
-        }
-        as.numeric(x)
+# Parse an exact finite HTTP Content-Range byte span within double precision.
+# downloader__worker_parse_byte_range {{{
+downloader__worker_parse_byte_range <- function(text) {
+    if (is.na(text)) {
+        return(NULL)
     }
-
-    # Resolve the common worker transfer settings and optional piece concurrency.
-    normalize_transfer_policy <- function(
-        policy,
-        include_piece_concurrency = FALSE
+    parts <- regmatches(
+        text,
+        regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
+    )[[1L]]
+    bounds <- suppressWarnings(as.numeric(parts[-1L]))
+    if (
+        length(bounds) != 3L ||
+            any(!is.finite(bounds)) ||
+            any(bounds > 2^53 - 1)
     ) {
-        if (is.null(policy)) {
-            policy <- list()
-        }
-        out <- list(
-            chunk_size = normalize_count(policy$chunk_size),
-            bandwidth_limit = normalize_count(policy$bandwidth_limit),
-            low_speed_limit = normalize_count(policy$low_speed_limit),
-            low_speed_time = normalize_count(policy$low_speed_time)
-        )
-        if (isTRUE(include_piece_concurrency)) {
-            piece_concurrency <- normalize_count(policy$piece_concurrency)
-            if (is.null(piece_concurrency)) {
-                piece_concurrency <- 1L
-            }
-            out$piece_concurrency <- max(1L, as.integer(piece_concurrency))
-        }
-        out
+        return(NULL)
     }
+    bounds
+}
+# }}}
 
-    # Calculate the checksum algorithms accepted by downloader workers.
-    checksum_file <- function(path, algo = "sha256") {
-        out <- if (identical(algo, "sha256")) {
-            tools::sha256sum(path)
-        } else {
-            tools::md5sum(path)
+# Check the actual GET before appending any resumed bytes. HEAD negotiation
+# alone cannot protect a partial when a gateway changes its response later.
+# downloader__worker_resume_guard {{{
+downloader__worker_resume_guard <- function(handle, start_byte) {
+    stopifnot(
+        length(start_byte) == 1L,
+        is.finite(start_byte),
+        start_byte >= 0,
+        start_byte <= 2^53 - 1,
+        start_byte == floor(start_byte)
+    )
+    received <- 0
+    expected <- NULL
+    validated <- FALSE
+    validate <- function(response) {
+        if (start_byte == 0 || validated) {
+            return(invisible(NULL))
         }
-        unname(as.character(out))
-    }
-
-    # Treat an absent checksum as valid and otherwise verify the completed file.
-    verify_checksum <- function(path, expected, algo = "sha256") {
-        if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
-            return(TRUE)
-        }
-        if (!file.exists(path)) {
-            return(FALSE)
-        }
-        identical(
-            tolower(checksum_file(path, algo)),
-            tolower(expected)
-        )
-    }
-
-    # Convert empty optional worker settings to NULL before curl configuration.
-    null_if_empty <- function(x) {
-        if (is.null(x)) {
-            return(NULL)
-        }
-        if (length(x) == 0L || is.na(x) || !nzchar(x)) {
-            return(NULL)
-        }
-        x
-    }
-
-    # Create a curl handle from the normalized transfer policy used by either worker.
-    curl_handle <- function(
-        timeout,
-        connect_timeout,
-        ssl_verifypeer,
-        proxy,
-        useragent,
-        transfer_policy,
-        nobody = FALSE
-    ) {
-        handle <- curl::new_handle()
-        opts <- list(
-            timeout = timeout,
-            followlocation = TRUE,
-            ssl_verifypeer = isTRUE(ssl_verifypeer)
-        )
-        if (!is.null(connect_timeout)) {
-            opts$connecttimeout <- connect_timeout
-        }
-        proxy <- null_if_empty(proxy)
-        if (!is.null(proxy)) {
-            opts$proxy <- proxy
-        }
-        useragent <- null_if_empty(useragent)
-        if (!is.null(useragent)) {
-            opts$useragent <- useragent
-        }
-        if (!is.null(transfer_policy$chunk_size)) {
-            opts$buffersize <- as.integer(transfer_policy$chunk_size)
-        }
-        if (!is.null(transfer_policy$bandwidth_limit)) {
-            opts$max_recv_speed_large <- as.numeric(
-                transfer_policy$bandwidth_limit
-            )
-        }
-        if (!is.null(transfer_policy$low_speed_limit)) {
-            opts$low_speed_limit <- as.integer(transfer_policy$low_speed_limit)
-        }
-        if (!is.null(transfer_policy$low_speed_time)) {
-            opts$low_speed_time <- as.integer(transfer_policy$low_speed_time)
-        }
-        if (isTRUE(nobody)) {
-            opts$nobody <- TRUE
-        }
-        do.call(curl::handle_setopt, c(list(handle = handle), opts))
-        handle
-    }
-
-    # Format byte offsets without scientific notation for HTTP Range headers.
-    format_byte <- function(x) {
-        format(as.numeric(x), scientific = FALSE, trim = TRUE)
-    }
-
-    # Convert raw or character response headers to searchable text.
-    headers_text <- function(headers) {
-        if (is.raw(headers)) {
-            return(rawToChar(headers))
-        }
-        paste(headers, collapse = "\n")
-    }
-
-    # Confirm that an interrupted HTTP transfer can resume at the requested byte.
-    resume_supported <- function(
-        url,
-        start_byte,
-        timeout,
-        connect_timeout,
-        ssl_verifypeer,
-        proxy,
-        useragent,
-        transfer_policy
-    ) {
-        if (start_byte <= 0 || !grepl("^https?://", url)) {
-            return(TRUE)
-        }
-        handle <- curl_handle(
-            timeout = min(timeout, 30L),
-            connect_timeout = connect_timeout,
-            ssl_verifypeer = ssl_verifypeer,
-            proxy = proxy,
-            useragent = useragent,
-            transfer_policy = transfer_policy,
-            nobody = TRUE
-        )
-        curl::handle_setheaders(
-            handle,
-            Range = sprintf("bytes=%.0f-", start_byte)
-        )
-        response <- tryCatch(
-            curl::curl_fetch_memory(url, handle = handle),
-            error = function(e) NULL
-        )
-        if (
-            is.null(response) ||
-                !identical(as.integer(response$status_code), 206L)
-        ) {
-            return(FALSE)
-        }
-        pattern <- sprintf(
-            "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
-            start_byte
-        )
-        grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
-    }
-
-    # Check the actual GET before appending any resumed bytes. HEAD negotiation
-    # alone cannot protect a partial when a gateway changes its response later.
-    resume_guard <- function(handle, start_byte) {
-        stopifnot(
-            length(start_byte) == 1L,
-            is.finite(start_byte),
-            start_byte >= 0,
-            start_byte <= 2^53 - 1,
-            start_byte == floor(start_byte)
-        )
-        received <- 0
-        expected <- NULL
-        validated <- FALSE
-        validate <- function(response) {
-            if (start_byte == 0 || validated) {
-                return(invisible(NULL))
-            }
-            lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
-            # Redirect/proxy response blocks must not supply missing headers for
-            # the final GET. Only that final block describes appended bytes.
-            status_lines <- grep("^HTTP/", lines)
-            if (length(status_lines)) {
-                lines <- lines[seq.int(tail(status_lines, 1L), length(lines))]
-            }
-            value <- function(name) {
-                hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
-                if (!length(hit)) {
-                    return(NA_character_)
-                }
-                trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
-            }
-            text <- value("content-range")
-            parts <- if (!is.na(text)) {
-                regmatches(
-                    text,
-                    regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
-                )[[1L]]
-            } else {
-                character()
-            }
-            bounds <- suppressWarnings(as.numeric(parts[-1L]))
-            valid <- length(bounds) == 3L &&
-                all(is.finite(bounds)) &&
-                all(bounds <= 2^53 - 1) &&
-                bounds[[1L]] == start_byte &&
-                bounds[[2L]] >= start_byte &&
-                bounds[[2L]] == bounds[[3L]] - 1
-            if (!identical(as.integer(response$status_code), 206L) || !valid) {
-                stop(
-                    "HTTP resume GET did not return the exact remaining Content-Range.",
-                    call. = FALSE
-                )
-            }
-            expected <<- bounds[[2L]] - bounds[[1L]] + 1
-            length_header <- value("content-length")
-            encoding <- value("content-encoding")
-            if (
-                (!is.na(length_header) &&
-                    !identical(
-                        suppressWarnings(as.numeric(length_header)),
-                        expected
-                    )) ||
-                    (!is.na(encoding) && tolower(encoding) != "identity")
-            ) {
-                stop(
-                    "HTTP resume GET has inconsistent length or encoding.",
-                    call. = FALSE
-                )
-            }
-            validated <<- TRUE
-            invisible(NULL)
-        }
-        # curl exposes the final response headers before its first body callback.
-        accept <- function(chunk) {
-            if (start_byte == 0) {
-                return(invisible(NULL))
-            }
-            validate(curl::handle_data(handle))
-            if (received + length(chunk) > expected) {
-                stop(
-                    "HTTP resume GET exceeded its declared byte range.",
-                    call. = FALSE
-                )
-            }
-            received <<- received + length(chunk)
-            invisible(NULL)
-        }
-        # Keep an interrupted valid prefix, but never seal an incomplete tail.
-        finish <- function(response) {
-            if (start_byte == 0) {
-                return(invisible(NULL))
-            }
-            validate(response)
-            if (!identical(received, expected)) {
-                stop(
-                    "HTTP resume GET ended before its declared byte range.",
-                    call. = FALSE
-                )
-            }
-            invisible(NULL)
-        }
-        list(accept = accept, finish = finish)
-    }
-
-    # Copy one byte range from a local file URL into an atomic piece file.
-    copy_file_range <- function(
-        url,
-        start_byte,
-        byte_count,
-        path,
-        chunk_size = 1024L^2L
-    ) {
-        src <- sub("^file://", "", url, ignore.case = TRUE)
-        src <- utils::URLdecode(src)
-        if (!file.exists(src)) {
+        value <- downloader__worker_response_headers(response$headers)
+        bounds <- downloader__worker_parse_byte_range(value("content-range"))
+        valid <- !is.null(bounds) &&
+            bounds[[1L]] == start_byte &&
+            bounds[[2L]] >= start_byte &&
+            bounds[[2L]] == bounds[[3L]] - 1
+        if (!identical(as.integer(response$status_code), 206L) || !valid) {
             stop(
-                sprintf("Local source file does not exist: %s", src),
+                "HTTP resume GET did not return the exact remaining Content-Range.",
                 call. = FALSE
             )
         }
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-        tmp <- paste0(path, ".part")
-        in_con <- file(src, "rb")
-        on.exit(close(in_con), add = TRUE)
-        out_con <- file(tmp, "wb")
-        on.exit(close(out_con), add = TRUE)
-        seek(in_con, where = start_byte, origin = "start")
-        remaining <- as.numeric(byte_count)
-        while (remaining > 0) {
-            n <- min(chunk_size, remaining)
-            chunk <- readBin(in_con, "raw", n = as.integer(n))
+        expected <<- bounds[[2L]] - bounds[[1L]] + 1
+        length_header <- value("content-length")
+        encoding <- value("content-encoding")
+        if (
+            (!is.na(length_header) &&
+                !identical(
+                    suppressWarnings(as.numeric(length_header)),
+                    expected
+                )) ||
+                (!is.na(encoding) && tolower(encoding) != "identity")
+        ) {
+            stop(
+                "HTTP resume GET has inconsistent length or encoding.",
+                call. = FALSE
+            )
+        }
+        validated <<- TRUE
+        invisible(NULL)
+    }
+    # curl exposes the final response headers before its first body callback.
+    accept <- function(chunk) {
+        if (start_byte == 0) {
+            return(invisible(NULL))
+        }
+        validate(curl::handle_data(handle))
+        if (received + length(chunk) > expected) {
+            stop(
+                "HTTP resume GET exceeded its declared byte range.",
+                call. = FALSE
+            )
+        }
+        received <<- received + length(chunk)
+        invisible(NULL)
+    }
+    # Keep an interrupted valid prefix, but never seal an incomplete tail.
+    finish <- function(response) {
+        if (start_byte == 0) {
+            return(invisible(NULL))
+        }
+        validate(response)
+        if (!identical(received, expected)) {
+            stop(
+                "HTTP resume GET ended before its declared byte range.",
+                call. = FALSE
+            )
+        }
+        invisible(NULL)
+    }
+    list(accept = accept, finish = finish)
+}
+# }}}
+
+# Normalize the final actual response, keeping opaque values unchanged and
+# deriving date validators only when no entity tag was provided.
+# downloader__worker_transfer_response {{{
+downloader__worker_transfer_response <- function(response, url) {
+    field <- downloader__worker_response_headers(response$headers)
+    etag <- field("etag")
+    modified <- field("last-modified")
+    date <- field("date")
+    kind <- value <- NA_character_
+    if (!is.na(etag) && grepl('^"[^"[:cntrl:]]*"$', etag)) {
+        kind <- "etag"
+        value <- etag
+    } else if (is.na(etag) && !is.na(modified) && !is.na(date)) {
+        elapsed <- suppressWarnings(
+            as.numeric(curl::parse_date(date)) -
+                as.numeric(curl::parse_date(modified))
+        )
+        if (length(elapsed) == 1L && is.finite(elapsed) && elapsed >= 60) {
+            kind <- "last-modified"
+            value <- modified
+        }
+    }
+    final_url <- downloader__one_chr(response$url)
+    if (is.na(final_url)) {
+        final_url <- url
+    }
+    list(
+        request_url = url,
+        final_url = final_url,
+        etag = etag,
+        last_modified = modified,
+        date = date,
+        validator_kind = kind,
+        validator_value = value,
+        content_range = field("content-range"),
+        content_length = field("content-length"),
+        content_encoding = field("content-encoding"),
+        status = as.integer(response$status_code)
+    )
+}
+# }}}
+
+# Bounded range pieces preserve their concurrency while validating the same
+# actual response identity used by ordinary downloads before any body write.
+# downloader__worker_piece_guard {{{
+downloader__worker_piece_guard <- function(
+    handle,
+    url,
+    row,
+    tmp,
+    bind_evidence
+) {
+    state <- NULL
+    full_response <- NULL
+    received <- 0
+    validate <- function(response) {
+        if (!is.null(state)) {
+            return(invisible(NULL))
+        }
+        evidence <- downloader__worker_transfer_response(response, url)
+        # A complete response cannot enter a piece writer. Capture its
+        # actual identity and let the caller retire the entire batch before
+        # opening the shared zero-based stream.
+        if (evidence$status == 200L) {
+            evidence$size <- suppressWarnings(as.numeric(
+                evidence$content_length
+            ))
+            if (
+                !is.na(evidence$content_encoding) &&
+                    tolower(evidence$content_encoding) != "identity"
+            ) {
+                stop(
+                    "HTTP piece GET has incompatible content encoding.",
+                    call. = FALSE
+                )
+            }
+            bind_evidence(evidence)
+            full_response <<- evidence
+            stop(
+                "HTTP piece GET returned a complete response; restart required.",
+                call. = FALSE
+            )
+        }
+        bounds <- downloader__worker_parse_byte_range(evidence$content_range)
+        if (
+            evidence$status != 206L ||
+                is.null(bounds) ||
+                bounds[[1L]] != row$start_byte[[1L]] ||
+                bounds[[2L]] != row$end_byte[[1L]] ||
+                bounds[[3L]] <= bounds[[2L]]
+        ) {
+            stop(
+                "HTTP piece GET has an inconsistent Content-Range.",
+                call. = FALSE
+            )
+        }
+        length_header <- suppressWarnings(as.numeric(
+            evidence$content_length
+        ))
+        if (
+            (!is.na(evidence$content_length) &&
+                (!is.finite(length_header) ||
+                    length_header != row$byte_count[[1L]])) ||
+                (!is.na(evidence$content_encoding) &&
+                    tolower(evidence$content_encoding) != "identity")
+        ) {
+            stop(
+                "HTTP piece GET has inconsistent length or encoding.",
+                call. = FALSE
+            )
+        }
+        evidence$size <- bounds[[3L]]
+        bind_evidence(evidence)
+        evidence$validator_bound <- !is.na(evidence$validator_kind)
+        evidence$generation <- basename(tempfile("piece-"))
+        evidence$path <- tmp
+        evidence$bytes <- 0
+        evidence$sha256 <- NA_character_
+        evidence$complete <- FALSE
+        evidence$checksum_verified <- FALSE
+        downloader__worker_transfer_write(tmp, evidence)
+        state <<- evidence
+        invisible(NULL)
+    }
+    accept <- function(chunk) {
+        validate(curl::handle_data(handle))
+        if (received + length(chunk) > row$byte_count[[1L]]) {
+            stop(
+                "HTTP piece GET exceeded its declared range.",
+                call. = FALSE
+            )
+        }
+        received <<- received + length(chunk)
+        invisible(NULL)
+    }
+    finish <- function(response) {
+        validate(response)
+        if (received != row$byte_count[[1L]]) {
+            stop(
+                "HTTP piece GET ended before its declared range.",
+                call. = FALSE
+            )
+        }
+        # Each chunk is flushed before completion. Checkpoint its exact
+        # retained bytes before the caller closes and seals the piece.
+        state$bytes <<- received
+        state$sha256 <<- downloader__checksum_file(tmp, "sha256")
+        downloader__worker_transfer_write(tmp, state)
+        invisible(NULL)
+    }
+    list(accept = accept, finish = finish, full_response = function() {
+        full_response
+    })
+}
+# }}}
+
+# A sidecar belongs to one generation of retained bytes. Atomic replacement
+# prevents a torn metadata write from assigning a new validator to old bytes.
+# downloader__worker_transfer_read {{{
+downloader__worker_transfer_read <- function(tmp_part) {
+    if (!file.exists(sub("[.]part$", ".transfer.json", tmp_part))) {
+        return(NULL)
+    }
+    tryCatch(
+        jsonlite::read_json(
+            sub("[.]part$", ".transfer.json", tmp_part),
+            simplifyVector = TRUE
+        ),
+        error = function(e) NULL
+    )
+}
+# }}}
+
+# Readback is checked before a body callback is allowed to write any bytes.
+# downloader__worker_transfer_write {{{
+downloader__worker_transfer_write <- function(tmp_part, state) {
+    path <- sub("[.]part$", ".transfer.json", tmp_part)
+    staged <- tempfile(paste0(basename(path), "."), dirname(path))
+    on.exit(unlink(staged), add = TRUE)
+    jsonlite::write_json(
+        state,
+        staged,
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
+    )
+    if (
+        is.null(tryCatch(jsonlite::read_json(staged), error = function(e) {
+            NULL
+        })) ||
+            !file.rename(staged, path)
+    ) {
+        stop("Cannot publish HTTP transfer evidence.", call. = FALSE)
+    }
+    invisible(state)
+}
+# }}}
+
+# Keep unsafe or superseded data and its evidence together; a new response
+# may only acquire the canonical pathname after the old generation is moved.
+# downloader__worker_transfer_preserve {{{
+downloader__worker_transfer_preserve <- function(tmp_part) {
+    suffix <- paste0(".retained-", basename(tempfile()))
+    for (path in c(tmp_part, sub("[.]part$", ".transfer.json", tmp_part))) {
+        if (file.exists(path) && !file.rename(path, paste0(path, suffix))) {
+            stop(
+                "Cannot preserve the previous HTTP transfer generation.",
+                call. = FALSE
+            )
+        }
+    }
+    invisible(NULL)
+}
+# }}}
+
+# Publish complete-file evidence only after the expected publisher checksum
+# has been checked by the caller. Missing checksums remain explicitly false.
+# downloader__worker_transfer_seal {{{
+downloader__worker_transfer_seal <- function(
+    tmp_part,
+    path,
+    checksum,
+    checksum_type
+) {
+    state <- downloader__worker_transfer_read(tmp_part)
+    if (is.null(state)) {
+        return(invisible(NULL))
+    }
+    actual_bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
+    actual_sha256 <- downloader__checksum_file(path, "sha256")
+    if (is.null(state$sha256) || is.na(state$sha256)) {
+        return(invisible(NULL))
+    }
+    if (
+        state$bytes != actual_bytes ||
+            !identical(state$sha256, actual_sha256)
+    ) {
+        stop(
+            "source_changed: Retained file does not match its saved transfer checkpoint.",
+            call. = FALSE
+        )
+    }
+    state$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    state$bytes <- as.numeric(file.info(path, extra_cols = FALSE)$size)
+    state$sha256 <- actual_sha256
+    if (is.null(state$size) || !is.finite(state$size)) {
+        state$size <- state$bytes
+    }
+    state$complete <- TRUE
+    state$checksum_verified <- !is.null(downloader__null_if_empty(checksum)) &&
+        downloader__worker_verify_checksum(path, checksum, checksum_type)
+    downloader__worker_transfer_write(tmp_part, state)
+}
+# }}}
+
+# Both ordinary and mirai downloads use this byte boundary. Response headers
+# are checked before opening append mode, and only a validated prefix is kept.
+# downloader__worker_transfer_stream {{{
+downloader__worker_transfer_stream <- function(
+    url,
+    tmp_part,
+    tmp_done,
+    timeout,
+    start_byte,
+    connect_timeout,
+    ssl_verifypeer,
+    proxy,
+    useragent,
+    transfer_policy,
+    checksum = NULL,
+    resume = TRUE,
+    on_progress = function(bytes) NULL,
+    representation = NULL
+) {
+    http <- grepl("^https?://", url, ignore.case = TRUE)
+    checksum <- downloader__null_if_empty(checksum)
+    prior <- downloader__worker_transfer_read(tmp_part)
+    current_size <- if (file.exists(tmp_part)) {
+        as.numeric(file.info(tmp_part, extra_cols = FALSE)$size)
+    } else {
+        0
+    }
+    start_byte <- if (isTRUE(resume)) current_size else 0
+    if (current_size == 0) {
+        prior <- NULL
+    }
+    # A checkpoint hashes the file once at attempt close, rather than once
+    # per small curl chunk. A crash tail without that checkpoint is retained
+    # separately and never gets certified by the older saved hash.
+    if (http && current_size > 0) {
+        checkpoint_ok <- !is.null(prior) &&
+            !is.null(prior$bytes) &&
+            identical(as.numeric(prior$bytes), current_size) &&
+            !is.null(prior$sha256) &&
+            identical(
+                prior$sha256,
+                downloader__checksum_file(tmp_part, "sha256")
+            )
+        eligible <- !is.null(checksum) ||
+            (checkpoint_ok &&
+                identical(prior$request_url, url) &&
+                isTRUE(prior$validator_bound) &&
+                !is.null(downloader__null_if_empty(prior$validator_kind)))
+        if (
+            !isTRUE(resume) ||
+                !eligible ||
+                (!is.null(prior) && !checkpoint_ok)
+        ) {
+            downloader__worker_transfer_preserve(tmp_part)
+            prior <- NULL
+            start_byte <- 0
+        }
+    } else if (!isTRUE(resume) && file.exists(tmp_part)) {
+        downloader__worker_transfer_preserve(tmp_part)
+        prior <- NULL
+    }
+    handle <- downloader__worker_curl_handle(
+        timeout,
+        connect_timeout,
+        ssl_verifypeer,
+        proxy,
+        useragent,
+        downloader__worker_normalize_transfer_policy(transfer_policy)
+    )
+    curl::handle_setopt(handle, failonerror = !http)
+    if (http) {
+        curl::handle_setopt(handle, http_content_decoding = FALSE)
+    }
+    headers <- list(`Accept-Encoding` = "identity")
+    if (start_byte > 0) {
+        headers$Range <- sprintf("bytes=%.0f-", start_byte)
+        if (
+            !is.null(prior) &&
+                identical(prior$request_url, url) &&
+                !is.null(downloader__null_if_empty(prior$validator_value))
+        ) {
+            headers$`If-Range` <- prior$validator_value
+        }
+        if (!http) {
+            curl::handle_setopt(handle, resume_from_large = start_byte)
+        }
+    }
+    do.call(curl::handle_setheaders, c(list(handle = handle), headers))
+    state <- prior
+    con <- NULL
+    validated <- FALSE
+    expected <- NA_real_
+    received <- 0
+    write_start <- start_byte
+    range_complete <- FALSE
+    changed <- function(message) {
+        stop(paste0("source_changed: ", message), call. = FALSE)
+    }
+    validate <- function(response) {
+        if (validated) {
+            return(invisible(NULL))
+        }
+        evidence <- downloader__worker_transfer_response(response, url)
+        final_url <- evidence$final_url
+        status <- evidence$status
+        etag <- evidence$etag
+        modified <- evidence$last_modified
+        date <- evidence$date
+        validator_kind <- evidence$validator_kind
+        validator_value <- evidence$validator_value
+        encoding <- evidence$content_encoding
+        length_text <- evidence$content_length
+        length_header <- suppressWarnings(as.numeric(length_text))
+        if (http && !is.na(encoding) && tolower(encoding) != "identity") {
+            stop(
+                "HTTP GET has incompatible content encoding.",
+                call. = FALSE
+            )
+        }
+        total <- length_header
+        if (http && status == 416L) {
+            text <- evidence$content_range
+            size <- if (!is.na(text) && grepl("^bytes [*]/[0-9]+$", text)) {
+                as.numeric(sub("^bytes [*]/", "", text))
+            } else {
+                NA_real_
+            }
+            complete_hash <- !is.null(checksum) &&
+                downloader__worker_verify_checksum(
+                    tmp_part,
+                    checksum,
+                    if (nchar(checksum) == 32L) "md5" else "sha256"
+                )
+            complete_saved <- !is.null(prior) &&
+                !is.null(prior$size) &&
+                prior$size == start_byte &&
+                isTRUE(prior$validator_bound) &&
+                identical(prior$request_url, url) &&
+                identical(prior$final_url, final_url) &&
+                identical(prior$validator_kind, validator_kind) &&
+                identical(prior$validator_value, validator_value) &&
+                !is.na(validator_kind) &&
+                identical(
+                    prior$sha256,
+                    downloader__checksum_file(tmp_part, "sha256")
+                )
+            if (
+                !is.finite(size) ||
+                    size != start_byte ||
+                    !(complete_hash || complete_saved)
+            ) {
+                stop(
+                    "HTTP 416 does not establish a complete local representation.",
+                    call. = FALSE
+                )
+            }
+            if (
+                !is.null(prior) &&
+                    !is.null(prior$size) &&
+                    prior$size != size
+            ) {
+                changed("HTTP total length changed.")
+            }
+            state <<- if (is.null(prior)) {
+                list(
+                    generation = basename(tempfile("transfer-")),
+                    request_url = url,
+                    final_url = final_url,
+                    etag = NA_character_,
+                    last_modified = NA_character_,
+                    date = NA_character_,
+                    validator_kind = NA_character_,
+                    validator_value = NA_character_,
+                    origin = "checksum-existing",
+                    validator_bound = FALSE
+                )
+            } else {
+                prior
+            }
+            state$size <<- size
+            state$bytes <<- start_byte
+            state$sha256 <<- downloader__checksum_file(tmp_part, "sha256")
+            state$path <<- tmp_part
+            state$complete <<- FALSE
+            state$checksum_verified <<- FALSE
+            state$completion_response <<- evidence
+            downloader__worker_transfer_write(tmp_part, state)
+            range_complete <<- TRUE
+            expected <<- 0
+            validated <<- TRUE
+            return(invisible(NULL))
+        }
+        if (http && !status %in% c(200L, 206L)) {
+            stop(
+                sprintf("HTTP GET failed with status %d.", status),
+                call. = FALSE
+            )
+        }
+        if (http && status == 206L) {
+            bounds <- downloader__worker_parse_byte_range(
+                evidence$content_range
+            )
+            if (
+                is.null(bounds) ||
+                    bounds[[1L]] != start_byte ||
+                    bounds[[2L]] < start_byte ||
+                    bounds[[2L]] != bounds[[3L]] - 1
+            ) {
+                stop(
+                    "HTTP GET did not return the exact remaining Content-Range.",
+                    call. = FALSE
+                )
+            }
+            total <- bounds[[3L]]
+            if (
+                start_byte > 0 &&
+                    !is.null(prior$size) &&
+                    prior$size != total
+            ) {
+                changed("HTTP total length changed.")
+            }
+            expected <<- bounds[[2L]] - bounds[[1L]] + 1
+            if (
+                !is.na(length_text) &&
+                    (!is.finite(length_header) || length_header != expected)
+            ) {
+                stop(
+                    "HTTP GET has inconsistent Content-Length.",
+                    call. = FALSE
+                )
+            }
+        } else {
+            expected <<- if (!http && is.finite(length_header)) {
+                length_header - start_byte
+            } else {
+                length_header
+            }
+        }
+        if (start_byte > 0 && !is.null(prior)) {
+            if (
+                !is.null(prior$size) &&
+                    is.finite(total) &&
+                    prior$size != total
+            ) {
+                changed("HTTP total length changed.")
+            }
+            if (is.null(checksum)) {
+                if (
+                    !identical(prior$request_url, url) ||
+                        !identical(prior$final_url, final_url)
+                ) {
+                    changed("HTTP resource changed.")
+                }
+                if (
+                    !identical(prior$validator_kind, validator_kind) ||
+                        !identical(prior$validator_value, validator_value)
+                ) {
+                    changed("HTTP validator changed or is missing.")
+                }
+            }
+        }
+        # Segmented recovery carries the original actual-GET anchors into
+        # this common byte path. They constrain a fresh GET even though no
+        # earlier piece is appended to the new file.
+        if (!is.null(representation)) {
+            if (is.finite(total) && total != representation$size) {
+                changed(
+                    "HTTP total length changed during complete-response recovery."
+                )
+            }
+            if (is.null(checksum)) {
+                for (anchor in representation$anchors) {
+                    if (
+                        !identical(anchor$request_url, url) ||
+                            !identical(anchor$final_url, final_url) ||
+                            is.null(downloader__null_if_empty(
+                                anchor$validator_kind
+                            )) ||
+                            !identical(
+                                anchor$validator_kind,
+                                validator_kind
+                            ) ||
+                            !identical(
+                                anchor$validator_value,
+                                validator_value
+                            )
+                    ) {
+                        changed(
+                            "HTTP validator or resource changed during complete-response recovery."
+                        )
+                    }
+                }
+            }
+        }
+        # A full response to Range always starts a fresh generation. Save
+        # the former bytes before publishing the replacement's metadata.
+        if (http && start_byte > 0 && status == 200L) {
+            if (is.null(checksum) && is.null(prior)) {
+                changed("Cannot verify the full replacement response.")
+            }
+            downloader__worker_transfer_preserve(tmp_part)
+            write_start <<- 0
+            prior <<- NULL
+        }
+        # The full-200 decision resets write_start. A chunked replacement
+        # must therefore use the entire anchored total, not the old suffix.
+        if (!is.null(representation) && !is.finite(expected)) {
+            expected <<- representation$size - write_start
+        }
+        if (is.null(prior)) {
+            if (file.exists(tmp_part) && write_start == 0) {
+                downloader__worker_transfer_preserve(tmp_part)
+            }
+            state <<- list(
+                generation = basename(tempfile("transfer-")),
+                bytes = 0,
+                sha256 = NA_character_
+            )
+        } else {
+            state <<- prior
+        }
+        state$origin <<- if (http) "get" else "file"
+        state$request_url <<- url
+        state$final_url <<- final_url
+        state$etag <<- etag
+        state$last_modified <<- modified
+        state$date <<- date
+        state$validator_kind <<- validator_kind
+        state$validator_value <<- validator_value
+        state$size <<- if (is.finite(total)) total else NA_real_
+        state$path <<- tmp_part
+        state$complete <<- FALSE
+        state$checksum_verified <<- FALSE
+        state$replaces_prior <<- !is.null(representation) ||
+            (http && start_byte > 0 && status == 200L)
+        if (!is.null(representation)) {
+            state$range_fallback <<- representation
+        }
+        # A resumed GET describes its suffix. Keep the original producer's
+        # identity and record a differing replica response separately; only
+        # the expected publisher checksum may certify that mixed transfer.
+        same_identity <- !is.null(prior) &&
+            identical(prior$request_url, url) &&
+            identical(prior$final_url, final_url) &&
+            identical(
+                downloader__one_chr(prior$validator_kind),
+                validator_kind
+            ) &&
+            identical(
+                downloader__one_chr(prior$validator_value),
+                validator_value
+            )
+        state$validator_bound <<- write_start == 0 ||
+            (isTRUE(prior$validator_bound) && same_identity)
+        if (write_start > 0) {
+            state$origin <<- if (isTRUE(state$validator_bound)) {
+                "get"
+            } else {
+                "checksum-resume"
+            }
+            state$append_response <<- evidence
+            state$append_response$start_byte <<- write_start
+            if (!is.null(prior)) {
+                if (!same_identity) {
+                    state$previous_checkpoint <<- prior
+                }
+                for (name in c(
+                    "request_url",
+                    "final_url",
+                    "etag",
+                    "last_modified",
+                    "date",
+                    "validator_kind",
+                    "validator_value"
+                )) {
+                    state[[name]] <<- downloader__one_chr(prior[[name]])
+                }
+            }
+            old_sources <- if (!is.null(prior$sources)) {
+                tryCatch(
+                    jsonlite::fromJSON(prior$sources),
+                    error = function(e) character()
+                )
+            } else {
+                downloader__one_chr(prior$request_url)
+            }
+            state$sources <<- as.character(jsonlite::toJSON(
+                unique(c(old_sources[!is.na(old_sources)], url)),
+                auto_unbox = FALSE
+            ))
+            state$source_changed_candidate <<- isTRUE(
+                prior$source_changed_candidate
+            ) ||
+                (!is.null(prior) && !same_identity)
+        }
+        downloader__worker_transfer_write(tmp_part, state)
+        con <<- file(tmp_part, if (write_start > 0) "ab" else "wb")
+        validated <<- TRUE
+        invisible(NULL)
+    }
+    # Closing and checkpointing also run after a short read or timeout.
+    # Failed header validation leaves both the old bytes and evidence intact.
+    checkpoint <- function() {
+        if (!is.null(con)) {
+            close(con)
+            con <<- NULL
+            state$bytes <<- as.numeric(
+                file.info(tmp_part, extra_cols = FALSE)$size
+            )
+            state$sha256 <<- downloader__checksum_file(tmp_part, "sha256")
+            downloader__worker_transfer_write(tmp_part, state)
+        }
+    }
+    on.exit(checkpoint(), add = TRUE)
+    response <- curl::curl_fetch_stream(
+        url,
+        function(chunk) {
+            validate(curl::handle_data(handle))
+            if (range_complete) {
+                return(TRUE)
+            }
+            if (is.finite(expected) && received + length(chunk) > expected) {
+                stop(
+                    "HTTP GET exceeded its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            writeBin(chunk, con)
+            flush(con)
+            received <<- received + length(chunk)
+            on_progress(write_start + received)
+            TRUE
+        },
+        handle = handle
+    )
+    validate(response)
+    if (!range_complete && is.finite(expected) && received != expected) {
+        stop(
+            "HTTP GET ended before its declared byte range.",
+            call. = FALSE
+        )
+    }
+    checkpoint()
+    if (!file.rename(tmp_part, tmp_done)) {
+        stop("Cannot publish completed HTTP bytes.", call. = FALSE)
+    }
+    invisible(tmp_done)
+}
+# }}}
+
+# Copy one byte range from a local file URL into an atomic piece file.
+# downloader__worker_copy_file_range {{{
+downloader__worker_copy_file_range <- function(
+    url,
+    start_byte,
+    byte_count,
+    path,
+    chunk_size = 1024L^2L
+) {
+    src <- sub("^file://", "", url, ignore.case = TRUE)
+    src <- utils::URLdecode(src)
+    if (!file.exists(src)) {
+        stop(
+            sprintf("Local source file does not exist: %s", src),
+            call. = FALSE
+        )
+    }
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    tmp <- paste0(path, ".part")
+    in_con <- file(src, "rb")
+    on.exit(close(in_con), add = TRUE)
+    out_con <- file(tmp, "wb")
+    on.exit(close(out_con), add = TRUE)
+    seek(in_con, where = start_byte, origin = "start")
+    remaining <- as.numeric(byte_count)
+    while (remaining > 0) {
+        n <- min(chunk_size, remaining)
+        chunk <- readBin(in_con, "raw", n = as.integer(n))
+        if (!length(chunk)) {
+            break
+        }
+        writeBin(chunk, out_con)
+        remaining <- remaining - length(chunk)
+    }
+    close(out_con)
+    close(in_con)
+    on.exit(NULL, add = FALSE)
+    size <- if (file.exists(tmp)) {
+        as.numeric(file.info(tmp, extra_cols = FALSE)$size)
+    } else {
+        NA_real_
+    }
+    if (!identical(size, as.numeric(byte_count))) {
+        unlink(tmp)
+        stop(
+            "Local range read produced an unexpected byte count.",
+            call. = FALSE
+        )
+    }
+    if (file.exists(path)) {
+        unlink(path)
+    }
+    if (!file.rename(tmp, path)) {
+        file.copy(tmp, path, overwrite = TRUE)
+        unlink(tmp)
+    }
+    invisible(path)
+}
+# }}}
+
+# Merge completed piece files in byte-range order into one atomic result.
+# downloader__worker_merge_piece_files {{{
+downloader__worker_merge_piece_files <- function(
+    pieces,
+    tmp_done,
+    chunk_size = 1024L^2L
+) {
+    pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
+    dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
+    tmp_merge <- paste0(tmp_done, ".merge")
+    out_con <- file(tmp_merge, "wb")
+    on.exit(close(out_con), add = TRUE)
+    for (i in seq_len(nrow(pieces))) {
+        path <- pieces$path[[i]]
+        in_con <- file(path, "rb")
+        repeat {
+            chunk <- readBin(in_con, "raw", n = as.integer(chunk_size))
             if (!length(chunk)) {
                 break
             }
             writeBin(chunk, out_con)
-            remaining <- remaining - length(chunk)
         }
-        close(out_con)
         close(in_con)
-        on.exit(NULL, add = FALSE)
-        size <- if (file.exists(tmp)) {
-            as.numeric(file.info(tmp, extra_cols = FALSE)$size)
-        } else {
-            NA_real_
-        }
-        if (!identical(size, as.numeric(byte_count))) {
-            unlink(tmp)
-            stop(
-                "Local range read produced an unexpected byte count.",
-                call. = FALSE
-            )
-        }
-        if (file.exists(path)) {
-            unlink(path)
-        }
-        if (!file.rename(tmp, path)) {
-            file.copy(tmp, path, overwrite = TRUE)
-            unlink(tmp)
-        }
-        invisible(path)
     }
-
-    # Merge completed piece files in byte-range order into one atomic result.
-    merge_piece_files <- function(pieces, tmp_done, chunk_size = 1024L^2L) {
-        pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
-        dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
-        tmp_merge <- paste0(tmp_done, ".merge")
-        out_con <- file(tmp_merge, "wb")
-        on.exit(close(out_con), add = TRUE)
-        for (i in seq_len(nrow(pieces))) {
-            path <- pieces$path[[i]]
-            in_con <- file(path, "rb")
-            repeat {
-                chunk <- readBin(in_con, "raw", n = as.integer(chunk_size))
-                if (!length(chunk)) {
-                    break
-                }
-                writeBin(chunk, out_con)
-            }
-            close(in_con)
-        }
-        close(out_con)
-        on.exit(NULL, add = FALSE)
-        if (file.exists(tmp_done)) {
-            unlink(tmp_done)
-        }
-        if (!file.rename(tmp_merge, tmp_done)) {
-            file.copy(tmp_merge, tmp_done, overwrite = TRUE)
-            unlink(tmp_merge)
-        }
-        invisible(tmp_done)
+    close(out_con)
+    on.exit(NULL, add = FALSE)
+    if (file.exists(tmp_done)) {
+        unlink(tmp_done)
     }
-
-    # Resolve the final download target from its optional relative subdirectory.
-    target_path <- function(dest, subdir, filename) {
-        if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
-            file.path(dest, filename)
-        } else {
-            file.path(dest, subdir, filename)
-        }
+    if (!file.rename(tmp_merge, tmp_done)) {
+        file.copy(tmp_merge, tmp_done, overwrite = TRUE)
+        unlink(tmp_merge)
     }
+    invisible(tmp_done)
+}
+# }}}
 
-    # Move a verified temporary file into place with a copy fallback across filesystems.
-    finalize <- function(tmp_done, target_path) {
-        dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
-        renamed <- tryCatch(
-            file.rename(tmp_done, target_path),
-            error = function(e) FALSE
-        )
-        if (!isTRUE(renamed)) {
-            file.copy(tmp_done, target_path, overwrite = TRUE)
-            unlink(tmp_done)
-        }
-        normalizePath(target_path, mustWork = TRUE, winslash = "/")
+# Resolve the final download target from its optional relative subdirectory.
+# downloader__worker_target_path {{{
+downloader__worker_target_path <- function(dest, subdir, filename) {
+    if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
+        file.path(dest, filename)
+    } else {
+        file.path(dest, subdir, filename)
     }
+}
+# }}}
 
-    list(
-        as_df = as_df,
-        one_chr = one_chr,
-        normalize_count = normalize_count,
-        normalize_transfer_policy = normalize_transfer_policy,
-        checksum_file = checksum_file,
-        verify_checksum = verify_checksum,
-        null_if_empty = null_if_empty,
-        curl_handle = curl_handle,
-        format_byte = format_byte,
-        headers_text = headers_text,
-        resume_supported = resume_supported,
-        resume_guard = resume_guard,
-        copy_file_range = copy_file_range,
-        merge_piece_files = merge_piece_files,
-        target_path = target_path,
-        finalize = finalize
+# Move a verified temporary file into place with a copy fallback across filesystems.
+# downloader__worker_finalize {{{
+downloader__worker_finalize <- function(tmp_done, target_path) {
+    dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
+    renamed <- tryCatch(
+        file.rename(tmp_done, target_path),
+        error = function(e) FALSE
     )
+    if (!isTRUE(renamed)) {
+        file.copy(tmp_done, target_path, overwrite = TRUE)
+        unlink(tmp_done)
+    }
+    normalizePath(target_path, mustWork = TRUE, winslash = "/")
+}
+# }}}
+
+# Build the self-contained helper bundle serialized with downloader worker tasks
+# by cloning canonical top-level helpers into a baseenv()-parented environment.
+# downloader__worker_dependencies {{{
+downloader__worker_dependencies <- function() {
+    source_env <- parent.env(environment())
+    worker_env <- new.env(parent = baseenv())
+
+    export_map <- c(
+        as_df = "downloader__as_df",
+        one_chr = "downloader__one_chr",
+        normalize_count = "downloader__worker_normalize_count",
+        normalize_transfer_policy = "downloader__worker_normalize_transfer_policy",
+        checksum_file = "downloader__checksum_file",
+        verify_checksum = "downloader__worker_verify_checksum",
+        null_if_empty = "downloader__null_if_empty",
+        curl_handle = "downloader__worker_curl_handle",
+        format_byte = "downloader__worker_format_byte",
+        headers_text = "downloader__headers_text",
+        resume_supported = "downloader__worker_resume_supported",
+        resume_guard = "downloader__worker_resume_guard",
+        transfer_response = "downloader__worker_transfer_response",
+        piece_guard = "downloader__worker_piece_guard",
+        transfer_preserve = "downloader__worker_transfer_preserve",
+        transfer_read = "downloader__worker_transfer_read",
+        transfer_write = "downloader__worker_transfer_write",
+        transfer_seal = "downloader__worker_transfer_seal",
+        transfer_stream = "downloader__worker_transfer_stream",
+        copy_file_range = "downloader__worker_copy_file_range",
+        merge_piece_files = "downloader__worker_merge_piece_files",
+        target_path = "downloader__worker_target_path",
+        finalize = "downloader__worker_finalize"
+    )
+    internal_helpers <- c(
+        "downloader__curl_handle",
+        "downloader__resume_supported",
+        "downloader__worker_response_headers",
+        "downloader__worker_parse_byte_range"
+    )
+
+    for (fn_name in unique(c(unname(export_map), internal_helpers))) {
+        fn <- get(fn_name, envir = source_env, inherits = FALSE)
+        environment(fn) <- worker_env
+        assign(fn_name, fn, envir = worker_env)
+    }
+
+    out <- vector("list", length(export_map))
+    names(out) <- names(export_map)
+    for (export_name in names(export_map)) {
+        out[[export_name]] <- get(
+            export_map[[export_name]],
+            envir = worker_env,
+            inherits = FALSE
+        )
+    }
+    out
 }
 # }}}
 
@@ -2005,6 +2737,12 @@ downloader__worker_segmented_download <- function(
             !isTRUE(overwrite) &&
             verify_checksum(target_path, checksum, checksum_type)
     ) {
+        worker_dependencies$transfer_seal(
+            file.path(temp, paste0(tmp_id, ".part")),
+            target_path,
+            checksum,
+            checksum_type
+        )
         return(list(
             ok = TRUE,
             path = normalizePath(target_path, mustWork = TRUE, winslash = "/"),
@@ -2017,6 +2755,12 @@ downloader__worker_segmented_download <- function(
             verify_checksum(tmp_done, checksum, checksum_type)
     ) {
         path <- worker_dependencies$finalize(tmp_done, target_path)
+        worker_dependencies$transfer_seal(
+            file.path(temp, paste0(tmp_id, ".part")),
+            path,
+            checksum,
+            checksum_type
+        )
         return(list(
             ok = TRUE,
             path = path,
@@ -2025,22 +2769,130 @@ downloader__worker_segmented_download <- function(
         ))
     }
 
+    evidence_by_resource <- list()
+    # Bind every contributing GET to the fixed representation before writing.
+    bind_evidence <- function(evidence) {
+        if (
+            is.finite(evidence$size) && evidence$size != sum(pieces$byte_count)
+        ) {
+            stop(
+                "source_changed: Actual HTTP piece total differs from the planned representation.",
+                call. = FALSE
+            )
+        }
+        key <- evidence$request_url
+        previous <- evidence_by_resource[[key]]
+        if (is.null(checksum) && grepl("^https?://", key)) {
+            if (is.na(evidence$validator_kind)) {
+                stop(
+                    "HTTP range pieces have insufficient strong representation evidence.",
+                    call. = FALSE
+                )
+            }
+            if (length(setdiff(names(evidence_by_resource), key))) {
+                stop(
+                    "HTTP range pieces from different resources require a publisher checksum.",
+                    call. = FALSE
+                )
+            }
+            if (
+                !is.null(previous) &&
+                    (!identical(previous$final_url, evidence$final_url) ||
+                        !identical(
+                            previous$validator_kind,
+                            evidence$validator_kind
+                        ) ||
+                        !identical(
+                            previous$validator_value,
+                            evidence$validator_value
+                        ) ||
+                        (is.finite(previous$size) &&
+                            is.finite(evidence$size) &&
+                            previous$size != evidence$size))
+            ) {
+                stop(
+                    "source_changed: HTTP range pieces describe different representations.",
+                    call. = FALSE
+                )
+            }
+        }
+        if (is.null(previous)) {
+            evidence_by_resource[[key]] <<- evidence
+        }
+        invisible(NULL)
+    }
+    # A saved length alone cannot authorize reuse of an earlier HTTP piece.
     valid_piece <- function(row) {
         path <- row$path[[1L]]
-        file.exists(path) &&
+        if (
+            !file.exists(path) ||
+                as.numeric(file.info(path, extra_cols = FALSE)$size) !=
+                    as.numeric(row$byte_count[[1L]])
+        ) {
+            return(FALSE)
+        }
+        state <- worker_dependencies$transfer_read(paste0(path, ".part"))
+        !is.null(state) &&
+            isTRUE(state$complete) &&
             identical(
-                as.numeric(file.info(path, extra_cols = FALSE)$size),
+                as.numeric(state$bytes),
                 as.numeric(row$byte_count[[1L]])
-            )
+            ) &&
+            identical(state$sha256, checksum_file(path, "sha256")) &&
+            state$request_url %in% candidates$url &&
+            (!is.null(checksum) ||
+                !is.null(worker_dependencies$null_if_empty(
+                    state$validator_kind
+                )))
     }
     for (i in seq_len(nrow(pieces))) {
+        path <- pieces$path[[i]]
         if (valid_piece(pieces[i, , drop = FALSE])) {
+            state <- worker_dependencies$transfer_read(paste0(path, ".part"))
+            error <- tryCatch(
+                {
+                    bind_evidence(state)
+                    NULL
+                },
+                error = function(e) conditionMessage(e)
+            )
+            if (!is.null(error)) {
+                return(list(
+                    ok = FALSE,
+                    error = error,
+                    pieces = pieces,
+                    mode_used = mode_used
+                ))
+            }
             pieces$status[[i]] <- "done"
             pieces$bytes_done[[i]] <- as.numeric(pieces$byte_count[[i]])
             pieces$last_error[[i]] <- NA_character_
-        } else if (identical(pieces$status[[i]], "done")) {
+        } else {
+            if (file.exists(path)) {
+                if (
+                    !file.rename(
+                        path,
+                        paste0(path, ".retained-", basename(tempfile()))
+                    )
+                ) {
+                    stop(
+                        "Cannot preserve the previous HTTP range piece.",
+                        call. = FALSE
+                    )
+                }
+            }
+            if (
+                file.exists(sub(
+                    "[.]part$",
+                    ".transfer.json",
+                    paste0(path, ".part")
+                ))
+            ) {
+                worker_dependencies$transfer_preserve(paste0(path, ".part"))
+            }
             pieces$status[[i]] <- "pending"
             pieces$bytes_done[[i]] <- 0
+            pieces$attempts[[i]] <- 0L
         }
     }
 
@@ -2080,6 +2932,14 @@ downloader__worker_segmented_download <- function(
             host_con = piece_concurrency
         )
         conns <- list()
+        handles <- list()
+        batch_error <- "curl multi transfer failed."
+        on.exit(
+            for (handle in handles) {
+                try(curl::multi_cancel(handle), silent = TRUE)
+            },
+            add = TRUE
+        )
         close_conn <- function(key) {
             con <- conns[[key]]
             if (!is.null(con)) {
@@ -2098,6 +2958,9 @@ downloader__worker_segmented_download <- function(
                 ]
                 tmp <- paste0(row$path[[1L]], ".part")
                 dir.create(dirname(tmp), recursive = TRUE, showWarnings = FALSE)
+                if (file.exists(tmp)) {
+                    worker_dependencies$transfer_preserve(tmp)
+                }
                 con <- file(tmp, "wb")
                 conns[[as.character(j)]] <<- con
                 handle <- curl_handle(
@@ -2110,6 +2973,7 @@ downloader__worker_segmented_download <- function(
                 )
                 curl::handle_setheaders(
                     handle,
+                    `Accept-Encoding` = "identity",
                     Range = sprintf(
                         "bytes=%s-%s",
                         format_byte(row$start_byte[[1L]]),
@@ -2119,25 +2983,51 @@ downloader__worker_segmented_download <- function(
                 curl::handle_setopt(
                     handle,
                     url = candidate$url[[1L]],
-                    failonerror = FALSE
+                    failonerror = FALSE,
+                    http_content_decoding = FALSE
                 )
+                guard_error <- NULL
+                guard <- worker_dependencies$piece_guard(
+                    handle,
+                    candidate$url[[1L]],
+                    row,
+                    tmp,
+                    bind_evidence
+                )
+                handles[[as.character(j)]] <<- handle
                 curl::multi_add(
                     handle,
                     data = function(chunk, ...) {
-                        writeBin(chunk, con)
-                        TRUE
+                        guard_error <<- tryCatch(
+                            {
+                                guard$accept(chunk)
+                                writeBin(chunk, con)
+                                flush(con)
+                                NULL
+                            },
+                            error = function(e) conditionMessage(e)
+                        )
+                        is.null(guard_error)
                     },
                     done = function(response, ...) {
+                        validation_error <- tryCatch(
+                            {
+                                guard$finish(response)
+                                NULL
+                            },
+                            error = function(e) conditionMessage(e)
+                        )
                         close_conn(as.character(j))
                         size <- if (file.exists(tmp)) {
                             as.numeric(file.info(tmp, extra_cols = FALSE)$size)
                         } else {
                             NA_real_
                         }
-                        ok <- identical(
-                            as.integer(response$status_code),
-                            206L
-                        ) &&
+                        ok <- is.null(validation_error) &&
+                            identical(
+                                as.integer(response$status_code),
+                                206L
+                            ) &&
                             identical(size, as.numeric(row$byte_count[[1L]]))
                         if (ok) {
                             if (file.exists(row$path[[1L]])) {
@@ -2147,30 +3037,46 @@ downloader__worker_segmented_download <- function(
                                 file.copy(tmp, row$path[[1L]], overwrite = TRUE)
                                 unlink(tmp)
                             }
+                            worker_dependencies$transfer_seal(
+                                tmp,
+                                row$path[[1L]],
+                                NULL,
+                                checksum_type
+                            )
                             out[[j]] <<- list(
                                 ok = TRUE,
                                 bytes_done = size,
                                 error = NA_character_
                             )
                         } else {
-                            unlink(tmp)
+                            worker_dependencies$transfer_preserve(tmp)
                             out[[j]] <<- list(
                                 ok = FALSE,
                                 bytes_done = 0,
-                                error = sprintf(
-                                    "HTTP Range request returned status %s or unexpected byte count.",
-                                    response$status_code
-                                )
+                                error = if (!is.null(validation_error)) {
+                                    validation_error
+                                } else {
+                                    sprintf(
+                                        "HTTP Range request returned status %s or unexpected byte count.",
+                                        response$status_code
+                                    )
+                                },
+                                full_response = guard$full_response()
                             )
                         }
                     },
                     fail = function(error, ...) {
                         close_conn(as.character(j))
-                        unlink(tmp)
+                        worker_dependencies$transfer_preserve(tmp)
                         out[[j]] <<- list(
                             ok = FALSE,
                             bytes_done = 0,
-                            error = as.character(error)
+                            error = if (!is.null(guard_error)) {
+                                guard_error
+                            } else {
+                                as.character(error)
+                            },
+                            full_response = guard$full_response()
                         )
                     },
                     pool = pool
@@ -2202,6 +3108,7 @@ downloader__worker_segmented_download <- function(
                 TRUE
             },
             error = function(e) {
+                batch_error <<- conditionMessage(e)
                 for (key in names(conns)) {
                     close_conn(key)
                 }
@@ -2217,12 +3124,137 @@ downloader__worker_segmented_download <- function(
                     out[[i]] <- list(
                         ok = FALSE,
                         bytes_done = 0,
-                        error = "curl multi transfer failed."
+                        error = batch_error
                     )
                 }
             }
         }
         out
+    }
+
+    # Whole-file replacement begins only after download_http_batch has returned,
+    # cancelled its handles and closed its writers. Persist the original anchors
+    # separately from the new bytes so a later process can repeat this recovery.
+    recover_full_response <- function(response = NULL) {
+        tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
+        saved <- worker_dependencies$transfer_read(tmp_part)
+        representation <- saved$range_fallback
+        if (is.null(representation)) {
+            representation <- list(
+                size = sum(pieces$byte_count),
+                anchors = evidence_by_resource,
+                response = response
+            )
+            if (file.exists(tmp_part) || !is.null(saved)) {
+                worker_dependencies$transfer_preserve(tmp_part)
+            }
+            worker_dependencies$transfer_write(
+                tmp_part,
+                list(
+                    generation = basename(tempfile("transfer-")),
+                    bytes = 0,
+                    sha256 = NA_character_,
+                    complete = FALSE,
+                    checksum_verified = FALSE,
+                    range_fallback = representation
+                )
+            )
+        }
+        # Only known active piece paths move; retained history is never deleted
+        # by the ordinary task-piece cleanup after a successful replacement.
+        for (i in seq_len(nrow(pieces))) {
+            path <- pieces$path[[i]]
+            suffix <- paste0(".retained-", basename(tempfile()))
+            for (active in c(
+                path,
+                paste0(path, ".part"),
+                paste0(path, ".transfer.json")
+            )) {
+                if (
+                    file.exists(active) &&
+                        !file.rename(active, paste0(active, suffix))
+                ) {
+                    stop(
+                        "Cannot preserve the previous HTTP range piece.",
+                        call. = FALSE
+                    )
+                }
+            }
+            pieces$status[[i]] <<- "pending"
+            pieces$bytes_done[[i]] <<- 0
+        }
+        if (file.exists(tmp_done)) {
+            if (
+                !file.rename(
+                    tmp_done,
+                    paste0(tmp_done, ".retained-", basename(tempfile()))
+                )
+            ) {
+                stop(
+                    "Cannot preserve the previous complete response.",
+                    call. = FALSE
+                )
+            }
+            worker_dependencies$transfer_preserve(tmp_part)
+        }
+        url <- representation$response$request_url
+        error <- tryCatch(
+            {
+                worker_dependencies$transfer_stream(
+                    url = url,
+                    tmp_part = tmp_part,
+                    tmp_done = tmp_done,
+                    timeout = timeout,
+                    start_byte = 0,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = proxy,
+                    useragent = useragent,
+                    transfer_policy = transfer_policy,
+                    checksum = checksum,
+                    resume = TRUE,
+                    representation = representation
+                )
+                if (!verify_checksum(tmp_done, checksum, checksum_type)) {
+                    stop(
+                        "source_changed: Replacement content does not match the fixed publisher checksum.",
+                        call. = FALSE
+                    )
+                }
+                NULL
+            },
+            error = function(e) conditionMessage(e)
+        )
+        if (!is.null(error)) {
+            return(list(
+                ok = FALSE,
+                error = error,
+                pieces = pieces,
+                mode_used = mode_used
+            ))
+        }
+        path <- worker_dependencies$finalize(tmp_done, target_path)
+        worker_dependencies$transfer_seal(
+            tmp_part,
+            path,
+            checksum,
+            checksum_type
+        )
+        list(
+            ok = TRUE,
+            path = path,
+            selected_url = url,
+            used_candidate_id = candidates$candidate_id[candidates$url == url],
+            pieces = pieces,
+            mode_used = mode_used
+        )
+    }
+    saved_transfer <- worker_dependencies$transfer_read(file.path(
+        temp,
+        paste0(tmp_id, ".part")
+    ))
+    if (!is.null(saved_transfer$range_fallback)) {
+        return(recover_full_response())
     }
 
     while (any(!pieces$status %in% "done")) {
@@ -2286,6 +3318,26 @@ downloader__worker_segmented_download <- function(
                             path = row$path[[1L]],
                             chunk_size = piece_chunk_size
                         )
+                        evidence <- list(
+                            request_url = candidate$url[[1L]],
+                            final_url = candidate$url[[1L]],
+                            etag = NA_character_,
+                            last_modified = NA_character_,
+                            date = NA_character_,
+                            validator_kind = NA_character_,
+                            validator_value = NA_character_,
+                            generation = basename(tempfile("piece-")),
+                            size = sum(pieces$byte_count),
+                            bytes = row$byte_count[[1L]],
+                            sha256 = checksum_file(row$path[[1L]], "sha256"),
+                            complete = TRUE,
+                            checksum_verified = FALSE
+                        )
+                        worker_dependencies$transfer_write(
+                            paste0(row$path[[1L]], ".part"),
+                            evidence
+                        )
+                        bind_evidence(evidence)
                         list(
                             ok = TRUE,
                             bytes_done = as.numeric(row$byte_count[[1L]]),
@@ -2324,6 +3376,37 @@ downloader__worker_segmented_download <- function(
                 }
                 results[[http_rows[[k]]]] <- result
             }
+        }
+        # A competing response can prove a change while another asks to restart
+        # from zero. Preserve that contradiction instead of letting the restart
+        # mask it after the entire batch has retired.
+        contradictions <- which(vapply(
+            results,
+            function(result) {
+                !isTRUE(result$ok) &&
+                    isTRUE(grepl("^source_changed:", one_chr(result$error)))
+            },
+            logical(1L)
+        ))
+        if (length(contradictions)) {
+            return(list(
+                ok = FALSE,
+                error = results[[contradictions[[1L]]]]$error,
+                pieces = pieces,
+                mode_used = mode_used
+            ))
+        }
+        complete_responses <- which(vapply(
+            results,
+            function(result) {
+                !is.null(result$full_response)
+            },
+            logical(1L)
+        ))
+        if (length(complete_responses)) {
+            return(recover_full_response(
+                results[[complete_responses[[1L]]]]$full_response
+            ))
         }
         for (pos in seq_along(batch_idx)) {
             idx <- batch_idx[[pos]]
@@ -2374,15 +3457,64 @@ downloader__worker_segmented_download <- function(
             mode_used = mode_used
         ))
     }
+    piece_evidence <- lapply(pieces$path, function(path) {
+        worker_dependencies$transfer_read(paste0(path, ".part"))
+    })
+    if (any(vapply(piece_evidence, is.null, logical(1L)))) {
+        return(list(
+            ok = FALSE,
+            error = "HTTP range pieces are missing actual transfer evidence.",
+            pieces = pieces,
+            mode_used = mode_used
+        ))
+    }
+    evidence <- piece_evidence[[1L]]
+    evidence$origin <- "get-pieces"
+    evidence$generation <- basename(tempfile("transfer-pieces-"))
+    evidence$size <- sum(pieces$byte_count)
+    evidence$bytes <- evidence$size
+    evidence$sha256 <- checksum_file(tmp_done, "sha256")
+    evidence$pieces <- piece_evidence
+    evidence$sources <- as.character(jsonlite::toJSON(
+        unique(vapply(
+            piece_evidence,
+            function(x) x$request_url,
+            character(1L)
+        )),
+        auto_unbox = FALSE
+    ))
+    if (
+        length(unique(vapply(
+            piece_evidence,
+            function(x) x$request_url,
+            character(1L)
+        ))) >
+            1L
+    ) {
+        evidence$etag <- NA_character_
+        evidence$last_modified <- NA_character_
+        evidence$validator_kind <- NA_character_
+        evidence$validator_value <- NA_character_
+        evidence$validator_bound <- FALSE
+    }
+    evidence$complete <- FALSE
+    evidence$checksum_verified <- FALSE
+    tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
+    if (
+        file.exists(tmp_part) ||
+            !is.null(worker_dependencies$transfer_read(tmp_part))
+    ) {
+        worker_dependencies$transfer_preserve(tmp_part)
+    }
+    evidence$path <- tmp_done
+    worker_dependencies$transfer_write(tmp_part, evidence)
     path <- worker_dependencies$finalize(tmp_done, target_path)
+    worker_dependencies$transfer_seal(tmp_part, path, checksum, checksum_type)
     list(
         ok = TRUE,
         path = path,
-        selected_url = candidates$url[match(
-            used_candidate_id[[1L]],
-            candidates$candidate_id
-        )],
-        used_candidate_id = used_candidate_id,
+        selected_url = piece_evidence[[1L]]$request_url,
+        used_candidate_id = unique(pieces$candidate_id),
         pieces = pieces,
         mode_used = mode_used
     )
@@ -2418,74 +3550,7 @@ downloader__worker_download <- function(
     verify_checksum <- worker_dependencies$verify_checksum
     normalize_transfer_policy <- worker_dependencies$normalize_transfer_policy
     curl_handle <- worker_dependencies$curl_handle
-    resume_supported <- worker_dependencies$resume_supported
-    stream <- function(
-        url,
-        tmp_part,
-        tmp_done,
-        timeout,
-        start_byte,
-        connect_timeout,
-        ssl_verifypeer,
-        proxy,
-        useragent,
-        transfer_policy
-    ) {
-        transfer_policy <- normalize_transfer_policy(transfer_policy)
-        if (
-            start_byte > 0 &&
-                !resume_supported(
-                    url,
-                    start_byte,
-                    timeout,
-                    connect_timeout,
-                    ssl_verifypeer,
-                    proxy,
-                    useragent,
-                    transfer_policy
-                )
-        ) {
-            unlink(tmp_part)
-            start_byte <- 0
-        }
-        handle <- curl_handle(
-            timeout = timeout,
-            connect_timeout = connect_timeout,
-            ssl_verifypeer = ssl_verifypeer,
-            proxy = proxy,
-            useragent = useragent,
-            transfer_policy = transfer_policy
-        )
-        curl::handle_setopt(handle, failonerror = TRUE)
-        if (start_byte > 0) {
-            curl::handle_setheaders(
-                handle,
-                Range = sprintf("bytes=%.0f-", start_byte)
-            )
-            curl::handle_setopt(handle, resume_from_large = start_byte)
-        }
-
-        guard <- worker_dependencies$resume_guard(
-            handle,
-            if (grepl("^https?://", url, ignore.case = TRUE)) start_byte else 0
-        )
-        con <- file(tmp_part, if (start_byte > 0) "ab" else "wb")
-        on.exit(close(con), add = TRUE)
-        response <- curl::curl_fetch_stream(
-            url,
-            function(chunk) {
-                guard$accept(chunk)
-                writeBin(chunk, con)
-                TRUE
-            },
-            handle = handle
-        )
-        guard$finish(response)
-        close(con)
-        on.exit(NULL)
-        file.rename(tmp_part, tmp_done)
-        invisible(tmp_done)
-    }
+    stream <- worker_dependencies$transfer_stream
 
     target_path <- worker_dependencies$target_path(dest, subdir, filename)
     tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
@@ -2497,6 +3562,12 @@ downloader__worker_download <- function(
             !isTRUE(overwrite) &&
             verify_checksum(target_path, checksum, checksum_type)
     ) {
+        worker_dependencies$transfer_seal(
+            tmp_part,
+            target_path,
+            checksum,
+            checksum_type
+        )
         return(list(
             ok = TRUE,
             path = normalizePath(target_path, mustWork = TRUE, winslash = "/")
@@ -2507,6 +3578,12 @@ downloader__worker_download <- function(
             verify_checksum(tmp_done, checksum, checksum_type)
     ) {
         path <- worker_dependencies$finalize(tmp_done, target_path)
+        worker_dependencies$transfer_seal(
+            tmp_part,
+            path,
+            checksum,
+            checksum_type
+        )
         return(list(ok = TRUE, path = path))
     }
 
@@ -2515,9 +3592,6 @@ downloader__worker_download <- function(
         file.info(tmp_part, extra_cols = FALSE)$size
     } else {
         0
-    }
-    if (!isTRUE(resume) && file.exists(tmp_part)) {
-        unlink(tmp_part)
     }
 
     attempt <- 1L
@@ -2542,7 +3616,9 @@ downloader__worker_download <- function(
                     ssl_verifypeer,
                     proxy,
                     useragent,
-                    transfer_policy
+                    transfer_policy,
+                    checksum = checksum,
+                    resume = resume
                 )
                 TRUE
             },
@@ -2554,9 +3630,25 @@ downloader__worker_download <- function(
         if (ok) {
             if (verify_checksum(tmp_done, checksum, checksum_type)) {
                 path <- worker_dependencies$finalize(tmp_done, target_path)
+                worker_dependencies$transfer_seal(
+                    tmp_part,
+                    path,
+                    checksum,
+                    checksum_type
+                )
                 return(list(ok = TRUE, path = path))
             }
 
+            evidence <- worker_dependencies$transfer_read(tmp_part)
+            if (
+                isTRUE(evidence$replaces_prior) ||
+                    isTRUE(evidence$source_changed_candidate)
+            ) {
+                return(list(
+                    ok = FALSE,
+                    error = "source_changed: Replacement content does not match the fixed publisher checksum."
+                ))
+            }
             actual <- checksum_file(tmp_done, checksum_type)
             checksum_history <- c(checksum_history, actual)
             unlink(c(tmp_part, tmp_done))
@@ -3025,6 +4117,12 @@ Downloader <- R6::R6Class(
 
             # if file is verified and exists, return it
             if (status == FileStatus$Verified && !overwrite) {
+                downloader__worker_transfer_seal(
+                    tmp_part,
+                    dest,
+                    checksum,
+                    checksum_type
+                )
                 downloader__verbose(cli::cli_alert_info(
                     "File already verified: {dest}. Skipping..."
                 ))
@@ -3048,6 +4146,12 @@ Downloader <- R6::R6Class(
                     "Moving completed download to final location..."
                 ))
                 private$finalize_download(tmp_done, dest)
+                downloader__worker_transfer_seal(
+                    tmp_part,
+                    dest,
+                    checksum,
+                    checksum_type
+                )
                 return(dest)
             }
 
@@ -3063,21 +4167,9 @@ Downloader <- R6::R6Class(
             if (resume && status == FileStatus$Downloading) {
                 # resume from .part file
                 start_byte <- file.info(tmp_part)$size
-                resume_state <- private$prepare_resume(
-                    url,
-                    tmp_part,
-                    start_byte
-                )
-                start_byte <- resume_state$start_byte
-                if (isTRUE(resume_state$restarted)) {
-                    downloader__verbose(cli::cli_alert_warning(
-                        resume_state$message
-                    ))
-                } else {
-                    downloader__verbose(cli::cli_alert_info(
-                        "Resuming download from byte {start_byte}..."
-                    ))
-                }
+                downloader__verbose(cli::cli_alert_info(
+                    "Resuming download from byte {start_byte}..."
+                ))
             }
 
             # download with retry logic
@@ -3101,7 +4193,9 @@ Downloader <- R6::R6Class(
                             tmp_done,
                             progress,
                             start_byte,
-                            task_id = .tmp_id
+                            task_id = .tmp_id,
+                            checksum = checksum,
+                            resume = resume
                         )
                         TRUE
                     },
@@ -3125,6 +4219,18 @@ Downloader <- R6::R6Class(
                         )
 
                         if (!is_valid) {
+                            evidence <- downloader__worker_transfer_read(
+                                tmp_part
+                            )
+                            if (
+                                (isTRUE(evidence$replaces_prior) ||
+                                    isTRUE(evidence$source_changed_candidate))
+                            ) {
+                                stop(
+                                    "source_changed: Replacement content does not match the fixed publisher checksum.",
+                                    call. = FALSE
+                                )
+                            }
                             # get actual checksum for debugging
                             actual <- private$get_file_checksum(
                                 tmp_done,
@@ -3195,6 +4301,12 @@ Downloader <- R6::R6Class(
 
                     # move to final location
                     private$finalize_download(tmp_done, dest)
+                    downloader__worker_transfer_seal(
+                        tmp_part,
+                        dest,
+                        checksum,
+                        checksum_type
+                    )
                     downloader__verbose(cli::cli_alert_success(
                         "Downloaded: {.var {dest}}."
                     ))
@@ -4075,8 +5187,15 @@ Downloader <- R6::R6Class(
         #' @param session_id Optional session ID.
         #' @param task_id Optional task ID vector.
         #'
-        #' @return A data frame of completed task records with a
-        #'        `checksum_ok` column.
+        #' @return A data frame of completed task records with `checksum_ok` and
+        #'        `integrity_evidence` columns. Read both together with task status:
+        #'        `"publisher_checksum"` identifies a supplied expected checksum,
+        #'        `"saved_transfer"` identifies complete saved byte-producing transfer
+        #'        evidence without a publisher checksum, and `"missing"` identifies
+        #'        absent historical evidence. Generic `checksum_ok` can be `TRUE` on
+        #'        file existence alone when neither evidence type is available. A local
+        #'        hash does not establish publisher checksum verification or authorize
+        #'        Store source adoption by itself.
         # verify {{{
         verify = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()
@@ -4086,6 +5205,7 @@ Downloader <- R6::R6Class(
                     task_id = task_id,
                     status = c("done", "skipped")
                 )
+                integrity_errors <- rep(NA_character_, nrow(tasks))
                 tasks$checksum_ok <- if (nrow(tasks)) {
                     vapply(
                         seq_len(nrow(tasks)),
@@ -4098,14 +5218,24 @@ Downloader <- R6::R6Class(
                             if (!file.exists(path)) {
                                 return(FALSE)
                             }
-                            if (is.na(checksum)) {
-                                return(TRUE)
+                            if (
+                                !is.na(checksum) &&
+                                    !private$verify_checksum_internal(
+                                        path,
+                                        checksum,
+                                        checksum_type
+                                    )
+                            ) {
+                                return(FALSE)
                             }
-                            private$verify_checksum_internal(
-                                path,
-                                checksum,
-                                checksum_type
-                            )
+                            integrity_errors[[
+                                i
+                            ]] <<- private$task_target_error(tasks[
+                                i,
+                                ,
+                                drop = FALSE
+                            ])
+                            is.na(integrity_errors[[i]])
                         },
                         logical(1L)
                     )
@@ -4115,7 +5245,10 @@ Downloader <- R6::R6Class(
                 failed <- tasks[!tasks$checksum_ok, , drop = FALSE]
                 if (nrow(failed)) {
                     failed$status <- "error"
-                    failed$last_error <- "Checksum verification failed."
+                    failed$last_error <- integrity_errors[!tasks$checksum_ok]
+                    failed$last_error[is.na(
+                        failed$last_error
+                    )] <- "Checksum verification failed."
                     failed$completed_at <- downloader__now()
                     private$replace_rows(
                         "download_task",
@@ -4139,8 +5272,27 @@ Downloader <- R6::R6Class(
                     tasks$status[!tasks$checksum_ok] <- "error"
                     tasks$last_error[
                         !tasks$checksum_ok
-                    ] <- "Checksum verification failed."
+                    ] <- failed$last_error
                 }
+                # Classify the original evidence separately from the permissive
+                # generic checksum result when no publisher hash was supplied.
+                tasks <- private$decorate_task_status(tasks)
+                tasks$integrity_evidence <- vapply(
+                    seq_len(nrow(tasks)),
+                    function(i) {
+                        if (!is.na(downloader__one_chr(tasks$checksum[[i]]))) {
+                            "publisher_checksum"
+                        } else if (
+                            isTRUE(tasks$transfer_complete[[i]]) &&
+                                !is.na(tasks$transfer_sha256[[i]])
+                        ) {
+                            "saved_transfer"
+                        } else {
+                            "missing"
+                        }
+                    },
+                    character(1L)
+                )
                 tasks
             })
         },
@@ -4895,239 +6047,99 @@ Downloader <- R6::R6Class(
 
         # init_manifest_schema {{{
         init_manifest_schema = function() {
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_config (
-                    config_id VARCHAR PRIMARY KEY,
-                    schema_version VARCHAR,
-                    dest VARCHAR,
-                    temp VARCHAR,
-                    retries INTEGER,
-                    timeout INTEGER,
-                    ssl_verifypeer BOOLEAN,
-                    proxy VARCHAR,
-                    connect_timeout INTEGER,
-                    useragent VARCHAR,
-                    cleanup BOOLEAN,
-                    n_workers INTEGER,
-                    node_cooldown_after_failures INTEGER,
-                    node_cooldown_seconds INTEGER,
-                    node_history_ttl_seconds INTEGER,
-                    node_min_attempts INTEGER,
-                    transfer_chunk_size DOUBLE,
-                    transfer_bandwidth_limit DOUBLE,
-                    transfer_low_speed_limit DOUBLE,
-                    transfer_low_speed_time DOUBLE,
-                    transfer_range_mode VARCHAR,
-                    transfer_piece_size INTEGER,
-                    transfer_piece_concurrency INTEGER,
-                    transfer_max_sources INTEGER,
+            ddls <- c(
+                "CREATE TABLE IF NOT EXISTS download_config (
+                    config_id VARCHAR PRIMARY KEY, schema_version VARCHAR,
+                    dest VARCHAR, temp VARCHAR, retries INTEGER, timeout INTEGER,
+                    ssl_verifypeer BOOLEAN, proxy VARCHAR,
+                    connect_timeout INTEGER, useragent VARCHAR,
+                    cleanup BOOLEAN, n_workers INTEGER,
+                    node_cooldown_after_failures INTEGER, node_cooldown_seconds INTEGER,
+                    node_history_ttl_seconds INTEGER, node_min_attempts INTEGER,
+                    transfer_chunk_size DOUBLE, transfer_bandwidth_limit DOUBLE,
+                    transfer_low_speed_limit DOUBLE, transfer_low_speed_time DOUBLE,
+                    transfer_range_mode VARCHAR, transfer_piece_size INTEGER,
+                    transfer_piece_concurrency INTEGER, transfer_max_sources INTEGER,
                     transfer_require_checksum_for_multisource BOOLEAN,
                     transfer_range_probe_timeout INTEGER,
-                    resource_host_concurrency INTEGER,
-                    resource_disk_preflight BOOLEAN,
-                    resource_min_free_space DOUBLE,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_session (
-                    session_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    status VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
+                    resource_host_concurrency INTEGER, resource_disk_preflight BOOLEAN,
+                    resource_min_free_space DOUBLE, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_session (
+                    session_id VARCHAR PRIMARY KEY, label VARCHAR, status VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_task (
+                    task_id VARCHAR PRIMARY KEY, session_id VARCHAR,
+                    logical_file_id VARCHAR, file_key VARCHAR, esgf_id VARCHAR,
+                    dataset_id VARCHAR, filename VARCHAR, subdir VARCHAR,
+                    target_path VARCHAR, checksum VARCHAR, checksum_type VARCHAR,
+                    size DOUBLE, status VARCHAR, attempts INTEGER,
+                    bytes_done DOUBLE, speed_bps DOUBLE, eta_seconds DOUBLE,
+                    progress_updated_at TIMESTAMP, current_url VARCHAR,
+                    job_id VARCHAR, owner_id VARCHAR, lease_until TIMESTAMP,
+                    heartbeat_at TIMESTAMP, selected_url VARCHAR, data_node VARCHAR,
+                    last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP,
                     completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_task (
-                    task_id VARCHAR PRIMARY KEY,
-                    session_id VARCHAR,
-                    logical_file_id VARCHAR,
-                    file_key VARCHAR,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    filename VARCHAR,
-                    subdir VARCHAR,
-                    target_path VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    status VARCHAR,
-                    attempts INTEGER,
-                    bytes_done DOUBLE,
-                    speed_bps DOUBLE,
-                    eta_seconds DOUBLE,
-                    progress_updated_at TIMESTAMP,
-                    current_url VARCHAR,
-                    job_id VARCHAR,
-                    owner_id VARCHAR,
-                    lease_until TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    selected_url VARCHAR,
-                    data_node VARCHAR,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_candidate (
-                    candidate_id VARCHAR PRIMARY KEY,
-                    task_id VARCHAR,
-                    url VARCHAR,
-                    service VARCHAR,
-                    data_node VARCHAR,
-                    priority INTEGER,
-                    probe_latency DOUBLE,
-                    probe_throughput DOUBLE,
-                    range_supported BOOLEAN,
-                    range_size DOUBLE,
-                    range_etag VARCHAR,
-                    range_last_modified VARCHAR,
-                    range_final_url VARCHAR,
-                    range_probe_error VARCHAR,
-                    range_probed_at TIMESTAMP,
-                    failed_count INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
+                )",
+                "CREATE TABLE IF NOT EXISTS download_candidate (
+                    candidate_id VARCHAR PRIMARY KEY, task_id VARCHAR, url VARCHAR,
+                    service VARCHAR, data_node VARCHAR, priority INTEGER,
+                    probe_latency DOUBLE, probe_throughput DOUBLE,
+                    range_supported BOOLEAN, range_size DOUBLE,
+                    range_etag VARCHAR, range_last_modified VARCHAR,
+                    range_final_url VARCHAR, range_probe_error VARCHAR,
+                    range_probed_at TIMESTAMP, failed_count INTEGER,
+                    last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_piece (
+                    piece_id VARCHAR PRIMARY KEY, task_id VARCHAR, piece_index INTEGER,
+                    start_byte DOUBLE, end_byte DOUBLE, byte_count DOUBLE,
+                    path VARCHAR, status VARCHAR, candidate_id VARCHAR,
+                    attempts INTEGER, bytes_done DOUBLE, last_error VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_event (
+                    event_id VARCHAR PRIMARY KEY, job_id VARCHAR, session_id VARCHAR,
+                    task_id VARCHAR, event VARCHAR, message VARCHAR, created_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_job (
+                    job_id VARCHAR PRIMARY KEY, session_id VARCHAR, status VARCHAR,
+                    mode VARCHAR, pid INTEGER, hostname VARCHAR, store_path VARCHAR,
+                    log_path VARCHAR, overwrite BOOLEAN, resume BOOLEAN,
+                    bytes_done DOUBLE, bytes_total DOUBLE, speed_bps DOUBLE,
+                    active_task_count INTEGER, progress_updated_at TIMESTAMP,
+                    started_at TIMESTAMP, heartbeat_at TIMESTAMP, completed_at TIMESTAMP,
+                    exit_code INTEGER, error VARCHAR, created_at TIMESTAMP,
                     updated_at TIMESTAMP
-                )
-            "
+                )",
+                "CREATE TABLE IF NOT EXISTS download_daemon (
+                    daemon_id VARCHAR PRIMARY KEY, status VARCHAR, pid INTEGER,
+                    hostname VARCHAR, port INTEGER, token VARCHAR,
+                    heartbeat_interval DOUBLE, started_at TIMESTAMP,
+                    heartbeat_at TIMESTAMP, stopped_at TIMESTAMP, log_path VARCHAR,
+                    error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_control (
+                    control_id VARCHAR PRIMARY KEY, target_type VARCHAR,
+                    target_id VARCHAR, command VARCHAR, status VARCHAR,
+                    message VARCHAR, created_at TIMESTAMP, handled_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_node (
+                    node_id VARCHAR PRIMARY KEY, data_node VARCHAR, service VARCHAR,
+                    success_count INTEGER, failure_count INTEGER, bytes_done DOUBLE,
+                    avg_latency DOUBLE, probe_success_count INTEGER,
+                    probe_failure_count INTEGER, last_success_at TIMESTAMP,
+                    last_failure_at TIMESTAMP, last_probe_at TIMESTAMP,
+                    cooldown_until TIMESTAMP, updated_at TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS download_meta (
+                    key VARCHAR PRIMARY KEY, value VARCHAR, updated_at TIMESTAMP
+                )"
             )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_piece (
-                    piece_id VARCHAR PRIMARY KEY,
-                    task_id VARCHAR,
-                    piece_index INTEGER,
-                    start_byte DOUBLE,
-                    end_byte DOUBLE,
-                    byte_count DOUBLE,
-                    path VARCHAR,
-                    status VARCHAR,
-                    candidate_id VARCHAR,
-                    attempts INTEGER,
-                    bytes_done DOUBLE,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_event (
-                    event_id VARCHAR PRIMARY KEY,
-                    job_id VARCHAR,
-                    session_id VARCHAR,
-                    task_id VARCHAR,
-                    event VARCHAR,
-                    message VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_job (
-                    job_id VARCHAR PRIMARY KEY,
-                    session_id VARCHAR,
-                    status VARCHAR,
-                    mode VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    store_path VARCHAR,
-                    log_path VARCHAR,
-                    overwrite BOOLEAN,
-                    resume BOOLEAN,
-                    bytes_done DOUBLE,
-                    bytes_total DOUBLE,
-                    speed_bps DOUBLE,
-                    active_task_count INTEGER,
-                    progress_updated_at TIMESTAMP,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    exit_code INTEGER,
-                    error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_daemon (
-                    daemon_id VARCHAR PRIMARY KEY,
-                    status VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    port INTEGER,
-                    token VARCHAR,
-                    heartbeat_interval DOUBLE,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    stopped_at TIMESTAMP,
-                    log_path VARCHAR,
-                    error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_control (
-                    control_id VARCHAR PRIMARY KEY,
-                    target_type VARCHAR,
-                    target_id VARCHAR,
-                    command VARCHAR,
-                    status VARCHAR,
-                    message VARCHAR,
-                    created_at TIMESTAMP,
-                    handled_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_node (
-                    node_id VARCHAR PRIMARY KEY,
-                    data_node VARCHAR,
-                    service VARCHAR,
-                    success_count INTEGER,
-                    failure_count INTEGER,
-                    bytes_done DOUBLE,
-                    avg_latency DOUBLE,
-                    probe_success_count INTEGER,
-                    probe_failure_count INTEGER,
-                    last_success_at TIMESTAMP,
-                    last_failure_at TIMESTAMP,
-                    last_probe_at TIMESTAMP,
-                    cooldown_until TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            private$exec_manifest(
-                "
-                CREATE TABLE IF NOT EXISTS download_meta (
-                    key VARCHAR PRIMARY KEY,
-                    value VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
+            for (sql in ddls) {
+                private$exec_manifest(sql)
+            }
             private$migrate_manifest_schema()
             invisible(NULL)
         },
@@ -5189,144 +6201,73 @@ Downloader <- R6::R6Class(
                     )
                 }
             }
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_success_count INTEGER"
+            additions <- list(
+                download_node = c(
+                    "probe_success_count INTEGER",
+                    "probe_failure_count INTEGER",
+                    "last_probe_at TIMESTAMP",
+                    "cooldown_until TIMESTAMP"
+                ),
+                download_config = c(
+                    "node_cooldown_after_failures INTEGER",
+                    "node_cooldown_seconds INTEGER",
+                    "node_history_ttl_seconds INTEGER",
+                    "node_min_attempts INTEGER",
+                    "transfer_chunk_size DOUBLE",
+                    "transfer_bandwidth_limit DOUBLE",
+                    "transfer_low_speed_limit DOUBLE",
+                    "transfer_low_speed_time DOUBLE",
+                    "transfer_range_mode VARCHAR",
+                    "transfer_piece_size INTEGER",
+                    "transfer_piece_concurrency INTEGER",
+                    "transfer_max_sources INTEGER",
+                    "transfer_require_checksum_for_multisource BOOLEAN",
+                    "transfer_range_probe_timeout INTEGER",
+                    "resource_host_concurrency INTEGER",
+                    "resource_disk_preflight BOOLEAN",
+                    "resource_min_free_space DOUBLE"
+                ),
+                download_task = c(
+                    "speed_bps DOUBLE",
+                    "eta_seconds DOUBLE",
+                    "progress_updated_at TIMESTAMP",
+                    "current_url VARCHAR",
+                    "job_id VARCHAR",
+                    "owner_id VARCHAR",
+                    "lease_until TIMESTAMP",
+                    "heartbeat_at TIMESTAMP"
+                ),
+                download_event = "job_id VARCHAR",
+                download_job = c(
+                    "mode VARCHAR",
+                    "store_path VARCHAR",
+                    "overwrite BOOLEAN",
+                    "resume BOOLEAN",
+                    "bytes_done DOUBLE",
+                    "bytes_total DOUBLE",
+                    "speed_bps DOUBLE",
+                    "active_task_count INTEGER",
+                    "progress_updated_at TIMESTAMP"
+                ),
+                download_candidate = c(
+                    "range_supported BOOLEAN",
+                    "range_size DOUBLE",
+                    "range_etag VARCHAR",
+                    "range_last_modified VARCHAR",
+                    "range_final_url VARCHAR",
+                    "range_probe_error VARCHAR",
+                    "range_probed_at TIMESTAMP"
+                )
             )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS probe_failure_count INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS last_probe_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_node ADD COLUMN IF NOT EXISTS cooldown_until TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_after_failures INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_cooldown_seconds INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_history_ttl_seconds INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS node_min_attempts INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_chunk_size DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_bandwidth_limit DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_limit DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_low_speed_time DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_range_mode VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_piece_size INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_piece_concurrency INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_max_sources INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_require_checksum_for_multisource BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS transfer_range_probe_timeout INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_host_concurrency INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_disk_preflight BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_config ADD COLUMN IF NOT EXISTS resource_min_free_space DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS speed_bps DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS eta_seconds DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS progress_updated_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS current_url VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS job_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS owner_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS lease_until TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_task ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_event ADD COLUMN IF NOT EXISTS job_id VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS mode VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS store_path VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS overwrite BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS resume BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS bytes_done DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS bytes_total DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS speed_bps DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS active_task_count INTEGER"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_job ADD COLUMN IF NOT EXISTS progress_updated_at TIMESTAMP"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_supported BOOLEAN"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_size DOUBLE"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_etag VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_last_modified VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_final_url VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_probe_error VARCHAR"
-            )
-            private$exec_manifest(
-                "ALTER TABLE download_candidate ADD COLUMN IF NOT EXISTS range_probed_at TIMESTAMP"
-            )
+            for (tbl in names(additions)) {
+                for (col in additions[[tbl]]) {
+                    private$exec_manifest(sprintf(
+                        "ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s",
+                        tbl,
+                        col
+                    ))
+                }
+            }
             invisible(NULL)
         },
         # }}}
@@ -5390,61 +6331,45 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
+        # select_rows {{{
+        select_rows = function(
+            table,
+            eq = list(),
+            in_vals = list(),
+            order_by = NULL
+        ) {
+            where <- downloader__sql_where(
+                private$manifest_conn,
+                eq = eq,
+                in_vals = in_vals
+            )
+            sql <- paste(
+                "SELECT * FROM",
+                downloader__ddb_ident(private$manifest_conn, table),
+                where,
+                if (!is.null(order_by)) paste("ORDER BY", order_by) else ""
+            )
+            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
+        },
+        # }}}
+
         # select_jobs {{{
         select_jobs = function(job_id = NULL, status = NULL) {
-            clauses <- character()
-            if (!is.null(job_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "job_id", job_id)
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_job")
+            private$select_rows(
+                "download_job",
+                in_vals = list(job_id = job_id, status = status),
+                order_by = "created_at, job_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, job_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
         # select_daemons {{{
         select_daemons = function(daemon_id = NULL, status = NULL) {
-            clauses <- character()
-            if (!is.null(daemon_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(
-                        private$manifest_conn,
-                        "daemon_id",
-                        daemon_id
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_daemon")
+            private$select_rows(
+                "download_daemon",
+                in_vals = list(daemon_id = daemon_id, status = status),
+                order_by = "created_at DESC, daemon_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at DESC, daemon_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -5454,54 +6379,12 @@ Downloader <- R6::R6Class(
             target_id = NULL,
             status = "queued"
         ) {
-            clauses <- character()
-            if (!is.null(target_type)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "target_type"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            target_type
-                        )
-                    )
-                )
-            }
-            if (!is.null(target_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "target_id"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            target_id
-                        )
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_control")
+            private$select_rows(
+                "download_control",
+                eq = list(target_type = target_type, target_id = target_id),
+                in_vals = list(status = status),
+                order_by = "created_at, control_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, control_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -6710,64 +7593,65 @@ Downloader <- R6::R6Class(
             status = NULL,
             job_id = NULL
         ) {
-            clauses <- character()
-            if (!is.null(session_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(
-                            private$manifest_conn,
-                            "session_id"
-                        ),
-                        downloader__ddb_literal(
-                            private$manifest_conn,
-                            session_id
-                        )
-                    )
-                )
-            }
-            if (!is.null(job_id)) {
-                clauses <- c(
-                    clauses,
-                    sprintf(
-                        "%s = %s",
-                        downloader__ddb_ident(private$manifest_conn, "job_id"),
-                        downloader__ddb_literal(private$manifest_conn, job_id)
-                    )
-                )
-            }
-            if (!is.null(task_id)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(
-                        private$manifest_conn,
-                        "task_id",
-                        task_id
-                    )
-                )
-            }
-            if (!is.null(status)) {
-                clauses <- c(
-                    clauses,
-                    downloader__sql_in(private$manifest_conn, "status", status)
-                )
-            }
-            sql <- sprintf(
-                "SELECT * FROM %s",
-                downloader__ddb_ident(private$manifest_conn, "download_task")
+            private$select_rows(
+                "download_task",
+                eq = list(session_id = session_id, job_id = job_id),
+                in_vals = list(task_id = task_id, status = status),
+                order_by = "created_at, task_id"
             )
-            if (length(clauses)) {
-                sql <- paste(sql, "WHERE", paste(clauses, collapse = " AND "))
-            }
-            sql <- paste(sql, "ORDER BY created_at, task_id")
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
         # decorate_task_status {{{
         decorate_task_status = function(tasks) {
             tasks <- downloader__as_df(tasks)
+            evidence_fields <- c(
+                "origin",
+                "sources",
+                "request_url",
+                "final_url",
+                "etag",
+                "last_modified",
+                "date",
+                "validator_kind",
+                "validator_value",
+                "validator_bound",
+                "size",
+                "bytes",
+                "sha256",
+                "generation",
+                "complete",
+                "checksum_verified"
+            )
+            evidence <- lapply(tasks$task_id, function(id) {
+                downloader__worker_transfer_read(file.path(
+                    private$temp,
+                    paste0(id, ".part")
+                ))
+            })
+            for (field in evidence_fields) {
+                missing <- if (field %in% c("size", "bytes")) {
+                    NA_real_
+                } else if (
+                    field %in%
+                        c("complete", "checksum_verified", "validator_bound")
+                ) {
+                    NA
+                } else {
+                    NA_character_
+                }
+                tasks[[paste0("transfer_", field)]] <- vapply(
+                    evidence,
+                    function(state) {
+                        if (is.null(state) || is.null(state[[field]])) {
+                            missing
+                        } else {
+                            state[[field]]
+                        }
+                    },
+                    missing
+                )
+            }
             if (!nrow(tasks)) {
                 tasks$candidate_count <- integer()
                 tasks$failed_candidate_count <- integer()
@@ -6892,19 +7776,11 @@ Downloader <- R6::R6Class(
 
         # get_candidates {{{
         get_candidates = function(task_id) {
-            sql <- sprintf(
-                "SELECT * FROM %s WHERE %s = %s ORDER BY priority ASC NULLS LAST, failed_count ASC NULLS LAST, created_at ASC, candidate_id ASC",
-                downloader__ddb_ident(
-                    private$manifest_conn,
-                    "download_candidate"
-                ),
-                downloader__ddb_ident(private$manifest_conn, "task_id"),
-                downloader__ddb_literal(
-                    private$manifest_conn,
-                    downloader__one_chr(task_id)
-                )
+            private$select_rows(
+                "download_candidate",
+                eq = list(task_id = downloader__one_chr(task_id)),
+                order_by = "priority ASC NULLS LAST, failed_count ASC NULLS LAST, created_at ASC, candidate_id ASC"
             )
-            downloader__as_df(downloader__ddb_query(private$manifest_conn, sql))
         },
         # }}}
 
@@ -7092,6 +7968,7 @@ Downloader <- R6::R6Class(
                 return(invisible(NULL))
             }
             tasks <- private$select_tasks(job_id = job_id)
+            now <- downloader__now()
             bytes_done <- if (nrow(tasks)) {
                 sum(
                     suppressWarnings(as.numeric(tasks$bytes_done)),
@@ -7105,17 +7982,19 @@ Downloader <- R6::R6Class(
             } else {
                 numeric()
             }
-            bytes_total <- if (length(size) && any(!is.na(size) & size >= 0)) {
-                sum(size[!is.na(size) & size >= 0], na.rm = TRUE)
-            } else {
-                NA_real_
-            }
+            valid_size <- !is.na(size) & size >= 0
             active <- if (nrow(tasks)) {
                 tasks$status %in% "downloading"
             } else {
                 logical()
             }
-            speed <- if (any(active)) {
+            jobs$bytes_done[[idx]] <- as.numeric(bytes_done)
+            jobs$bytes_total[[idx]] <- if (any(valid_size)) {
+                sum(size[valid_size], na.rm = TRUE)
+            } else {
+                NA_real_
+            }
+            jobs$speed_bps[[idx]] <- if (any(active)) {
                 sum(
                     suppressWarnings(as.numeric(tasks$speed_bps[active])),
                     na.rm = TRUE
@@ -7123,18 +8002,12 @@ Downloader <- R6::R6Class(
             } else {
                 NA_real_
             }
-            jobs$bytes_done[[idx]] <- as.numeric(bytes_done)
-            jobs$bytes_total[[idx]] <- as.numeric(bytes_total)
-            jobs$speed_bps[[idx]] <- as.numeric(speed)
             jobs$active_task_count[[idx]] <- as.integer(sum(active))
-            jobs$progress_updated_at[[idx]] <- downloader__now()
-            jobs$updated_at[[idx]] <- downloader__now()
-            private$replace_rows(
-                "download_job",
-                jobs[idx, , drop = FALSE],
-                "job_id"
-            )
-            invisible(jobs[idx, , drop = FALSE])
+            jobs$progress_updated_at[[idx]] <- now
+            jobs$updated_at[[idx]] <- now
+            row <- jobs[idx, , drop = FALSE]
+            private$replace_rows("download_job", row, "job_id")
+            invisible(row)
         },
         # }}}
 
@@ -7152,25 +8025,22 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
-        # update_node_stats {{{
-        update_node_stats = function(candidate, ok, bytes_done = 0) {
-            candidate <- downloader__as_df(candidate)
-            data_node <- downloader__one_chr(candidate$data_node[[1L]])
+        # load_node_row {{{
+        load_node_row = function(entry, now) {
+            data_node <- downloader__one_chr(entry$data_node[[1L]])
             if (is.na(data_node)) {
-                data_node <- downloader__url_host(candidate$url[[1L]])
+                data_node <- downloader__url_host(entry$url[[1L]])
             }
             if (is.na(data_node)) {
-                return(invisible(NULL))
+                return(NULL)
             }
-            service <- downloader__one_chr(candidate$service[[1L]])
+            service <- downloader__one_chr(entry$service[[1L]])
             if (is.na(service)) {
                 service <- "HTTPServer"
             }
             node_id <- downloader__hash(service, data_node)
-            wanted_node_id <- node_id
-            now <- downloader__now()
             nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
+            row <- nodes[nodes[["node_id"]] == node_id, , drop = FALSE]
             if (!nrow(row)) {
                 row <- downloader__df(
                     node_id = node_id,
@@ -7190,7 +8060,10 @@ Downloader <- R6::R6Class(
                 )
             }
             for (col in c("probe_success_count", "probe_failure_count")) {
-                if (!col %in% names(row)) {
+                if (
+                    !col %in% names(row) ||
+                        is.na(suppressWarnings(as.integer(row[[col]][[1L]])))
+                ) {
                     row[[col]] <- 0L
                 }
             }
@@ -7199,56 +8072,74 @@ Downloader <- R6::R6Class(
                     row[[col]] <- as.POSIXct(NA)
                 }
             }
+            row
+        },
+        # }}}
 
-            latency <- suppressWarnings(as.numeric(candidate$probe_latency[[
-                1L
-            ]]))
+        # update_node_record {{{
+        update_node_record = function(
+            entry,
+            ok,
+            mode = c("transfer", "check"),
+            bytes_done = 0
+        ) {
+            mode <- match.arg(mode)
+            entry <- downloader__as_df(entry)
+            now <- downloader__now()
+            row <- private$load_node_row(entry, now)
+            if (is.null(row)) {
+                return(invisible(NULL))
+            }
+            latency <- suppressWarnings(as.numeric(entry$probe_latency[[1L]]))
             if (isTRUE(ok)) {
-                successes <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]]))
-                if (is.na(successes)) {
-                    successes <- 0L
+                if (mode == "transfer") {
+                    successes <- downloader__int0(row$success_count)
+                    prev_bytes <- suppressWarnings(as.numeric(row$bytes_done[[
+                        1L
+                    ]]))
+                    row$success_count <- successes + 1L
+                    row$bytes_done <- (if (is.na(prev_bytes)) {
+                        0
+                    } else {
+                        prev_bytes
+                    }) +
+                        bytes_done
+                    row$last_success_at <- now
+                    row$cooldown_until <- as.POSIXct(NA)
+                } else {
+                    successes <- downloader__int0(row$probe_success_count)
+                    row$probe_success_count <- successes + 1L
                 }
-                previous_latency <- suppressWarnings(as.numeric(row$avg_latency[[
-                    1L
-                ]]))
-                previous_bytes <- suppressWarnings(as.numeric(row$bytes_done[[
-                    1L
-                ]]))
-                if (is.na(previous_bytes)) {
-                    previous_bytes <- 0
-                }
-                row$success_count <- successes + 1L
-                row$bytes_done <- previous_bytes + bytes_done
                 if (!is.na(latency)) {
-                    row$avg_latency <- if (is.na(previous_latency)) {
+                    prev_latency <- suppressWarnings(as.numeric(row$avg_latency[[
+                        1L
+                    ]]))
+                    row$avg_latency <- if (is.na(prev_latency)) {
                         latency
                     } else {
-                        ((previous_latency * successes) + latency) /
+                        ((prev_latency * successes) + latency) /
                             (successes + 1L)
                     }
                 }
-                row$last_success_at <- now
-                row$cooldown_until <- as.POSIXct(NA)
             } else {
-                failures <- suppressWarnings(as.integer(row$failure_count[[
-                    1L
-                ]]))
-                if (is.na(failures)) {
-                    failures <- 0L
-                }
-                row$failure_count <- failures + 1L
-                row$last_failure_at <- now
-                attempts <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]])) +
-                    row$failure_count[[1L]]
-                if (is.na(attempts)) {
-                    attempts <- row$failure_count[[1L]]
+                if (mode == "transfer") {
+                    fail_count <- downloader__int0(row$failure_count) + 1L
+                    row$failure_count <- fail_count
+                    row$last_failure_at <- now
+                    attempts <- downloader__int0(row$success_count) + fail_count
+                } else {
+                    check_fails <- downloader__int0(row$probe_failure_count) +
+                        1L
+                    row$probe_failure_count <- check_fails
+                    fail_count <- downloader__int0(row$failure_count) +
+                        check_fails
+                    attempts <- downloader__int0(row$success_count) +
+                        downloader__int0(row$failure_count) +
+                        downloader__int0(row$probe_success_count) +
+                        check_fails
                 }
                 if (
-                    row$failure_count[[1L]] >=
+                    fail_count >=
                         private$node_policy_config$cooldown_after_failures &&
                         attempts >= private$node_policy_config$min_attempts
                 ) {
@@ -7256,123 +8147,29 @@ Downloader <- R6::R6Class(
                         private$node_policy_config$cooldown_seconds
                 }
             }
+            if (mode == "check") {
+                row$last_probe_at <- now
+            }
             row$updated_at <- now
             private$replace_rows("download_node", as.data.frame(row), "node_id")
             invisible(row)
         },
         # }}}
 
+        # update_node_stats {{{
+        update_node_stats = function(candidate, ok, bytes_done = 0) {
+            private$update_node_record(
+                candidate,
+                ok = ok,
+                mode = "transfer",
+                bytes_done = bytes_done
+            )
+        },
+        # }}}
+
         # update_node_probe {{{
         update_node_probe = function(plan_row, ok) {
-            plan_row <- downloader__as_df(plan_row)
-            data_node <- downloader__one_chr(plan_row$data_node[[1L]])
-            if (is.na(data_node)) {
-                data_node <- downloader__url_host(plan_row$url[[1L]])
-            }
-            if (is.na(data_node)) {
-                return(invisible(NULL))
-            }
-            service <- downloader__one_chr(plan_row$service[[1L]])
-            if (is.na(service)) {
-                service <- "HTTPServer"
-            }
-            node_id <- downloader__hash(service, data_node)
-            wanted_node_id <- node_id
-            now <- downloader__now()
-            nodes <- private$read_table("download_node")
-            row <- nodes[nodes[["node_id"]] == wanted_node_id, , drop = FALSE]
-            if (!nrow(row)) {
-                row <- downloader__df(
-                    node_id = node_id,
-                    data_node = data_node,
-                    service = service,
-                    success_count = 0L,
-                    failure_count = 0L,
-                    bytes_done = 0,
-                    avg_latency = NA_real_,
-                    probe_success_count = 0L,
-                    probe_failure_count = 0L,
-                    last_success_at = as.POSIXct(NA),
-                    last_failure_at = as.POSIXct(NA),
-                    last_probe_at = as.POSIXct(NA),
-                    cooldown_until = as.POSIXct(NA),
-                    updated_at = now
-                )
-            }
-            for (col in c("probe_success_count", "probe_failure_count")) {
-                if (!col %in% names(row)) {
-                    row[[col]] <- 0L
-                }
-                value <- suppressWarnings(as.integer(row[[col]][[1L]]))
-                if (is.na(value)) row[[col]] <- 0L
-            }
-            for (col in c("last_probe_at", "cooldown_until")) {
-                if (!col %in% names(row)) {
-                    row[[col]] <- as.POSIXct(NA)
-                }
-            }
-            latency <- suppressWarnings(as.numeric(plan_row$probe_latency[[
-                1L
-            ]]))
-            if (isTRUE(ok)) {
-                successes <- suppressWarnings(as.integer(row$probe_success_count[[
-                    1L
-                ]]))
-                if (is.na(successes)) {
-                    successes <- 0L
-                }
-                row$probe_success_count <- successes + 1L
-                previous_latency <- suppressWarnings(as.numeric(row$avg_latency[[
-                    1L
-                ]]))
-                if (!is.na(latency)) {
-                    row$avg_latency <- if (is.na(previous_latency)) {
-                        latency
-                    } else {
-                        ((previous_latency * successes) + latency) /
-                            (successes + 1L)
-                    }
-                }
-            } else {
-                failures <- suppressWarnings(as.integer(row$probe_failure_count[[
-                    1L
-                ]]))
-                if (is.na(failures)) {
-                    failures <- 0L
-                }
-                row$probe_failure_count <- failures + 1L
-                total_failures <- suppressWarnings(as.integer(row$failure_count[[
-                    1L
-                ]])) +
-                    row$probe_failure_count[[1L]]
-                total_attempts <- suppressWarnings(as.integer(row$success_count[[
-                    1L
-                ]])) +
-                    suppressWarnings(as.integer(row$failure_count[[1L]])) +
-                    suppressWarnings(as.integer(row$probe_success_count[[
-                        1L
-                    ]])) +
-                    row$probe_failure_count[[1L]]
-                if (is.na(total_failures)) {
-                    total_failures <- row$probe_failure_count[[1L]]
-                }
-                if (is.na(total_attempts)) {
-                    total_attempts <- total_failures
-                }
-                if (
-                    total_failures >=
-                        private$node_policy_config$cooldown_after_failures &&
-                        total_attempts >=
-                            private$node_policy_config$min_attempts
-                ) {
-                    row$cooldown_until <- now +
-                        private$node_policy_config$cooldown_seconds
-                }
-            }
-            row$last_probe_at <- now
-            row$updated_at <- now
-            private$replace_rows("download_node", as.data.frame(row), "node_id")
-            invisible(row)
+            private$update_node_record(plan_row, ok = ok, mode = "check")
         },
         # }}}
 
@@ -7507,12 +8304,22 @@ Downloader <- R6::R6Class(
         delete_task_pieces = function(task_id, files = FALSE) {
             pieces <- private$select_pieces(task_id)
             if (isTRUE(files) && nrow(pieces) && "path" %in% names(pieces)) {
-                dirs <- unique(dirname(pieces$path[
-                    !is.na(pieces$path) & nzchar(pieces$path)
-                ]))
-                for (dir in dirs) {
-                    if (dir.exists(dir)) {
-                        unlink(dir, recursive = TRUE, force = TRUE)
+                paths <- pieces$path[!is.na(pieces$path) & nzchar(pieces$path)]
+                unlink(c(
+                    paths,
+                    paste0(paths, ".part"),
+                    paste0(paths, ".transfer.json")
+                ))
+                for (dir in unique(dirname(paths))) {
+                    if (
+                        dir.exists(dir) &&
+                            !length(list.files(
+                                dir,
+                                all.files = TRUE,
+                                no.. = TRUE
+                            ))
+                    ) {
+                        unlink(dir, recursive = TRUE)
                     }
                 }
             }
@@ -8151,6 +8958,29 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
+        # Verify an already-present target against the saved byte checkpoint.
+        # Missing legacy evidence stays missing for the Store's provenance gate.
+        # task_target_error {{{
+        task_target_error = function(task) {
+            checksum <- downloader__one_chr(task$checksum[[1L]])
+            tryCatch(
+                {
+                    downloader__worker_transfer_seal(
+                        file.path(
+                            private$temp,
+                            paste0(task$task_id[[1L]], ".part")
+                        ),
+                        task$target_path[[1L]],
+                        if (is.na(checksum)) NULL else checksum,
+                        downloader__checksum_type(task$checksum_type[[1L]])
+                    )
+                    NA_character_
+                },
+                error = function(e) conditionMessage(e)
+            )
+        },
+        # }}}
+
         # launch_concurrent_task {{{
         launch_concurrent_task = function(
             task,
@@ -8177,6 +9007,20 @@ Downloader <- R6::R6Class(
                     )
                 }
                 if (ok) {
+                    integrity_error <- private$task_target_error(task)
+                    if (!is.na(integrity_error)) {
+                        task$status <- "error"
+                        task$last_error <- integrity_error
+                        task$completed_at <- downloader__now()
+                        private$update_task(task)
+                        private$log_event(
+                            session_id,
+                            task_id,
+                            "error",
+                            integrity_error
+                        )
+                        return(list(status = "terminal", task_id = task_id))
+                    }
                     task$status <- "skipped"
                     task$bytes_done <- file.info(
                         target_path,
@@ -8244,23 +9088,6 @@ Downloader <- R6::R6Class(
             private$update_task(task)
             private$log_event(session_id, task_id, "start", candidate$url[[1L]])
 
-            tmp_part <- file.path(private$temp, paste0(task_id, ".part"))
-            if (isTRUE(resume) && file.exists(tmp_part)) {
-                resume_state <- private$prepare_resume(
-                    candidate$url[[1L]],
-                    tmp_part,
-                    file.info(tmp_part, extra_cols = FALSE)$size
-                )
-                if (isTRUE(resume_state$restarted)) {
-                    private$log_event(
-                        session_id,
-                        task_id,
-                        "resume_restart",
-                        resume_state$message
-                    )
-                }
-            }
-
             task_subdir <- downloader__one_chr(task$subdir[[1L]])
             if (is.na(task_subdir)) {
                 task_subdir <- NULL
@@ -8284,6 +9111,10 @@ Downloader <- R6::R6Class(
             }
             segmented <- !is.null(segmented_attempt)
             private$ensure_mirai_daemons()
+            worker_fun <- downloader__worker_download
+            environment(worker_fun) <- baseenv()
+            segmented_worker_fun <- downloader__worker_segmented_download
+            environment(segmented_worker_fun) <- baseenv()
             mirai_obj <- mirai::mirai(
                 {
                     tryCatch(
@@ -8337,8 +9168,8 @@ Downloader <- R6::R6Class(
                     )
                 },
                 .compute = private$compute_profile,
-                worker_fun = downloader__worker_download,
-                segmented_worker_fun = downloader__worker_segmented_download,
+                worker_fun = worker_fun,
+                segmented_worker_fun = segmented_worker_fun,
                 worker_dependencies = downloader__worker_dependencies(),
                 url = candidate$url[[1L]],
                 filename = task$filename[[1L]],
@@ -8418,6 +9249,20 @@ Downloader <- R6::R6Class(
                     )
                 }
                 if (ok) {
+                    integrity_error <- private$task_target_error(task)
+                    if (!is.na(integrity_error)) {
+                        task$status <- "error"
+                        task$last_error <- integrity_error
+                        task$completed_at <- downloader__now()
+                        private$update_task(task)
+                        private$log_event(
+                            session_id,
+                            task_id,
+                            "error",
+                            integrity_error
+                        )
+                        return(NA_character_)
+                    }
                     task$status <- "skipped"
                     task$bytes_done <- file.info(target_path)$size
                     task$last_error <- NA_character_
@@ -8534,23 +9379,6 @@ Downloader <- R6::R6Class(
                     "start",
                     candidate$url[[1L]]
                 )
-
-                tmp_part <- file.path(private$temp, paste0(task_id, ".part"))
-                if (isTRUE(resume) && file.exists(tmp_part)) {
-                    resume_state <- private$prepare_resume(
-                        candidate$url[[1L]],
-                        tmp_part,
-                        file.info(tmp_part, extra_cols = FALSE)$size
-                    )
-                    if (isTRUE(resume_state$restarted)) {
-                        private$log_event(
-                            session_id,
-                            task_id,
-                            "resume_restart",
-                            resume_state$message
-                        )
-                    }
-                }
 
                 task_subdir <- downloader__one_chr(task$subdir[[1L]])
                 if (is.na(task_subdir)) {
@@ -8829,45 +9657,6 @@ Downloader <- R6::R6Class(
             invisible(task_id)
         },
         # }}}
-        # download_with_streaming
-        # prepare_resume {{{
-        prepare_resume = function(url, tmp_part, start_byte) {
-            if (start_byte <= 0) {
-                return(list(
-                    start_byte = 0L,
-                    restarted = FALSE,
-                    message = NA_character_
-                ))
-            }
-            ok <- downloader__resume_supported(
-                url,
-                start_byte,
-                timeout = private$dl_timeout,
-                connect_timeout = private$connect_timeout,
-                ssl_verifypeer = private$ssl_verifypeer,
-                proxy = private$proxy,
-                useragent = private$useragent,
-                chunk_size = private$transfer_policy_config$chunk_size,
-                bandwidth_limit = private$transfer_policy_config$bandwidth_limit,
-                low_speed_limit = private$transfer_policy_config$low_speed_limit,
-                low_speed_time = private$transfer_policy_config$low_speed_time
-            )
-            if (isTRUE(ok)) {
-                return(list(
-                    start_byte = start_byte,
-                    restarted = FALSE,
-                    message = NA_character_
-                ))
-            }
-            unlink(tmp_part)
-            list(
-                start_byte = 0L,
-                restarted = TRUE,
-                message = "Server did not confirm HTTP Range resume support; restarting the partial download from byte 0."
-            )
-        },
-        # }}}
-
         # progress_total_bytes {{{
         progress_total_bytes = function(task_id) {
             if (is.null(task_id) || is.null(private$manifest_path)) {
@@ -8892,43 +9681,10 @@ Downloader <- R6::R6Class(
             progress,
             start_byte,
             task_id = NULL,
-            progress_interval = DOWNLOADER_PROGRESS_INTERVAL
+            progress_interval = DOWNLOADER_PROGRESS_INTERVAL,
+            checksum = NULL,
+            resume = TRUE
         ) {
-            handle <- downloader__curl_handle(
-                timeout = private$dl_timeout,
-                connect_timeout = private$connect_timeout,
-                ssl_verifypeer = private$ssl_verifypeer,
-                proxy = private$proxy,
-                useragent = private$useragent,
-                chunk_size = private$transfer_policy_config$chunk_size,
-                bandwidth_limit = private$transfer_policy_config$bandwidth_limit,
-                low_speed_limit = private$transfer_policy_config$low_speed_limit,
-                low_speed_time = private$transfer_policy_config$low_speed_time
-            )
-            curl::handle_setopt(handle, failonerror = TRUE)
-
-            # Add Range header for resume
-            if (start_byte > 0) {
-                curl::handle_setheaders(
-                    handle,
-                    Range = sprintf("bytes=%.0f-", start_byte)
-                )
-                curl::handle_setopt(handle, resume_from_large = start_byte)
-            }
-
-            guard <- downloader__worker_dependencies()$resume_guard(
-                handle,
-                if (grepl("^https?://", url, ignore.case = TRUE)) {
-                    start_byte
-                } else {
-                    0
-                }
-            )
-            # Open file for writing
-            mode <- if (start_byte > 0) "ab" else "wb"
-            con <- file(tmp_part, mode)
-            on.exit(close(con), add = TRUE)
-
             # Track download progress
             bytes_downloaded <- start_byte
             start_time <- Sys.time()
@@ -8994,13 +9750,21 @@ Downloader <- R6::R6Class(
             }
 
             # Download with streaming
-            response <- curl::curl_fetch_stream(
-                url,
-                function(chunk) {
-                    # Write chunk to file
-                    guard$accept(chunk)
-                    writeBin(chunk, con)
-                    bytes_downloaded <<- bytes_downloaded + length(chunk)
+            downloader__worker_transfer_stream(
+                url = url,
+                tmp_part = tmp_part,
+                tmp_done = tmp_done,
+                timeout = private$dl_timeout,
+                start_byte = start_byte,
+                connect_timeout = private$connect_timeout,
+                ssl_verifypeer = private$ssl_verifypeer,
+                proxy = private$proxy,
+                useragent = private$useragent,
+                transfer_policy = private$transfer_policy_config,
+                checksum = checksum,
+                resume = resume,
+                on_progress = function(bytes) {
+                    bytes_downloaded <<- bytes
 
                     # Update progress (limit update frequency)
                     current_time <- Sys.time()
@@ -9037,13 +9801,8 @@ Downloader <- R6::R6Class(
                     write_progress()
 
                     TRUE # Continue download
-                },
-                handle = handle
+                }
             )
-            guard$finish(response)
-
-            close(con)
-            on.exit(NULL)
 
             if (progress && !is.null(progress_id)) {
                 elapsed <- as.numeric(difftime(
@@ -9067,9 +9826,6 @@ Downloader <- R6::R6Class(
                 )
             }
             write_progress(force = TRUE)
-
-            # Move to .done
-            file.rename(tmp_part, tmp_done)
 
             invisible(tmp_done)
         },

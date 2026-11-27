@@ -276,71 +276,51 @@ dict__validate_body <- function(
         }
     }
 
-    if (identical(project, "CMIP6")) {
-        required_cvs <- tolower(CV_TYPES)
-        missing_cvs <- setdiff(required_cvs, names(payload$vocab))
-        if (length(missing_cvs)) {
+    assert_cols <- function(cols, required, label) {
+        missing <- setdiff(required, cols)
+        if (length(missing)) {
             stop(
                 sprintf(
-                    "%s is missing CMIP6 vocab payload(s): %s.",
+                    "%s%s: %s.",
                     name,
-                    paste(missing_cvs, collapse = ", ")
-                ),
-                call. = FALSE
-            )
-        }
-        if (is.null(payload$request)) {
-            stop(
-                sprintf("%s is a partial CMIP6 dictionary payload.", name),
-                call. = FALSE
-            )
-        }
-
-        request_cols <- dict__payload_cols(payload$request)
-        missing_request <- setdiff(
-            c("variable", "table_id", "frequency", "modeling_realm"),
-            request_cols
-        )
-        if (length(missing_request)) {
-            stop(
-                sprintf(
-                    "%s$request is missing required column(s): %s.",
-                    name,
-                    paste(missing_request, collapse = ", ")
-                ),
-                call. = FALSE
-            )
-        }
-
-        meta_cols <- dict__payload_cols(payload$request_metadata)
-        missing_meta <- setdiff(
-            c("dreq_version", "cmor_version", "table_id", "mip_era"),
-            meta_cols
-        )
-        if (length(missing_meta)) {
-            stop(
-                sprintf(
-                    "%s$request_metadata is missing required column(s): %s.",
-                    name,
-                    paste(missing_meta, collapse = ", ")
+                    label,
+                    paste(missing, collapse = ", ")
                 ),
                 call. = FALSE
             )
         }
     }
 
-    if (!is.null(payload$indices)) {
-        missing_indices <- setdiff("values", names(payload$indices))
-        if (length(missing_indices)) {
+    if (identical(project, "CMIP6")) {
+        assert_cols(
+            names(payload$vocab),
+            tolower(CV_TYPES),
+            " is missing CMIP6 vocab payload(s)"
+        )
+        if (is.null(payload$request)) {
             stop(
-                sprintf(
-                    "%s$indices is missing required index table(s): %s.",
-                    name,
-                    paste(missing_indices, collapse = ", ")
-                ),
+                sprintf("%s is a partial CMIP6 dictionary payload.", name),
                 call. = FALSE
             )
         }
+        assert_cols(
+            dict__payload_cols(payload$request),
+            c("variable", "table_id", "frequency", "modeling_realm"),
+            "$request is missing required column(s)"
+        )
+        assert_cols(
+            dict__payload_cols(payload$request_metadata),
+            c("dreq_version", "cmor_version", "table_id", "mip_era"),
+            "$request_metadata is missing required column(s)"
+        )
+    }
+
+    if (!is.null(payload$indices)) {
+        assert_cols(
+            names(payload$indices),
+            "values",
+            "$indices is missing required index table(s)"
+        )
     }
 
     invisible(TRUE)

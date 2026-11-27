@@ -169,6 +169,63 @@ dataset__region_runs <- function(indices, max_time) {
 }
 # }}}
 
+dataset__set_cols <- function(dt, values) {
+    for (name in names(values)) {
+        data.table::set(dt, j = name, value = values[[name]])
+    }
+    dt
+}
+
+dataset__read_slice <- function(
+    reader,
+    variable,
+    meta,
+    positions,
+    run,
+    group,
+    index,
+    error_message,
+    ...
+) {
+    start <- count <- rep.int(1L, length(meta$names))
+    start[positions] <- c(run[[1L]], group$lat, group$lon)
+    count[positions] <- c(length(run), group$lat_count, group$lon_count)
+    raw <- reader(
+        variable,
+        start = start,
+        count = count,
+        index = index,
+        collapse = FALSE,
+        ...
+    )
+    if (length(raw) != prod(count)) {
+        stop(error_message, call. = FALSE)
+    }
+    aperm(raw, c(positions, setdiff(seq_along(count), positions)))
+}
+
+dataset__native_bounds_rows <- function(
+    private,
+    index,
+    full_bounds,
+    run,
+    transpose = TRUE
+) {
+    cached <- private$metadata_cache[[sprintf("time_bounds_%d", index)]]
+    raw_bounds <- if (!is.null(full_bounds)) full_bounds else cached$bounds
+    rows <- if (!is.null(full_bounds)) run else match(run, cached$indices)
+    if (!transpose) {
+        return(list(bounds = raw_bounds, positions = rows))
+    }
+    bound_meta <- private$get_var_dim_meta(raw_bounds$name, index)
+    native <- if (match("time", bound_meta$names) == 1L) {
+        raw_bounds$raw_values
+    } else {
+        t(raw_bounds$raw_values)
+    }
+    native[rows, , drop = FALSE]
+}
+
 # Read one variable from one file in bounded native-time and spatial slices.
 # The returned table is deliberately capped; longer acquisitions must be
 # scheduled as separate time windows by the batch execution stage.
@@ -355,9 +412,7 @@ dataset__read_regions_one <- function(
     read_slices <- vector("list", request_count)
     pieces <- vector("list", length(blocks) * nrow(sites))
     slice_index <- 0L
-    time_position <- match("time", meta$names)
-    lat_position <- match("lat", meta$names)
-    lon_position <- match("lon", meta$names)
+    positions <- match(c("time", "lat", "lon"), meta$names)
     bounds <- dataset__selected_bounds(
         dataset,
         index,
@@ -370,59 +425,35 @@ dataset__read_regions_one <- function(
         CF_TIME_COORDINATE_COLUMNS,
         drop = FALSE
     ])
-    data.table::set(clock, j = "time", value = time_info$values[selected])
-    if (!is.null(bounds)) {
-        data.table::set(
-            clock,
-            j = "time_bound_start",
-            value = bounds$start[seq_along(selected)]
+    dataset__set_cols(
+        clock,
+        c(
+            list(time = time_info$values[selected]),
+            if (!is.null(bounds)) {
+                list(
+                    time_bound_start = bounds$start[seq_along(selected)],
+                    time_bound_end = bounds$end[seq_along(selected)]
+                )
+            }
         )
-        data.table::set(
-            clock,
-            j = "time_bound_end",
-            value = bounds$end[seq_along(selected)]
-        )
-    }
+    )
     for (block_index in seq_along(blocks)) {
         block <- blocks[[block_index]]
         values <- matrix(NA_real_, nrow = length(block), ncol = nrow(points))
         for (group_index in seq_along(groups)) {
             group <- groups[[group_index]]
             for (run in requests[[block_index]][[group_index]]) {
-                start <- rep.int(1L, length(meta$names))
-                count <- rep.int(1L, length(meta$names))
-                start[[time_position]] <- run[[1L]]
-                start[[lat_position]] <- group$lat
-                start[[lon_position]] <- group$lon
-                count[[time_position]] <- length(run)
-                count[[lat_position]] <- group$lat_count
-                count[[lon_position]] <- group$lon_count
-                raw <- dataset$var_get(
+                ordered <- dataset__read_slice(
+                    dataset$var_get,
                     variable,
-                    start = start,
-                    count = count,
-                    index = index,
-                    collapse = FALSE,
+                    meta,
+                    positions,
+                    run,
+                    group,
+                    index,
+                    "A spatial slice did not return the requested native values.",
                     async = async,
                     timeout = timeout
-                )
-                if (length(raw) != prod(count)) {
-                    stop(
-                        "A spatial slice did not return the requested native values.",
-                        call. = FALSE
-                    )
-                }
-                ordered <- aperm(
-                    raw,
-                    c(
-                        time_position,
-                        lat_position,
-                        lon_position,
-                        setdiff(
-                            seq_along(count),
-                            c(time_position, lat_position, lon_position)
-                        )
-                    )
                 )
                 raw_values <- matrix(as.vector(ordered), nrow = length(run))
                 member <- group$members
@@ -457,17 +488,21 @@ dataset__read_regions_one <- function(
             source <- sources[sources$site_id == site$site_id[[1L]]]
             piece <- data.table::copy(clock[match(block[rows], selected)])
             # Matrix multiplication preserves missing-source propagation.
-            weighted <- as.vector(
-                values[rows, source$point_index, drop = FALSE] %*%
-                    source$weight
+            dataset__set_cols(
+                piece,
+                list(
+                    value = as.vector(
+                        values[rows, source$point_index, drop = FALSE] %*%
+                            source$weight
+                    ),
+                    file_index = index,
+                    variable = variable,
+                    site_id = site$site_id[[1L]],
+                    lon = site$lon[[1L]],
+                    lat = site$lat[[1L]],
+                    method = site$method[[1L]]
+                )
             )
-            data.table::set(piece, j = "value", value = weighted)
-            data.table::set(piece, j = "file_index", value = index)
-            data.table::set(piece, j = "variable", value = variable)
-            data.table::set(piece, j = "site_id", value = site$site_id[[1L]])
-            data.table::set(piece, j = "lon", value = site$lon[[1L]])
-            data.table::set(piece, j = "lat", value = site$lat[[1L]])
-            data.table::set(piece, j = "method", value = site$method[[1L]])
             data.table::setcolorder(
                 piece,
                 c(
@@ -499,13 +534,13 @@ dataset__read_regions_one <- function(
         "grid_dist_km",
         "weight"
     )
-    provenance <- data.table::copy(sources[, source_columns, with = FALSE])
-    data.table::set(provenance, j = "file_index", value = index)
-    data.table::set(provenance, j = "variable", value = variable)
-    data.table::set(
-        provenance,
-        j = "method",
-        value = sites$method[match(provenance$site_id, sites$site_id)]
+    provenance <- dataset__set_cols(
+        data.table::copy(sources[, source_columns, with = FALSE]),
+        list(
+            file_index = index,
+            variable = variable,
+            method = sites$method[match(sources$site_id, sites$site_id)]
+        )
     )
     attr(output, "grid_sources") <- provenance
     attr(output, "read_slices") <- data.table::rbindlist(read_slices)
@@ -757,15 +792,12 @@ dataset__neighborhood_bounds <- function(
                 )
             }
         }
-        data.table::set(
+        dataset__set_cols(
             values,
-            j = "bound_start_value",
-            value = as.double(native[, 1L])
-        )
-        data.table::set(
-            values,
-            j = "bound_end_value",
-            value = as.double(native[, 2L])
+            list(
+                bound_start_value = as.double(native[, 1L]),
+                bound_end_value = as.double(native[, 2L])
+            )
         )
         # The normal clock writer can reuse these exact values without fetching
         # each weather chunk's interval metadata for a second time.
@@ -775,22 +807,19 @@ dataset__neighborhood_bounds <- function(
         )
     }
     if (identical(axis$kind, "climatology")) {
-        data.table::set(values, j = "time_kind", value = "climatology")
-        data.table::set(values, j = "bounds_name", value = bounds$name)
-        data.table::set(
+        dataset__set_cols(
             values,
-            j = "bounds_time_dimension",
-            value = bounds$time_dimension
+            list(
+                time_kind = "climatology",
+                bounds_name = bounds$name,
+                bounds_time_dimension = bounds$time_dimension,
+                bounds_dimensions = as.character(jsonlite::toJSON(
+                    bounds$dimensions,
+                    auto_unbox = FALSE
+                )),
+                cell_methods = statistics$raw
+            )
         )
-        data.table::set(
-            values,
-            j = "bounds_dimensions",
-            value = as.character(jsonlite::toJSON(
-                bounds$dimensions,
-                auto_unbox = FALSE
-            ))
-        )
-        data.table::set(values, j = "cell_methods", value = statistics$raw)
     }
     if (!is.null(prior) && nrow(prior)) {
         positions <- match(prior$time_index, values$time_index)
@@ -1250,14 +1279,6 @@ dataset__read_neighborhood <- function(
                     max_values %/% (group$lat_count * group$lon_count)
                 )
                 for (run in runs) {
-                    start <- rep.int(1L, length(meta$names))
-                    count <- rep.int(1L, length(meta$names))
-                    start[positions] <- c(run[[1L]], group$lat, group$lon)
-                    count[positions] <- c(
-                        length(run),
-                        group$lat_count,
-                        group$lon_count
-                    )
                     began <- proc.time()[["elapsed"]]
                     read <- if (
                         split_dap_read &&
@@ -1267,24 +1288,17 @@ dataset__read_neighborhood <- function(
                     } else {
                         dataset$var_get
                     }
-                    raw <- read(
+                    raw <- dataset__read_slice(
+                        read,
                         name,
-                        start = start,
-                        count = count,
-                        index = index,
-                        collapse = FALSE
+                        meta,
+                        positions,
+                        run,
+                        group,
+                        index,
+                        "Incomplete native neighborhood block."
                     )
                     elapsed <- proc.time()[["elapsed"]] - began
-                    if (length(raw) != prod(count)) {
-                        stop(
-                            "Incomplete native neighborhood block.",
-                            call. = FALSE
-                        )
-                    }
-                    raw <- aperm(
-                        raw,
-                        c(positions, setdiff(seq_along(count), positions))
-                    )
                     values <- data.table::CJ(
                         time_index = as.integer(run),
                         ind_lat = seq.int(
@@ -1303,52 +1317,33 @@ dataset__read_neighborhood <- function(
                         values,
                         c("ind_lon", "ind_lat", "time_index")
                     )
-                    data.table::set(values, j = "value", value = as.double(raw))
-                    data.table::set(
+                    dataset__set_cols(
                         values,
-                        j = "grid_lat",
-                        value = grid$lat[values$ind_lat]
+                        list(
+                            value = as.double(raw),
+                            grid_lat = grid$lat[values$ind_lat],
+                            grid_lon = grid$lon[values$ind_lon],
+                            variable = name,
+                            file_index = index,
+                            units = as.character(units),
+                            cell_methods = cell_methods,
+                            standard_name = standard_name
+                        )
                     )
-                    data.table::set(
-                        values,
-                        j = "grid_lon",
-                        value = grid$lon[values$ind_lon]
+                    clock <- dataset__set_cols(
+                        data.table::as.data.table(axis$coordinates[
+                            run,
+                            ,
+                            drop = FALSE
+                        ]),
+                        list(
+                            time_index = as.integer(run),
+                            file_index = index,
+                            time = axis$values[run],
+                            time_value = axis$raw_values[run],
+                            time_units = axis$units
+                        )
                     )
-                    data.table::set(values, j = "variable", value = name)
-                    data.table::set(values, j = "file_index", value = index)
-                    data.table::set(
-                        values,
-                        j = "units",
-                        value = as.character(units)
-                    )
-                    data.table::set(
-                        values,
-                        j = "cell_methods",
-                        value = cell_methods
-                    )
-                    data.table::set(
-                        values,
-                        j = "standard_name",
-                        value = standard_name
-                    )
-                    clock <- data.table::as.data.table(axis$coordinates[
-                        run,
-                        ,
-                        drop = FALSE
-                    ])
-                    data.table::set(
-                        clock,
-                        j = "time_index",
-                        value = as.integer(run)
-                    )
-                    data.table::set(clock, j = "file_index", value = index)
-                    data.table::set(clock, j = "time", value = axis$values[run])
-                    data.table::set(
-                        clock,
-                        j = "time_value",
-                        value = axis$raw_values[run]
-                    )
-                    data.table::set(clock, j = "time_units", value = axis$units)
                     bounds <- dataset__selected_bounds(
                         dataset,
                         index,
@@ -1359,75 +1354,38 @@ dataset__read_neighborhood <- function(
                     if (
                         !is.null(bounds) && identical(axis$kind, "climatology")
                     ) {
-                        cached <- private$metadata_cache[[sprintf(
-                            "time_bounds_%d",
-                            index
-                        )]]
-                        full <- axis$climatology
-                        climatology_bounds <- if (!is.null(full)) {
-                            full
-                        } else {
-                            cached$bounds
-                        }
-                        positions <- if (!is.null(full)) {
-                            run
-                        } else {
-                            match(run, cached$indices)
-                        }
+                        clim <- dataset__native_bounds_rows(
+                            private,
+                            index,
+                            axis$climatology,
+                            run,
+                            transpose = FALSE
+                        )
                         clock <- dataset__climatology_clock(
                             clock,
                             statistics,
-                            climatology_bounds,
-                            positions,
+                            clim$bounds,
+                            clim$positions,
                             name
                         )
                     } else if (!is.null(bounds)) {
-                        data.table::set(
-                            clock,
-                            j = "time_bound_start",
-                            value = bounds$start
-                        )
-                        data.table::set(
-                            clock,
-                            j = "time_bound_end",
-                            value = bounds$end
-                        )
                         # The shared selected-bounds accessor intentionally
                         # returns only parsed endpoints. Recover native values
                         # from its verified cache, without a second DAP read.
-                        cached_bounds <- private$metadata_cache[[sprintf(
-                            "time_bounds_%d",
-                            index
-                        )]]
-                        raw_bounds <- if (!is.null(axis$bounds)) {
-                            axis$bounds
-                        } else {
-                            cached_bounds$bounds
-                        }
-                        bound_meta <- private$get_var_dim_meta(
-                            raw_bounds$name,
-                            index
-                        )
-                        native <- if (match("time", bound_meta$names) == 1L) {
-                            raw_bounds$raw_values
-                        } else {
-                            t(raw_bounds$raw_values)
-                        }
-                        bound_positions <- if (!is.null(axis$bounds)) {
+                        native <- dataset__native_bounds_rows(
+                            private,
+                            index,
+                            axis$bounds,
                             run
-                        } else {
-                            match(run, cached_bounds$indices)
-                        }
-                        native <- native[bound_positions, , drop = FALSE]
-                        data.table::set(
-                            clock,
-                            j = "bound_start_value",
-                            value = native[, 1L]
                         )
-                        data.table::set(
+                        dataset__set_cols(
                             clock,
-                            j = "bound_end_value",
-                            value = native[, 2L]
+                            list(
+                                time_bound_start = bounds$start,
+                                time_bound_end = bounds$end,
+                                bound_start_value = native[, 1L],
+                                bound_end_value = native[, 2L]
+                            )
                         )
                     }
                     slice <- data.table::data.table(

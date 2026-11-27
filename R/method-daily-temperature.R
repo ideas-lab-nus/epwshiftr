@@ -1,8 +1,15 @@
 # Daily temperature targets and constrained projection
-# Validate one long-form daily temperature source before climatology estimation.
-# Only tas, tasmax, and tasmin participate; unrelated variables are left out.
-# daily__temperature_source {{{
-daily__temperature_source <- function(data, name, by) {
+# Validate a non-empty tabular input, its required columns, and that grouping
+# keys do not collide with reserved input or output columns.
+# daily__assert_table {{{
+daily__assert_table <- function(
+    data,
+    name,
+    required,
+    by = character(),
+    reserved_by = character(),
+    reserved_label = "reserved"
+) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
@@ -14,7 +21,6 @@ daily__temperature_source <- function(data, name, by) {
         cli::cli_abort("{.arg {name}} must have unique column names.")
     }
 
-    required <- unique(c("variable_id", "annual_phase", "value", by))
     missing <- setdiff(required, names(data))
     if (length(missing)) {
         cli::cli_abort(
@@ -22,9 +28,26 @@ daily__temperature_source <- function(data, name, by) {
         )
     }
 
-    reserved_by <- intersect(
-        by,
-        c(
+    reserved <- intersect(by, reserved_by)
+    if (length(reserved)) {
+        cli::cli_abort(
+            "{.arg by} cannot use {reserved_label} column{?s}: {.val {reserved}}."
+        )
+    }
+    invisible(NULL)
+}
+# }}}
+
+# Validate one long-form daily temperature source before climatology estimation.
+# Only tas, tasmax, and tasmin participate; unrelated variables are left out.
+# daily__temperature_source {{{
+daily__temperature_source <- function(data, name, by) {
+    daily__assert_table(
+        data,
+        name = name,
+        required = unique(c("variable_id", "annual_phase", "value", by)),
+        by = by,
+        reserved_by = c(
             "variable_id",
             "annual_phase",
             "value",
@@ -49,13 +72,9 @@ daily__temperature_source <- function(data, name, by) {
             "maximum_delta",
             "dtr_delta",
             "dtr_status"
-        )
+        ),
+        reserved_label = "temperature input or output"
     )
-    if (length(reserved_by)) {
-        cli::cli_abort(
-            "{.arg by} cannot use temperature input or output column{?s}: {.val {reserved_by}}."
-        )
-    }
 
     checkmate::assert_character(
         data[["variable_id"]],
@@ -272,21 +291,13 @@ daily__temperature_target_changes <- function(
             targets[["future_mean"]] - targets[["historical_mean"]]
         )
     )
-    data.table::set(
-        targets,
-        j = "minimum_delta",
-        value = rep.int(NA_real_, nrow(targets))
-    )
-    data.table::set(
-        targets,
-        j = "maximum_delta",
-        value = rep.int(NA_real_, nrow(targets))
-    )
-    data.table::set(
-        targets,
-        j = "dtr_delta",
-        value = rep.int(NA_real_, nrow(targets))
-    )
+    for (column in c("minimum_delta", "maximum_delta", "dtr_delta")) {
+        data.table::set(
+            targets,
+            j = column,
+            value = rep.int(NA_real_, nrow(targets))
+        )
+    }
     data.table::set(
         targets,
         j = "dtr_status",
@@ -349,40 +360,6 @@ daily__temperature_target_changes <- function(
     data.table::setcolorder(targets, ordered)
     data.table::setorderv(targets, c(by, "target_day"))
     targets[]
-}
-# }}}
-
-# Build calendar-neutral daily temperature changes from matching future and
-# historical climatologies. Missing extrema retain the mean delta explicitly.
-# daily__temperature_targets {{{
-daily__temperature_targets <- function(
-    future,
-    historical,
-    by = character(),
-    window_days = 31L,
-    target_year_days = 365L
-) {
-    checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
-    future <- daily__temperature_source(future, "future", by)
-    historical <- daily__temperature_source(historical, "historical", by)
-
-    future_climatology <- daily__temperature_climatology(
-        future,
-        by,
-        window_days,
-        target_year_days
-    )
-    historical_climatology <- daily__temperature_climatology(
-        historical,
-        by,
-        window_days,
-        target_year_days
-    )
-    daily__temperature_target_changes(
-        future_climatology,
-        historical_climatology,
-        by
-    )
 }
 # }}}
 
@@ -560,20 +537,21 @@ daily__project_temperature <- function(
     tolerance = 1e-8,
     method = c("power", "btws")
 ) {
-    checkmate::assert_data_frame(template)
-    checkmate::assert_data_frame(targets)
     checkmate::assert_string(value, min.chars = 1L)
     checkmate::assert_string(day, min.chars = 1L)
     checkmate::assert_string(hour, min.chars = 1L)
-    checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
     checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
     method <- match.arg(method)
     value_column <- value
     day_column <- day
     hour_column <- hour
-    reserved_by <- intersect(
-        by,
-        c(
+
+    daily__assert_table(
+        template,
+        name = "template",
+        required = unique(c(by, day_column, hour_column, value_column)),
+        by = by,
+        reserved_by = c(
             value_column,
             day_column,
             hour_column,
@@ -581,58 +559,29 @@ daily__project_temperature <- function(
             "minimum_delta",
             "maximum_delta",
             "dtr_status"
-        )
+        ),
+        reserved_label = "template, target, or output"
     )
-    if (length(reserved_by)) {
-        cli::cli_abort(
-            "{.arg by} cannot use template, target, or output column{?s}: {.val {reserved_by}}."
-        )
-    }
-
-    if (!nrow(template) || !nrow(targets)) {
-        cli::cli_abort(
-            "{.arg template} and {.arg targets} must both contain rows."
-        )
-    }
-    if (anyDuplicated(names(template)) || anyDuplicated(names(targets))) {
-        cli::cli_abort(
-            "{.arg template} and {.arg targets} must have unique column names."
-        )
-    }
-
-    template_required <- unique(c(by, day, hour, value))
-    target_required <- unique(c(
-        by,
-        day,
-        "mean_delta",
-        "minimum_delta",
-        "maximum_delta",
-        "dtr_status"
-    ))
-    missing_template <- setdiff(template_required, names(template))
-    missing_targets <- setdiff(target_required, names(targets))
-    if (length(missing_template)) {
-        cli::cli_abort(
-            "{.arg template} is missing required column{?s}: {.val {missing_template}}."
-        )
-    }
-    if (length(missing_targets)) {
-        cli::cli_abort(
-            "{.arg targets} is missing required column{?s}: {.val {missing_targets}}."
-        )
-    }
+    daily__assert_table(
+        targets,
+        name = "targets",
+        required = unique(c(
+            by,
+            day_column,
+            "mean_delta",
+            "minimum_delta",
+            "maximum_delta",
+            "dtr_status"
+        )),
+        by = by
+    )
 
     method_output_columns <- if (identical(method, "power")) {
         "shape_exponent"
     } else {
-        c(
-            "btws_scale",
-            "btws_m",
-            "btws_n",
-            "btws_fallback_reason"
-        )
+        c("btws_scale", "btws_m", "btws_n", "btws_fallback_reason")
     }
-    output_columns <- c(
+    projection_output_columns <- c(
         "temperature_projected",
         "target_mean",
         "target_minimum",
@@ -642,20 +591,23 @@ daily__project_temperature <- function(
         "projected_maximum",
         "dtr_status",
         "projection_status",
-        method_output_columns,
-        "boundary_jump",
-        "boundary_jump_change"
+        method_output_columns
     )
-    working_columns <- c(
+    target_drop_columns <- c(
         "mean_delta",
         "minimum_delta",
         "maximum_delta",
         "dtr_status",
-        ".daily_row",
         ".daily_target_found"
     )
     conflicts <- intersect(
-        c(output_columns, working_columns),
+        c(
+            projection_output_columns,
+            "boundary_jump",
+            "boundary_jump_change",
+            target_drop_columns,
+            ".daily_row"
+        ),
         names(template)
     )
     if (length(conflicts)) {
@@ -664,23 +616,19 @@ daily__project_temperature <- function(
         )
     }
 
-    checkmate::assert_numeric(
-        template[[value]],
-        finite = TRUE,
-        any.missing = FALSE,
-        .var.name = sprintf("template[['%s']]", value)
-    )
+    for (column in c(value_column, hour_column)) {
+        checkmate::assert_numeric(
+            template[[column]],
+            finite = TRUE,
+            any.missing = FALSE,
+            .var.name = sprintf("template[['%s']]", column)
+        )
+    }
     checkmate::assert_integerish(
-        template[[day]],
+        template[[day_column]],
         lower = 1L,
         any.missing = FALSE,
-        .var.name = sprintf("template[['%s']]", day)
-    )
-    checkmate::assert_numeric(
-        template[[hour]],
-        finite = TRUE,
-        any.missing = FALSE,
-        .var.name = sprintf("template[['%s']]", hour)
+        .var.name = sprintf("template[['%s']]", day_column)
     )
     checkmate::assert_numeric(
         targets[["mean_delta"]],
@@ -688,18 +636,14 @@ daily__project_temperature <- function(
         any.missing = FALSE,
         .var.name = "targets[['mean_delta']]"
     )
-    checkmate::assert_numeric(
-        targets[["minimum_delta"]],
-        finite = TRUE,
-        any.missing = TRUE,
-        .var.name = "targets[['minimum_delta']]"
-    )
-    checkmate::assert_numeric(
-        targets[["maximum_delta"]],
-        finite = TRUE,
-        any.missing = TRUE,
-        .var.name = "targets[['maximum_delta']]"
-    )
+    for (column in c("minimum_delta", "maximum_delta")) {
+        checkmate::assert_numeric(
+            targets[[column]],
+            finite = TRUE,
+            any.missing = TRUE,
+            .var.name = sprintf("targets[['%s']]", column)
+        )
+    }
     checkmate::assert_integerish(
         targets[[day_column]],
         lower = 1L,
@@ -721,7 +665,7 @@ daily__project_temperature <- function(
         )
     }
 
-    keys <- c(by, day)
+    keys <- c(by, day_column)
     target_work <- data.table::as.data.table(data.table::copy(targets))
     if (anyDuplicated(target_work[, keys, with = FALSE])) {
         cli::cli_abort(
@@ -735,25 +679,13 @@ daily__project_temperature <- function(
     )
 
     working <- data.table::as.data.table(data.table::copy(template))
-    data.table::set(
-        working,
-        j = ".daily_row",
-        value = seq_len(nrow(working))
-    )
+    data.table::set(working, j = ".daily_row", value = seq_len(nrow(working)))
 
     # A left merge makes target coverage explicit while the private row index
     # preserves the caller's original order through all grouped calculations.
-    target_join_columns <- c(
-        keys,
-        "mean_delta",
-        "minimum_delta",
-        "maximum_delta",
-        "dtr_status",
-        ".daily_target_found"
-    )
     working <- merge(
         working,
-        target_work[, target_join_columns, with = FALSE],
+        target_work[, c(keys, target_drop_columns), with = FALSE],
         by = keys,
         all.x = TRUE,
         sort = FALSE
@@ -765,7 +697,7 @@ daily__project_temperature <- function(
         )
     }
 
-    group_columns <- c(by, day)
+    group_columns <- keys
     template_shape <- working[,
         .(
             rows = .N,
@@ -832,29 +764,15 @@ daily__project_temperature <- function(
     ]
 
     original_columns <- names(template)
-    out <- data.table::as.data.table(data.table::copy(template))
-    data.table::set(out, j = ".daily_row", value = seq_len(nrow(out)))
-    projection_output_columns <- c(
-        ".daily_row",
-        "temperature_projected",
-        "target_mean",
-        "target_minimum",
-        "target_maximum",
-        "projected_mean",
-        "projected_minimum",
-        "projected_maximum",
-        "dtr_status",
-        "projection_status",
-        method_output_columns
-    )
-    out <- merge(
-        out,
-        projected[, projection_output_columns, with = FALSE],
-        by = ".daily_row",
-        all.x = TRUE,
-        sort = FALSE
-    )
+    # Reuse the private working copy instead of copying `template` again; drop
+    # temporary target join columns and attach row-aligned projection outputs.
+    out <- working
+    data.table::set(out, j = target_drop_columns, value = NULL)
     data.table::setorderv(out, ".daily_row")
+    data.table::setorderv(projected, ".daily_row")
+    for (column in projection_output_columns) {
+        data.table::set(out, j = column, value = projected[[column]])
+    }
 
     # Measure each boundary at the first chronological hour of a target day.
     chronological <- out[,

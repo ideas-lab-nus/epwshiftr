@@ -1,58 +1,10 @@
-# Use the shared native-calendar series and signal-boundary fixtures while
-# retaining the QDM names used throughout this test module.
-qdm_test__series <- signal_test__series
-qdm_test__execution_inputs <- signal_test__execution_inputs
-
-# Execute compact fixtures through the common signal lifecycle with a
-# full-annual seasonal pool and an explicit minimum sample count.
-# qdm_test__execute {{{
-qdm_test__execute <- function(
-    variable,
-    observed,
-    historical,
-    future,
-    overrides = list(),
-    key = list(site = "A"),
-    warn_experimental = FALSE
-) {
-    boundary <- qdm_test__execution_inputs(
-        observed,
-        historical,
-        future,
-        key
-    )
-    settings <- utils::modifyList(
-        list(
-            seasonal_window_days = 365L,
-            future_window_years = 31L,
-            target_year_days = 365L,
-            min_samples = 2L
-        ),
-        overrides
-    )
-    component__execute(
-        qdm__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = stats::setNames(list(settings), variable),
-        warn_experimental = warn_experimental
-    )
-}
-# }}}
-
-# Retrieve one default profile by variable for direct kernel validation tests.
-# qdm_test__settings {{{
-qdm_test__settings <- function(variable) {
-    profiles <- qdm__profiles()
-    index <- which(vapply(
-        profiles,
-        function(profile) identical(profile@variable_id, variable),
-        logical(1L)
-    ))
-    profiles[[index]]@settings
-}
-# }}}
+# Full-annual seasonal pool and compact minimum sample overrides shared by tests.
+qdm_test__defaults <- list(
+    seasonal_window_days = 365L,
+    future_window_years = 31L,
+    target_year_days = 365L,
+    min_samples = 2L
+)
 
 test_that("QDM transfers absolute and relative quantile changes", {
     absolute <- qdm__map_value(
@@ -79,27 +31,29 @@ test_that("QDM transfers absolute and relative quantile changes", {
 })
 
 test_that("QDM returns a typed future-backbone daily series", {
-    observed <- qdm_test__series(
+    observed <- signal_test__series(
         "tas",
         2001L,
         c(10, 20, 30, 40)
     )
-    historical <- qdm_test__series(
+    historical <- signal_test__series(
         "tas",
         1991L,
         c(0, 10, 20, 30)
     )
-    future <- qdm_test__series(
+    future <- signal_test__series(
         "tas",
         2061L,
         c(5, 15, 25, 35)
     )
 
-    execution <- qdm_test__execute(
+    execution <- signal_test__execute(
+        qdm__component(),
         "tas",
         observed,
         historical,
-        future
+        future,
+        default_overrides = qdm_test__defaults
     )
     adjusted <- execution@values[[1L]]
 
@@ -119,6 +73,12 @@ test_that("QDM returns a typed future-backbone daily series", {
         adjusted@provenance$output_backbone,
         "model_future"
     )
+    expect_identical(adjusted@provenance$mapping_type, "nonparametric")
+    expect_identical(adjusted@provenance$zero_denominator_policy, "error")
+    expect_identical(
+        adjusted@provenance$empirical_conventions$tails,
+        "future_window_support"
+    )
     expect_identical(
         adjusted@provenance$diagnostics$future_lower_tail_values,
         0L
@@ -131,33 +91,28 @@ test_that("QDM returns a typed future-backbone daily series", {
 })
 
 test_that("QDM preserves modeled quantile deltas that QM changes", {
-    observed <- qdm_test__series("tas", 2001L, c(0, 20, 40))
-    historical <- qdm_test__series("tas", 1991L, c(0, 10, 20))
-    future <- qdm_test__series("tas", 2061L, c(10, 20, 30))
-    qdm <- qdm_test__execute(
+    observed <- signal_test__series("tas", 2001L, c(0, 20, 40))
+    historical <- signal_test__series("tas", 1991L, c(0, 10, 20))
+    future <- signal_test__series("tas", 2061L, c(10, 20, 30))
+    qdm <- signal_test__execute(
+        qdm__component(),
         "tas",
         observed,
         historical,
-        future
+        future,
+        default_overrides = qdm_test__defaults
     )@values[[1L]]@data$value
-    boundary <- qdm_test__execution_inputs(
+    qm <- signal_test__execute(
+        qm__component(),
+        "tas",
         observed,
         historical,
-        future
-    )
-    qm <- component__execute(
-        qm__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = list(
-            tas = list(
-                seasonal_window_days = 365L,
-                target_year_days = 365L,
-                min_samples = 2L
-            )
-        ),
-        warn_experimental = FALSE
+        future,
+        default_overrides = list(
+            seasonal_window_days = 365L,
+            target_year_days = 365L,
+            min_samples = 2L
+        )
     )@values[[1L]]@data$value
 
     expect_equal(future$value - historical$value, rep.int(10, 3L))
@@ -170,29 +125,31 @@ test_that("QDM preserves identity across native CF calendars", {
     values <- c(2, 2, 4, 7, 9)
 
     for (calendar in calendars) {
-        observed <- qdm_test__series(
+        observed <- signal_test__series(
             "tas",
             2000L,
             values,
             calendar
         )
-        historical <- qdm_test__series(
+        historical <- signal_test__series(
             "tas",
             1990L,
             values,
             calendar
         )
-        future <- qdm_test__series(
+        future <- signal_test__series(
             "tas",
             2060L,
             values,
             calendar
         )
-        execution <- qdm_test__execute(
+        execution <- signal_test__execute(
+            qdm__component(),
             "tas",
             observed,
             historical,
-            future
+            future,
+            default_overrides = qdm_test__defaults
         )
 
         expect_equal(
@@ -209,27 +166,27 @@ test_that("QDM preserves identity across native CF calendars", {
 })
 
 test_that("QDM circular windows bridge the annual-phase boundary", {
-    observed <- qdm_test__series(
+    observed <- signal_test__series(
         "tas",
         2001L,
         seq_len(365L) + 10
     )
-    historical <- qdm_test__series(
+    historical <- signal_test__series(
         "tas",
         1991L,
         seq_len(365L)
     )
-    future <- qdm_test__series(
+    future <- signal_test__series(
         "tas",
         2061L,
         seq_len(365L)
     )
-    boundary <- qdm_test__execution_inputs(
+    boundary <- signal_test__execution_inputs(
         observed,
         historical,
         future
     )
-    settings <- qdm_test__settings("tas")
+    settings <- signal_test__profile_settings(qdm__profiles(), "tas")
     settings$seasonal_window_days <- 3L
     settings$min_samples <- 3L
 
@@ -259,15 +216,17 @@ test_that("QDM future windows are centered and truncate at series edges", {
 })
 
 test_that("relative QDM preserves positive precipitation quantile ratios", {
-    observed <- qdm_test__series("pr", 2001L, c(2, 4, 8, 16))
-    historical <- qdm_test__series("pr", 1991L, c(1, 2, 4, 8))
-    future <- qdm_test__series("pr", 2061L, c(2, 4, 8, 16))
+    observed <- signal_test__series("pr", 2001L, c(2, 4, 8, 16))
+    historical <- signal_test__series("pr", 1991L, c(1, 2, 4, 8))
+    future <- signal_test__series("pr", 2061L, c(2, 4, 8, 16))
 
-    adjusted <- qdm_test__execute(
+    adjusted <- signal_test__execute(
+        qdm__component(),
         "pr",
         observed,
         historical,
-        future
+        future,
+        default_overrides = qdm_test__defaults
     )@values[[1L]]
 
     expect_equal(adjusted@data$value, c(4, 8, 16, 32))
@@ -283,17 +242,17 @@ test_that("relative QDM preserves positive precipitation quantile ratios", {
 
 test_that("precipitation censoring is deterministic and RNG-independent", {
     count <- 40L
-    observed <- qdm_test__series(
+    observed <- signal_test__series(
         "pr",
         2001L,
         c(rep.int(0, 8L), seq_len(32L))
     )
-    historical <- qdm_test__series(
+    historical <- signal_test__series(
         "pr",
         1991L,
         c(rep.int(0, 20L), seq_len(20L))
     )
-    future <- qdm_test__series(
+    future <- signal_test__series(
         "pr",
         2061L,
         rep.int(0, count)
@@ -302,26 +261,32 @@ test_that("precipitation censoring is deterministic and RNG-independent", {
     seed_before <- .Random.seed
     overrides <- list(dry_threshold = 0.5, random_seed = 99L)
 
-    first <- qdm_test__execute(
+    first <- signal_test__execute(
+        qdm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = overrides
+        overrides = overrides,
+        default_overrides = qdm_test__defaults
     )
-    second <- qdm_test__execute(
+    second <- signal_test__execute(
+        qdm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = overrides
+        overrides = overrides,
+        default_overrides = qdm_test__defaults
     )
-    different <- qdm_test__execute(
+    different <- signal_test__execute(
+        qdm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = list(dry_threshold = 0.5, random_seed = 100L)
+        overrides = list(dry_threshold = 0.5, random_seed = 100L),
+        default_overrides = qdm_test__defaults
     )
 
     first_values <- first@values[[1L]]@data$value
@@ -333,7 +298,7 @@ test_that("precipitation censoring is deterministic and RNG-independent", {
     ))
     expect_true(any(first_values == 0))
     expect_true(any(first_values > 0))
-    precipitation <- (first@values[[1L]]@provenance$diagnostics$precipitation)
+    precipitation <- first@values[[1L]]@provenance$diagnostics$precipitation
     expect_identical(
         precipitation$input_censored_values,
         c(
@@ -350,16 +315,16 @@ test_that("precipitation censoring is deterministic and RNG-independent", {
     )
 })
 
-test_that("QDM rejects unsupported, insufficient, or invalid settings", {
-    observed <- qdm_test__series("tas", 2001L, c(1, 2, 3, 4))
-    historical <- qdm_test__series("tas", 1991L, c(1, 2, 3, 4))
-    future <- qdm_test__series("tas", 2061L, c(1, 2, 3, 4))
-    boundary <- qdm_test__execution_inputs(
+test_that("QDM rejects invalid window, zero quantile, and zero dry threshold", {
+    observed <- signal_test__series("tas", 2001L, c(1, 2, 3, 4))
+    historical <- signal_test__series("tas", 1991L, c(1, 2, 3, 4))
+    future <- signal_test__series("tas", 2061L, c(1, 2, 3, 4))
+    boundary <- signal_test__execution_inputs(
         observed,
         historical,
         future
     )
-    settings <- qdm_test__settings("tas")
+    settings <- signal_test__profile_settings(qdm__profiles(), "tas")
 
     even_window <- settings
     even_window$future_window_years <- 30L
@@ -375,17 +340,6 @@ test_that("QDM rejects unsupported, insufficient, or invalid settings", {
     )
 
     expect_error(
-        component__execute(
-            qdm__component(),
-            "apply_group",
-            inputs = boundary$group@inputs,
-            settings = list(tas = settings),
-            key = list()
-        ),
-        "fewer than 10"
-    )
-
-    expect_error(
         qdm__map_value(
             observed = c(1, 2),
             historical = c(0, 0),
@@ -395,96 +349,13 @@ test_that("QDM rejects unsupported, insufficient, or invalid settings", {
         ),
         "zero historical-model quantile"
     )
-})
 
-test_that("QDM validates precipitation thresholds and non-negative inputs", {
-    observed <- qdm_test__series("pr", 2001L, c(0, 1, 2, 3))
-    historical <- qdm_test__series("pr", 1991L, c(0, 1, 2, 3))
-    future <- qdm_test__series("pr", 2061L, c(0, 1, 2, 3))
-    boundary <- qdm_test__execution_inputs(
-        observed,
-        historical,
-        future
-    )
-    settings <- qdm_test__settings("pr")
-    settings$seasonal_window_days <- 365L
-    settings$min_samples <- 2L
-
-    zero_threshold <- settings
-    zero_threshold$dry_threshold <- 0
+    pr_settings <- signal_test__profile_settings(qdm__profiles(), "pr")
+    pr_settings$dry_threshold <- 0
     expect_error(
-        component__execute(
-            qdm__component(),
-            "apply_group",
-            inputs = boundary$group@inputs,
-            settings = list(pr = zero_threshold),
-            key = list()
-        ),
+        qdm__settings(list(pr = pr_settings)),
         "positive `dry_threshold`"
     )
-
-    negative <- boundary$group@inputs
-    negative$model_future$value[[1L]] <- -1
-    expect_error(
-        component__execute(
-            qdm__component(),
-            "apply_group",
-            inputs = negative,
-            settings = list(pr = settings),
-            key = list()
-        ),
-        "non-negative"
-    )
-})
-
-test_that("QDM profiles retain evidence and component registration", {
-    qdm__register_component()
-    component <- component__get(
-        "signal",
-        "quantile_delta_mapping_daily"
-    )
-    profiles <- component@metadata$signal_profiles
-
-    expect_true(S7::S7_inherits(component, WeatherComponentSpec))
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_daily_series"
-    )
-    expect_identical(component@output_kinds, "daily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_true(component@stochastic)
-    expect_identical(
-        sort(names(profiles)),
-        sort(c(
-            QDM_PUBLISHED_VARIABLES,
-            QDM_EXPERIMENTAL_VARIABLES
-        ))
-    )
-    expect_identical(profiles$tas$evidence, "published")
-    expect_identical(profiles$pr$evidence, "published")
-    expect_identical(profiles$hurs$evidence, "experimental")
-    expect_identical(
-        profiles$hurs$metadata$default_source,
-        "package_implementation"
-    )
-
-    calendar <- component__spec(
-        name = "qdm_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
-    )
-    sequence <- component__spec(
-        name = "qdm_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :

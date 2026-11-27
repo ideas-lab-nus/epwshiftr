@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R distribution-parametric.R
+#' @include signal-adjustment.R distribution.R
 NULL
 
 # Equidistant CDF Matching uses the Li et al. monthly method and the Cannon et
@@ -12,8 +12,9 @@ EDCDF_REFERENCES <- c(
 # package profiles retain those variables but label daily pooling as adapted.
 EDCDF_LI_VARIABLES <- c("pr", "tas")
 
-# Construct one complete settings record for the fixed Li distribution
-# families and the package-selected native-calendar daily adaptation.
+# Construct one tunable settings record for the Li distribution families and
+# the package-selected native-calendar daily adaptation. Fixed mapping and
+# fitting conventions remain in component metadata and output provenance.
 # edcdf__default_settings {{{
 edcdf__default_settings <- function(
     bounds,
@@ -21,19 +22,13 @@ edcdf__default_settings <- function(
 ) {
     distribution_model <- match.arg(distribution_model)
     list(
-        mapping = "additive_equidistant",
-        seasonal_grouping = "calendar_month",
-        projection_grouping = "complete_requested_period",
         distribution_model = distribution_model,
         range_extension_sd = 0.5,
-        beta_fit_method = "maximum_likelihood_fixed_range",
-        gamma_fit_method = "maximum_likelihood_zero_location",
         cdf_epsilon = 1e-10,
         min_samples = 10L,
         min_positive_samples = 2L,
         dry_threshold = 0,
         bounds = bounds,
-        negative_precipitation_policy = "clip_zero",
         fit_tolerance = 1e-10,
         fit_max_iterations = 1000L
     )
@@ -52,43 +47,35 @@ edcdf__profiles <- function() {
             "beta_four_parameter"
         )
     )
-    lapply(EDCDF_LI_VARIABLES, function(variable) {
-        signal__variable_profile(
-            variable,
-            settings = settings[[variable]],
-            evidence = "experimental",
-            references = EDCDF_REFERENCES,
-            metadata = list(
-                method = "equidistant_cdf_matching",
-                output_role = "model_future",
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = character(),
+        references = EDCDF_REFERENCES,
+        method = "equidistant_cdf_matching",
+        output_role = "model_future",
+        evidence_mode = "all_experimental",
+        metadata_fn = function(variable, published) {
+            list(
                 method_variable_source = "li_2010_monthly",
                 frequency_source = "epwshiftr_daily_adaptation",
                 equation_equivalence = "absolute_quantile_delta_mapping"
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
-# Validate the complete numerical policy at the method boundary so a user
-# override cannot silently select a distribution or temporal variant that the
-# native kernel does not implement.
+# Validate all tunable numerical settings at the method boundary.
 # edcdf__settings {{{
 edcdf__settings <- function(settings) {
     expected <- c(
-        "mapping",
-        "seasonal_grouping",
-        "projection_grouping",
         "distribution_model",
         "range_extension_sd",
-        "beta_fit_method",
-        "gamma_fit_method",
         "cdf_epsilon",
         "min_samples",
         "min_positive_samples",
         "dry_threshold",
         "bounds",
-        "negative_precipitation_policy",
         "fit_tolerance",
         "fit_max_iterations"
     )
@@ -97,56 +84,20 @@ edcdf__settings <- function(settings) {
         expected,
         "Equidistant CDF Matching"
     )
-    if (
-        !identical(resolved$mapping, "additive_equidistant") ||
-            !identical(resolved$seasonal_grouping, "calendar_month") ||
-            !identical(
-                resolved$projection_grouping,
-                "complete_requested_period"
-            ) ||
-            !identical(
-                resolved$beta_fit_method,
-                "maximum_likelihood_fixed_range"
-            ) ||
-            !identical(
-                resolved$gamma_fit_method,
-                "maximum_likelihood_zero_location"
-            ) ||
-            !identical(
-                resolved$negative_precipitation_policy,
-                "clip_zero"
-            )
-    ) {
-        cli::cli_abort(
-            "Equidistant CDF Matching currently requires the additive Li equation, native calendar-month pooling, complete requested projection periods, fixed-range Beta maximum likelihood, zero-location Gamma maximum likelihood, and zero clipping for negative precipitation."
-        )
-    }
     checkmate::assert_choice(
         resolved$distribution_model,
         c("beta_four_parameter", "mixed_gamma")
     )
-    checkmate::assert_number(
+    resolved$range_extension_sd <- signal__positive_number(
         resolved$range_extension_sd,
-        lower = 0,
-        finite = TRUE
+        "range_extension_sd"
     )
-    if (resolved$range_extension_sd <= 0) {
-        cli::cli_abort("`range_extension_sd` must be positive.")
-    }
-    checkmate::assert_number(
+    resolved$cdf_epsilon <- signal__positive_number(
         resolved$cdf_epsilon,
-        lower = 0,
+        "cdf_epsilon",
         upper = 0.5,
-        finite = TRUE
+        strict_upper = TRUE
     )
-    if (
-        resolved$cdf_epsilon <= 0 ||
-            resolved$cdf_epsilon >= 0.5
-    ) {
-        cli::cli_abort(
-            "`cdf_epsilon` must lie strictly between zero and 0.5."
-        )
-    }
     resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
         "min_samples",
@@ -166,14 +117,10 @@ edcdf__settings <- function(settings) {
         resolved$bounds,
         "Equidistant CDF Matching bounds must be ordered."
     )
-    checkmate::assert_number(
+    resolved$fit_tolerance <- signal__positive_number(
         resolved$fit_tolerance,
-        lower = 0,
-        finite = TRUE
+        "fit_tolerance"
     )
-    if (resolved$fit_tolerance <= 0) {
-        cli::cli_abort("`fit_tolerance` must be positive.")
-    }
     resolved$fit_max_iterations <- signal__integer_setting(
         resolved$fit_max_iterations,
         "fit_max_iterations",
@@ -192,63 +139,6 @@ edcdf__settings <- function(settings) {
     }
 
     resolved
-}
-# }}}
-
-# Resolve and validate the three role-addressable daily series without
-# coercing their native CF calendars to Gregorian dates.
-# edcdf__inputs {{{
-edcdf__inputs <- function(inputs, variable, distribution_model) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!is.list(inputs) || !all(roles %in% names(inputs))) {
-        cli::cli_abort(
-            "Equidistant CDF Matching requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        bias__daily_table(inputs[[role]], role)
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "Equidistant CDF Matching role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "Equidistant CDF Matching role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "Equidistant CDF Matching inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        identical(distribution_model, "mixed_gamma") &&
-            any(vapply(
-                series,
-                function(data) any(data[["value"]] < 0),
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "Mixed-Gamma Equidistant CDF Matching requires non-negative input values."
-        )
-    }
-    series
 }
 # }}}
 
@@ -742,41 +632,17 @@ edcdf__adjust_values <- function(series, resolved) {
     bounded <- bounded_result$value
     diagnostics <- list(
         month_count = length(records),
-        observed_month_samples = c(
-            minimum = min(vapply(
-                records,
-                function(record) record$observed_samples,
-                integer(1L)
-            )),
-            maximum = max(vapply(
-                records,
-                function(record) record$observed_samples,
-                integer(1L)
-            ))
+        observed_month_samples = signal__sample_summary(
+            vapply(records, `[[`, integer(1L), "observed_samples"),
+            include_median = FALSE
         ),
-        historical_month_samples = c(
-            minimum = min(vapply(
-                records,
-                function(record) record$historical_samples,
-                integer(1L)
-            )),
-            maximum = max(vapply(
-                records,
-                function(record) record$historical_samples,
-                integer(1L)
-            ))
+        historical_month_samples = signal__sample_summary(
+            vapply(records, `[[`, integer(1L), "historical_samples"),
+            include_median = FALSE
         ),
-        future_month_samples = c(
-            minimum = min(vapply(
-                records,
-                function(record) record$future_samples,
-                integer(1L)
-            )),
-            maximum = max(vapply(
-                records,
-                function(record) record$future_samples,
-                integer(1L)
-            ))
+        future_month_samples = signal__sample_summary(
+            vapply(records, `[[`, integer(1L), "future_samples"),
+            include_median = FALSE
         ),
         clipped_values = bounded_result$clipped,
         months = records
@@ -794,10 +660,20 @@ edcdf__adjust_values <- function(series, resolved) {
 edcdf__apply_group <- function(inputs, settings, key) {
     resolved <- edcdf__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- edcdf__inputs(
+    is_mixed_gamma <- identical(
+        resolved$distribution_model,
+        "mixed_gamma"
+    )
+    series <- signal__validate_three_role_inputs(
         inputs,
-        variable,
-        resolved$distribution_model
+        variable = variable,
+        method = "Equidistant CDF Matching",
+        min_value = if (is_mixed_gamma) 0 else -Inf,
+        min_value_message = if (is_mixed_gamma) {
+            "Mixed-Gamma Equidistant CDF Matching requires non-negative input values."
+        } else {
+            NULL
+        }
     )
     mapped <- edcdf__adjust_values(series, resolved)
     future <- series$model_future
@@ -810,6 +686,7 @@ edcdf__apply_group <- function(inputs, settings, key) {
         settings = resolved,
         provenance = list(
             method = "equidistant_cdf_matching",
+            mapping = "additive_equidistant",
             references = EDCDF_REFERENCES,
             group_key = key,
             output_backbone = "model_future",
@@ -817,23 +694,13 @@ edcdf__apply_group <- function(inputs, settings, key) {
             adapted_frequency = "day",
             frequency_source = "epwshiftr_daily_adaptation",
             seasonal_grouping = "native_calendar_month",
+            projection_grouping = "complete_requested_period",
+            beta_fit_method = "maximum_likelihood_fixed_range",
+            gamma_fit_method = "maximum_likelihood_zero_location",
+            negative_precipitation_policy = "clip_zero",
             equation_equivalence = "absolute_quantile_delta_mapping",
             diagnostics = mapped$diagnostics
         )
-    )
-}
-# }}}
-
-# Return an explicit diagnostic if the method violates the common
-# future-model output contract.
-# edcdf__validate_result {{{
-edcdf__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        DailyAdjustedSeries,
-        "DailyAdjustedSeries",
-        "model_future",
-        "Equidistant CDF Matching"
     )
 }
 # }}}
@@ -842,30 +709,27 @@ edcdf__validate_result <- function(value, inputs, key) {
 # precipitation variable alternatives.
 # edcdf__component {{{
 edcdf__component <- function() {
-    alternatives <- as.list(EDCDF_LI_VARIABLES)
-    requirements <- signal__three_role_requirements(
-        alternatives,
-        frequencies = "day"
-    )
-    signal__component(
+    signal__three_role_component(
         name = "equidistant_cdf_matching_daily",
         label = "Daily Equidistant CDF Matching",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_daily_series",
-        output_kinds = "daily_adjusted_series",
-        scopes = "univariate",
-        stochastic = FALSE,
+        variables = EDCDF_LI_VARIABLES,
         profiles = edcdf__profiles(),
         apply_group = edcdf__apply_group,
-        operations = list(
-            validate_options = edcdf__settings,
-            validate_result = edcdf__validate_result
-        ),
+        validate_options = edcdf__settings,
+        method_label = "Equidistant CDF Matching",
+        output_role = "model_future",
+        stochastic = FALSE,
         metadata = list(
             method_family = "parametric_quantile_mapping",
+            mapping = "additive_equidistant",
             published_frequency = "mon",
             adapted_frequency = "day",
             daily_adaptation = "native_calendar_month_pooling",
+            seasonal_grouping = "calendar_month",
+            projection_grouping = "complete_requested_period",
+            beta_fit_method = "maximum_likelihood_fixed_range",
+            gamma_fit_method = "maximum_likelihood_zero_location",
+            negative_precipitation_policy = "clip_zero",
             equation_equivalence = "absolute_quantile_delta_mapping",
             distributions = list(
                 tas = "beta_four_parameter",

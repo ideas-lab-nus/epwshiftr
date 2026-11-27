@@ -194,6 +194,11 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
     if (!"dataset_id" %in% names(catalog)) {
         data.table::set(catalog, j = "dataset_id", value = NA_character_)
     }
+    # Acquisition rows must retain the same source descriptor as child Stores.
+    # Catalogues without a separate title identify the file by its filename.
+    if (!"title" %in% names(catalog)) {
+        data.table::set(catalog, j = "title", value = catalog$filename)
+    }
     keys <- c(
         "source_id",
         "experiment_id",
@@ -210,6 +215,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
             input_key,
             "file_key",
             "filename",
+            "title",
             "master_id",
             "dataset_id",
             "version",
@@ -346,6 +352,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
         "logical_file_id",
         "file_key",
         "filename",
+        "title",
         "master_id",
         "dataset_id",
         "source_id",
@@ -448,7 +455,7 @@ shift_batch_plan__plan_from_discovery <- function(children, manifest, path) {
             consumers
         ))
     }
-    store <- shift_store(path)
+    store <- shift_inspect__store(path)
     on.exit(store$close(), add = TRUE)
     sql <- sprintf(
         paste(
@@ -546,7 +553,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                 if (is.null(files)) {
                     return(NULL)
                 }
-                store <- shift_store(files)
+                store <- shift_inspect__store(files)
                 on.exit(store$close(), add = TRUE)
                 query <- shift_inspect__query_run(store, files@ids$query_id)
                 source <- file.path(store$path, query$query_file[[1L]])
@@ -615,7 +622,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
         ))
     ]
     catalogs <- lapply(inputs, function(input) {
-        store <- shift_store(input$store)
+        store <- shift_inspect__store(input$store)
         on.exit(store$close(), add = TRUE)
         rows <- data.table::rbindlist(
             lapply(

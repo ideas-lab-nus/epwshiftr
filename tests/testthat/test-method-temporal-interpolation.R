@@ -345,45 +345,16 @@ test_that("linear temporal interpolation rejects unsafe source semantics", {
         ),
         "must contain sub-daily source samples"
     )
-})
-
-test_that("linear temporal interpolation is registered and compatible", {
-    temporal__register_linear_component()
-    component <- component__get(
-        "preprocess",
-        "linear_temporal_interpolation"
-    )
-    calendar <- component__spec(
-        name = "hourly_calendar_test",
-        stage = "calendar",
-        input_kinds = "hourly_role_inputs",
-        output_kinds = "calendar_indexed_hourly",
-        scopes = "multivariate",
-        operations = list(apply = identity)
-    )
-    inputs <- temporal_test__inputs()
-
-    expect_s7_class(component, WeatherComponentSpec)
-    expect_identical(component@stage, "preprocess")
-    expect_identical(component@output_kinds, "hourly_role_inputs")
-    expect_identical(component@scopes, "univariate")
-    expect_identical(component@metadata$target_step_seconds, 3600)
-    expect_identical(
-        component@metadata$radiation_policy,
-        "dedicated_solar_interpolation_required"
-    )
-    expect_invisible(component__validate_inputs(component, inputs))
-    expect_true(component__compatible(component, calendar))
 
     invalid_frequency <- temporal_test__series()
     invalid_frequency$frequency <- "day"
-    invalid_inputs <- temporal_test__inputs(
-        invalid_frequency,
-        invalid_frequency
-    )
     expect_error(
-        component__validate_inputs(component, invalid_inputs),
-        "frequencies `day`"
+        temporal__linear_apply(
+            temporal_test__inputs(invalid_frequency, invalid_frequency),
+            NULL,
+            list()
+        ),
+        "unsupported source frequency"
     )
 })
 

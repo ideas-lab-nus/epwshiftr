@@ -919,8 +919,15 @@ Verify checksums for completed persistent tasks.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-A data frame of completed task records with a
-\code{checksum_ok} column.
+A data frame of completed task records with \code{checksum_ok} and
+\code{integrity_evidence} columns. Read both together with task status:
+\code{"publisher_checksum"} identifies a supplied expected checksum,
+\code{"saved_transfer"} identifies complete saved byte-producing transfer
+evidence without a publisher checksum, and \code{"missing"} identifies
+absent historical evidence. Generic \code{checksum_ok} can be \code{TRUE} on
+file existence alone when neither evidence type is available. A local
+hash does not establish publisher checksum verification or authorize
+Store source adoption by itself.
 }
 }
 \if{html}{\out{<hr>}}

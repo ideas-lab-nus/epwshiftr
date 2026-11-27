@@ -39,8 +39,8 @@ schema__load_lazy("SCHEMA_DOWNLOADER_CONFIG", "downloader-config.json")
 schema__load_lazy("SCHEMA_SHIFT_WORKFLOW_CONFIG", "shift-workflow-config.json")
 
 # Map each short schema name to the lazy document constant it compiles. The
-# SchemaDoc constants stay available for inspection and editing; only the
-# validation path uses the compiled form.
+# SchemaDoc constants stay available for inspection; only the validation path
+# uses the compiled form.
 schema__compiled_documents <- c(
     QUERY = "SCHEMA_QUERY",
     RESPONSE = "SCHEMA_RESPONSE",

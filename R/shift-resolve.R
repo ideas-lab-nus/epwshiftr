@@ -14,6 +14,36 @@ shift_resolve__catalog_match <- function(x, value) {
 }
 # }}}
 
+# Evaluate a named set of scalar catalog predicates without NSE column shadowing.
+# shift_resolve__catalog_filter_mask {{{
+shift_resolve__catalog_filter_mask <- function(catalog, criteria) {
+    keep <- rep(TRUE, nrow(catalog))
+    if (!length(keep)) {
+        return(keep)
+    }
+    for (name in names(criteria)) {
+        keep <- keep &
+            shift_resolve__catalog_match(catalog[[name]], criteria[[name]])
+    }
+    keep
+}
+# }}}
+
+# Parse UTC timestamps vectorized first, falling back only for mixed formats.
+# shift_resolve__parse_utc {{{
+shift_resolve__parse_utc <- function(x) {
+    if (inherits(x, "POSIXt")) {
+        return(as.POSIXct(x, tz = "UTC"))
+    }
+    parsed <- suppressWarnings(as.POSIXct(x, tz = "UTC"))
+    retry <- which(is.na(parsed) & !is.na(x) & nzchar(as.character(x)))
+    for (i in retry) {
+        parsed[[i]] <- suppressWarnings(as.POSIXct(x[[i]], tz = "UTC"))
+    }
+    parsed
+}
+# }}}
+
 # Fill absent ESGF File time fields from the CMIP/DRS filename carried in the
 # catalog. This defensive resolver layer also repairs cached records created by
 # older runs before File-level time enrichment was applied during collection.
@@ -80,21 +110,21 @@ shift_resolve__catalog_years <- function(rows) {
     if (!nrow(rows)) {
         return(integer())
     }
-    years <- integer()
-    for (i in seq_len(nrow(rows))) {
-        start <- suppressWarnings(as.POSIXct(
-            rows$datetime_start[[i]],
-            tz = "UTC"
-        ))
-        stop <- suppressWarnings(as.POSIXct(rows$datetime_end[[i]], tz = "UTC"))
-        if (is.na(start) || is.na(stop)) {
-            next
-        }
-        from <- as.integer(format(start, "%Y", tz = "UTC"))
-        to <- as.integer(format(stop, "%Y", tz = "UTC"))
-        years <- c(years, seq.int(min(from, to), max(from, to)))
+    starts <- shift_resolve__parse_utc(rows$datetime_start)
+    stops <- shift_resolve__parse_utc(rows$datetime_end)
+    valid <- which(!is.na(starts) & !is.na(stops))
+    if (!length(valid)) {
+        return(integer())
     }
-    sort(unique(years))
+    from <- as.integer(format(starts[valid], "%Y", tz = "UTC"))
+    to <- as.integer(format(stops[valid], "%Y", tz = "UTC"))
+    lo <- pmin(from, to)
+    hi <- pmax(from, to)
+    years <- vector("list", length(valid))
+    for (i in seq_along(valid)) {
+        years[[i]] <- seq.int(lo[[i]], hi[[i]])
+    }
+    sort(unique(unlist(years, use.names = FALSE)))
 }
 # }}}
 
@@ -179,28 +209,22 @@ shift_resolve__cmip6_input_years <- function(
     table,
     grid
 ) {
-    # ESGF providers may return convenience columns named `variable` and
-    # `grid`. Local aliases prevent data.table from resolving those columns
-    # instead of this helper's scalar arguments inside the row expression.
-    wanted_source_id <- identity$source_id[[1L]]
-    wanted_variant_label <- identity$variant_label[[1L]]
-    wanted_experiment <- experiment
-    wanted_variable <- variable
-    wanted_frequency <- frequency
-    wanted_table <- table
-    wanted_grid <- grid
-    files <- catalog[
-        shift_resolve__catalog_match(source_id, wanted_source_id) &
-            shift_resolve__catalog_match(variant_label, wanted_variant_label) &
-            shift_resolve__catalog_match(experiment_id, wanted_experiment) &
-            shift_resolve__catalog_match(variable_id, wanted_variable) &
-            shift_resolve__catalog_match(frequency, wanted_frequency) &
-            shift_resolve__catalog_match(table_id, wanted_table) &
-            shift_resolve__catalog_match(grid_label, wanted_grid)
-    ]
+    mask <- shift_resolve__catalog_filter_mask(
+        catalog,
+        list(
+            source_id = identity$source_id[[1L]],
+            variant_label = identity$variant_label[[1L]],
+            experiment_id = experiment,
+            variable_id = variable,
+            frequency = frequency,
+            table_id = table,
+            grid_label = grid
+        )
+    )
+    files <- catalog[mask]
     if (nrow(files)) shift_resolve__catalog_years(files) else NULL
 }
-# }}}}
+# }}}
 
 # Optional inputs follow the same exact partition and year checks as required
 # inputs, but do not report gaps or disqualify the candidate.
@@ -226,7 +250,7 @@ shift_resolve__cmip6_input_complete <- function(
     )
     !is.null(covered) && !length(setdiff(years, covered))
 }
-# }}}}
+# }}}
 
 # Keep the variable and exact missing years for each experiment in a required
 # alternative. The candidate is eligible only if every experiment has no gaps.
@@ -287,6 +311,74 @@ shift_resolve__cmip6_partition_id <- function(frequency, table) {
 }
 # }}}
 
+# Return the sorted non-empty grid labels available for one identity and
+# frequency/table partition, optionally constrained to explicit user grids.
+# shift_resolve__partition_grids {{{
+shift_resolve__partition_grids <- function(
+    catalog,
+    identity,
+    frequency,
+    table_id,
+    grid = NULL,
+    fallback_to_grid = FALSE
+) {
+    mask <- shift_resolve__catalog_filter_mask(
+        catalog,
+        list(
+            source_id = identity$source_id[[1L]],
+            variant_label = identity$variant_label[[1L]],
+            frequency = frequency,
+            table_id = table_id
+        )
+    )
+    values <- unique(catalog$grid_label[mask])
+    values <- sort(values[!is.na(values) & nzchar(values)])
+    if (!is.null(grid)) {
+        values <- intersect(values, grid)
+        if (!length(values) && isTRUE(fallback_to_grid)) {
+            values <- as.character(grid)
+        }
+    }
+    values
+}
+# }}}
+
+# Summarize unique sorted (frequency, table_id, grid_label) rows into a stable
+# key and native-grid indicator shared across candidate creation and updates.
+# shift_resolve__partition_key {{{
+shift_resolve__partition_key <- function(partitions) {
+    rows <- unique(partitions[, .(frequency, table_id, grid_label)])
+    data.table::setorderv(rows, c("frequency", "table_id", "grid_label"))
+    list(
+        rows = rows,
+        key = paste(
+            paste(
+                shift_resolve__cmip6_partition_id(
+                    rows$frequency,
+                    rows$table_id
+                ),
+                rows$grid_label,
+                sep = "="
+            ),
+            collapse = ";"
+        ),
+        native_grid = all(
+            !is.na(rows$grid_label) & rows$grid_label == "gn"
+        )
+    )
+}
+# }}}
+
+# Check whether every partition entry in a serialized partition key uses `gn`.
+# shift_resolve__partition_key_is_native {{{
+shift_resolve__partition_key_is_native <- function(value) {
+    if (is.na(value) || !nzchar(value)) {
+        return(FALSE)
+    }
+    all(grepl("=gn$", strsplit(value, ";", fixed = TRUE)[[1L]]))
+}
+# }}}
+
 # Expand the per-frequency/table grid choices for one model/member. Missing
 # partitions retain an explicit NA choice so near matches remain diagnosable.
 # shift_resolve__cmip6_grid_combinations {{{
@@ -306,29 +398,14 @@ shift_resolve__cmip6_grid_combinations <- function(
     )
     choices <- stats::setNames(vector("list", nrow(partitions)), partition_ids)
     for (i in seq_len(nrow(partitions))) {
-        wanted_frequency <- partitions$frequency[[i]]
-        wanted_table_id <- partitions$table_id[[i]]
-        values <- unique(
-            catalog[
-                shift_resolve__catalog_match(
-                    source_id,
-                    identity$source_id[[1L]]
-                ) &
-                    shift_resolve__catalog_match(
-                        variant_label,
-                        identity$variant_label[[1L]]
-                    ) &
-                    shift_resolve__catalog_match(frequency, wanted_frequency) &
-                    shift_resolve__catalog_match(table_id, wanted_table_id)
-            ]$grid_label
+        values <- shift_resolve__partition_grids(
+            catalog,
+            identity,
+            partitions$frequency[[i]],
+            partitions$table_id[[i]],
+            grid = grid,
+            fallback_to_grid = TRUE
         )
-        values <- sort(values[!is.na(values) & nzchar(values)])
-        if (!is.null(grid)) {
-            values <- intersect(values, grid)
-            if (!length(values)) {
-                values <- as.character(grid)
-            }
-        }
         if (!length(values)) {
             values <- NA_character_
         }
@@ -345,6 +422,120 @@ shift_resolve__cmip6_grid_combinations <- function(
         check.names = FALSE,
         stringsAsFactors = FALSE
     )
+}
+# }}}
+
+# Select the best complete optional-variable grid per frequency/table partition
+# for one candidate identity without affecting required-partition eligibility.
+# shift_resolve__cmip6_optional_partitions {{{
+shift_resolve__cmip6_optional_partitions <- function(
+    catalog,
+    identity,
+    experiments,
+    years,
+    variable_specs,
+    optional_variables,
+    frequency_map,
+    table_map,
+    grid_map,
+    primary_grid,
+    grid = NULL
+) {
+    optional_partitions <- list()
+    optional_specs <- unique(variable_specs[
+        variable_id %in% optional_variables,
+        .(frequency, table_id)
+    ])
+    for (optional_index in seq_len(nrow(optional_specs))) {
+        wanted_frequency <- optional_specs$frequency[[optional_index]]
+        wanted_table_id <- optional_specs$table_id[[optional_index]]
+        table_variables <- optional_variables[
+            unname(frequency_map[optional_variables]) == wanted_frequency &
+                unname(table_map[optional_variables]) == wanted_table_id
+        ]
+        if (!length(table_variables)) {
+            next
+        }
+        partition_id <- shift_resolve__cmip6_partition_id(
+            wanted_frequency,
+            wanted_table_id
+        )
+        optional_grids <- if (partition_id %in% names(grid_map)) {
+            grid_map[[partition_id]]
+        } else {
+            shift_resolve__partition_grids(
+                catalog,
+                identity,
+                wanted_frequency,
+                wanted_table_id,
+                grid = grid,
+                fallback_to_grid = FALSE
+            )
+        }
+        if (!length(optional_grids) || all(is.na(optional_grids))) {
+            next
+        }
+        scored <- lapply(optional_grids, function(optional_grid) {
+            complete_variables <- table_variables[vapply(
+                table_variables,
+                function(variable) {
+                    all(vapply(
+                        experiments,
+                        function(experiment) {
+                            shift_resolve__cmip6_input_complete(
+                                catalog,
+                                identity,
+                                experiment,
+                                variable,
+                                wanted_frequency,
+                                wanted_table_id,
+                                optional_grid,
+                                years
+                            )
+                        },
+                        logical(1L)
+                    ))
+                },
+                logical(1L)
+            )]
+            list(
+                grid = optional_grid,
+                variables = complete_variables,
+                score = length(complete_variables)
+            )
+        })
+        scores <- vapply(scored, `[[`, integer(1L), "score")
+        if (!length(scores) || max(scores) == 0L) {
+            next
+        }
+        scored <- scored[scores == max(scores)]
+        preferred <- vapply(
+            scored,
+            function(value) {
+                if (
+                    !is.na(primary_grid) &&
+                        identical(value$grid, primary_grid)
+                ) {
+                    return(1L)
+                }
+                if (identical(value$grid, "gn")) 2L else 3L
+            },
+            integer(1L)
+        )
+        chosen <- scored[[order(
+            preferred,
+            vapply(scored, `[[`, character(1L), "grid")
+        )[[1L]]]]
+        optional_partitions[[length(optional_partitions) + 1L]] <-
+            data.table::data.table(
+                variable_id = chosen$variables,
+                frequency = wanted_frequency,
+                table_id = wanted_table_id,
+                grid_label = chosen$grid,
+                required = FALSE
+            )
+    }
+    optional_partitions
 }
 # }}}
 
@@ -541,125 +732,24 @@ shift_resolve__cmip6_candidates <- function(
                 required = TRUE
             )
 
-            optional_variables <- setdiff(variables, required_inputs)
-            optional_partitions <- list()
-            optional_specs <- unique(variable_specs[
-                variable_id %in% optional_variables,
-                .(frequency, table_id)
-            ])
-            for (optional_index in seq_len(nrow(optional_specs))) {
-                wanted_frequency <- optional_specs$frequency[[optional_index]]
-                wanted_table_id <- optional_specs$table_id[[optional_index]]
-                table_variables <- optional_variables[
-                    unname(frequency_map[optional_variables]) ==
-                        wanted_frequency &
-                        unname(table_map[optional_variables]) == wanted_table_id
-                ]
-                if (!length(table_variables)) {
-                    next
-                }
-                partition_id <- shift_resolve__cmip6_partition_id(
-                    wanted_frequency,
-                    wanted_table_id
-                )
-                if (partition_id %in% names(grid_map)) {
-                    optional_grids <- grid_map[[partition_id]]
-                } else {
-                    optional_grids <- unique(
-                        catalog[
-                            shift_resolve__catalog_match(
-                                source_id,
-                                identity$source_id[[1L]]
-                            ) &
-                                shift_resolve__catalog_match(
-                                    variant_label,
-                                    identity$variant_label[[1L]]
-                                ) &
-                                shift_resolve__catalog_match(
-                                    frequency,
-                                    wanted_frequency
-                                ) &
-                                shift_resolve__catalog_match(
-                                    table_id,
-                                    wanted_table_id
-                                )
-                        ]$grid_label
-                    )
-                    optional_grids <- sort(optional_grids[
-                        !is.na(optional_grids) & nzchar(optional_grids)
-                    ])
-                    if (!is.null(grid)) {
-                        optional_grids <- intersect(optional_grids, grid)
-                    }
-                }
-                if (!length(optional_grids) || all(is.na(optional_grids))) {
-                    next
-                }
-                scored <- lapply(optional_grids, function(optional_grid) {
-                    complete_variables <- table_variables[vapply(
-                        table_variables,
-                        function(variable) {
-                            all(vapply(
-                                experiments,
-                                function(experiment) {
-                                    shift_resolve__cmip6_input_complete(
-                                        catalog,
-                                        identity,
-                                        experiment,
-                                        variable,
-                                        wanted_frequency,
-                                        wanted_table_id,
-                                        optional_grid,
-                                        years
-                                    )
-                                },
-                                logical(1L)
-                            ))
-                        },
-                        logical(1L)
-                    )]
-                    list(
-                        grid = optional_grid,
-                        variables = complete_variables,
-                        score = length(complete_variables)
-                    )
-                })
-                scores <- vapply(scored, `[[`, integer(1L), "score")
-                if (!length(scores) || max(scores) == 0L) {
-                    next
-                }
-                scored <- scored[scores == max(scores)]
-                primary_grid <- if (nrow(required_partitions)) {
-                    required_partitions$grid_label[[1L]]
-                } else {
-                    NA_character_
-                }
-                preferred <- vapply(
-                    scored,
-                    function(value) {
-                        if (
-                            !is.na(primary_grid) &&
-                                identical(value$grid, primary_grid)
-                        ) {
-                            return(1L)
-                        }
-                        if (identical(value$grid, "gn")) 2L else 3L
-                    },
-                    integer(1L)
-                )
-                chosen <- scored[[order(
-                    preferred,
-                    vapply(scored, `[[`, character(1L), "grid")
-                )[[1L]]]]
-                optional_partitions[[length(optional_partitions) + 1L]] <-
-                    data.table::data.table(
-                        variable_id = chosen$variables,
-                        frequency = wanted_frequency,
-                        table_id = wanted_table_id,
-                        grid_label = chosen$grid,
-                        required = FALSE
-                    )
+            primary_grid <- if (nrow(required_partitions)) {
+                required_partitions$grid_label[[1L]]
+            } else {
+                NA_character_
             }
+            optional_partitions <- shift_resolve__cmip6_optional_partitions(
+                catalog = catalog,
+                identity = identity,
+                experiments = experiments,
+                years = years,
+                variable_specs = variable_specs,
+                optional_variables = setdiff(variables, required_inputs),
+                frequency_map = frequency_map,
+                table_map = table_map,
+                grid_map = grid_map,
+                primary_grid = primary_grid,
+                grid = grid
+            )
             partitions <- data.table::rbindlist(
                 c(list(required_partitions), optional_partitions),
                 use.names = TRUE,
@@ -674,46 +764,8 @@ shift_resolve__cmip6_candidates <- function(
                     "grid_label"
                 )
             )
-            required_grid_rows <- unique(required_partitions[, .(
-                frequency,
-                table_id,
-                grid_label
-            )])
-            data.table::setorderv(
-                required_grid_rows,
-                c("frequency", "table_id", "grid_label")
-            )
-            required_partition_key <- paste(
-                paste(
-                    shift_resolve__cmip6_partition_id(
-                        required_grid_rows$frequency,
-                        required_grid_rows$table_id
-                    ),
-                    required_grid_rows$grid_label,
-                    sep = "="
-                ),
-                collapse = ";"
-            )
-            all_grid_rows <- unique(partitions[, .(
-                frequency,
-                table_id,
-                grid_label
-            )])
-            data.table::setorderv(
-                all_grid_rows,
-                c("frequency", "table_id", "grid_label")
-            )
-            partition_key <- paste(
-                paste(
-                    shift_resolve__cmip6_partition_id(
-                        all_grid_rows$frequency,
-                        all_grid_rows$table_id
-                    ),
-                    all_grid_rows$grid_label,
-                    sep = "="
-                ),
-                collapse = ";"
-            )
+            required_info <- shift_resolve__partition_key(required_partitions)
+            all_info <- shift_resolve__partition_key(partitions)
             requirement_key <- paste(
                 vapply(
                     names(selected_sources),
@@ -739,20 +791,14 @@ shift_resolve__cmip6_candidates <- function(
                     collapse = "+"
                 ),
                 table_id = paste(display_tables, collapse = "+"),
-                required_partition_key = required_partition_key,
+                required_partition_key = required_info$key,
                 requirement_key = requirement_key,
-                partition_key = partition_key,
+                partition_key = all_info$key,
                 partitions_json = shift_resolve__cmip6_partition_json(
                     partitions
                 ),
-                required_native_grid = all(
-                    !is.na(required_grid_rows$grid_label) &
-                        required_grid_rows$grid_label == "gn"
-                ),
-                all_native_grid = all(
-                    !is.na(all_grid_rows$grid_label) &
-                        all_grid_rows$grid_label == "gn"
-                ),
+                required_native_grid = required_info$native_grid,
+                all_native_grid = all_info$native_grid,
                 complete = !length(missing),
                 missing = if (length(missing)) {
                     paste(unique(missing), collapse = "; ")
@@ -809,7 +855,7 @@ shift_resolve__cmip6_complete_pairs <- function(
         sort = FALSE
     )
 }
-# }}}}
+# }}}
 
 # Build the File query shared by batch discovery and high-level CMIP6
 # resolution when exact future or historical year coverage must be verified.
@@ -856,7 +902,7 @@ shift_resolve__cmip6_coverage_request <- function(
 
     # Monthly Dataset timestamps often use representative mid-month values,
     # so exact dates are applied to File records rather than the Dataset query.
-    shift_cmip6_scenario(
+    shift_spec__cmip6_scenario(
         source = unique(as.character(sources)),
         scenario = experiments,
         member = unique(as.character(members)),
@@ -880,7 +926,7 @@ shift_resolve__cmip6_coverage_request <- function(
 shift_resolve__cmip6_coverage_catalog <- function(request, store, ui, label) {
     # Discovery owns the reporter, so the standalone task wrapper no longer
     # owns this connection. Close locally opened stores on every exit path.
-    file_store <- shift_store(store, create = TRUE)
+    file_store <- shift_inspect__store(store, create = TRUE)
     if (!inherits(store, "EsgStore")) {
         on.exit(file_store$close(), add = TRUE)
     }
@@ -1168,15 +1214,25 @@ shift_resolve__cmip6_period_coverage <- function(
     }
 
     candidates <- candidates[complete_rows]
-    candidates[, source_file_count := source_file_count[complete_rows]]
-    candidates[,
-        identity := paste(
-            source_id,
-            variant_label,
-            grid_label,
-            sep = "\r"
-        )
-    ]
+    data.table::set(
+        candidates,
+        j = "source_file_count",
+        value = source_file_count[complete_rows]
+    )
+    data.table::set(
+        candidates,
+        j = "identity",
+        value = if (nrow(candidates)) {
+            paste(
+                candidates$source_id,
+                candidates$variant_label,
+                candidates$grid_label,
+                sep = "\r"
+            )
+        } else {
+            character()
+        }
+    )
     candidates[]
 }
 # }}}
@@ -1248,16 +1304,7 @@ shift_resolve__choose_cmip6_candidates <- function(
             if (is.null(grid) && length(common_partitions) > 1L) {
                 native <- common_partitions[vapply(
                     common_partitions,
-                    function(value) {
-                        all(grepl(
-                            "=gn$",
-                            strsplit(
-                                value,
-                                ";",
-                                fixed = TRUE
-                            )[[1L]]
-                        ))
-                    },
+                    shift_resolve__partition_key_is_native,
                     logical(1L)
                 )]
                 if (length(native)) {
@@ -1306,9 +1353,11 @@ shift_resolve__choose_cmip6_candidates <- function(
         }
         selected[[model]] <- available
     }
-    data.table::rbindlist(selected, use.names = TRUE, fill = TRUE)[,
-        missing := NULL
-    ][]
+    out <- data.table::rbindlist(selected, use.names = TRUE, fill = TRUE)
+    if ("missing" %in% names(out)) {
+        data.table::set(out, j = "missing", value = NULL)
+    }
+    out[]
 }
 # }}}
 
@@ -1338,7 +1387,11 @@ shift_resolve__cmip6_partial_candidates <- function(
             requirements = requirements,
             grid = grid
         )
-        rows[, requested_experiment := experiment]
+        data.table::set(
+            rows,
+            j = "requested_experiment",
+            value = rep(experiment, nrow(rows))
+        )
         rows
     })
     rows <- data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
@@ -1393,58 +1446,32 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
 ) {
     identity <- CMIP6_REQUIRED_PAIR_COLUMNS
     display <- c("grid_label", "table_id")
-    future <- data.table::as.data.table(data.table::copy(future))
-    for (name in setdiff(
-        c(identity, display, "complete", "missing"),
-        names(future)
-    )) {
-        future[[name]] <- if (identical(name, "complete")) {
-            logical(nrow(future))
-        } else {
-            rep(NA_character_, nrow(future))
+    normalize_role <- function(rows, prefix) {
+        rows <- data.table::as.data.table(data.table::copy(rows))
+        cols <- c(identity, display, "complete", "missing")
+        for (name in setdiff(cols, names(rows))) {
+            data.table::set(
+                rows,
+                j = name,
+                value = if (identical(name, "complete")) {
+                    logical(nrow(rows))
+                } else {
+                    rep(NA_character_, nrow(rows))
+                }
+            )
         }
-    }
-    future <- future[,
-        c(identity, display, "complete", "missing"),
-        with = FALSE
-    ]
-    data.table::setnames(
-        future,
-        c(display, "complete", "missing"),
-        c(
-            "future_grid_label",
-            "future_table_id",
-            "future_complete",
-            "future_missing"
+        rows <- rows[, cols, with = FALSE]
+        data.table::setnames(
+            rows,
+            c(display, "complete", "missing"),
+            paste0(prefix, "_", c(display, "complete", "missing"))
         )
-    )
+        rows
+    }
+    future <- normalize_role(future, "future")
 
     if (isTRUE(reference_required)) {
-        reference <- data.table::as.data.table(data.table::copy(reference))
-        for (name in setdiff(
-            c(identity, display, "complete", "missing"),
-            names(reference)
-        )) {
-            reference[[name]] <- if (identical(name, "complete")) {
-                logical(nrow(reference))
-            } else {
-                rep(NA_character_, nrow(reference))
-            }
-        }
-        reference <- reference[,
-            c(identity, display, "complete", "missing"),
-            with = FALSE
-        ]
-        data.table::setnames(
-            reference,
-            c(display, "complete", "missing"),
-            c(
-                "reference_grid_label",
-                "reference_table_id",
-                "reference_complete",
-                "reference_missing"
-            )
-        )
+        reference <- normalize_role(reference, "reference")
         combined <- merge(
             future,
             reference,
@@ -1454,12 +1481,26 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
         )
     } else {
         combined <- data.table::copy(future)
-        combined[, `:=`(
-            reference_grid_label = future_grid_label,
-            reference_table_id = future_table_id,
-            reference_complete = TRUE,
-            reference_missing = NA_character_
-        )]
+        data.table::set(
+            combined,
+            j = "reference_grid_label",
+            value = combined$future_grid_label
+        )
+        data.table::set(
+            combined,
+            j = "reference_table_id",
+            value = combined$future_table_id
+        )
+        data.table::set(
+            combined,
+            j = "reference_complete",
+            value = rep(TRUE, nrow(combined))
+        )
+        data.table::set(
+            combined,
+            j = "reference_missing",
+            value = rep(NA_character_, nrow(combined))
+        )
     }
 
     future_complete <- sum(future$future_complete %in% TRUE)
@@ -1557,12 +1598,7 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
             combined[["variant_label"]] %in% "r1i1p1f1"
         combined[["preferred_grid"]] <- vapply(
             combined[["required_partition_key"]],
-            function(value) {
-                if (is.na(value) || !nzchar(value)) {
-                    return(FALSE)
-                }
-                all(grepl("=gn$", strsplit(value, ";", fixed = TRUE)[[1L]]))
-            },
+            shift_resolve__partition_key_is_native,
             logical(1L)
         )
         data.table::setorderv(
@@ -1826,7 +1862,9 @@ shift_resolve__cmip6_shared_partitions <- function(future, reference) {
         sort = FALSE
     )
     shared_optional <- if (nrow(shared_optional)) {
-        shared_optional[, c(keys), with = FALSE][, required := FALSE]
+        out <- shared_optional[, c(keys), with = FALSE]
+        data.table::set(out, j = "required", value = rep(FALSE, nrow(out)))
+        out
     } else {
         future[0L]
     }
@@ -1850,46 +1888,17 @@ shift_resolve__cmip6_shared_partitions <- function(future, reference) {
 # shift_resolve__cmip6_partition_summary {{{
 shift_resolve__cmip6_partition_summary <- function(partitions) {
     partitions <- data.table::as.data.table(partitions)
-    grids <- unique(partitions[, .(frequency, table_id, grid_label)])
-    data.table::setorderv(
-        grids,
-        c("frequency", "table_id", "grid_label")
-    )
-    required_grids <- unique(partitions[
-        required %in% TRUE,
-        .(frequency, table_id, grid_label)
-    ])
-    data.table::setorderv(
-        required_grids,
-        c("frequency", "table_id", "grid_label")
+    all_info <- shift_resolve__partition_key(partitions)
+    required_info <- shift_resolve__partition_key(
+        partitions[required %in% TRUE]
     )
     list(
-        grid_label = required_grids$grid_label[[1L]],
+        grid_label = required_info$rows$grid_label[[1L]],
         table_id = paste(sort(unique(partitions$table_id)), collapse = "+"),
-        required_partition_key = paste(
-            paste(
-                shift_resolve__cmip6_partition_id(
-                    required_grids$frequency,
-                    required_grids$table_id
-                ),
-                required_grids$grid_label,
-                sep = "="
-            ),
-            collapse = ";"
-        ),
-        partition_key = paste(
-            paste(
-                shift_resolve__cmip6_partition_id(
-                    grids$frequency,
-                    grids$table_id
-                ),
-                grids$grid_label,
-                sep = "="
-            ),
-            collapse = ";"
-        ),
-        required_native_grid = all(required_grids$grid_label == "gn"),
-        all_native_grid = all(grids$grid_label == "gn")
+        required_partition_key = required_info$key,
+        partition_key = all_info$key,
+        required_native_grid = required_info$native_grid,
+        all_native_grid = all_info$native_grid
     )
 }
 # }}}
@@ -2103,7 +2112,11 @@ shift_resolve__resolve_cmip6_selection <- function(
         if (!diagnostic$shared_complete_candidates) {
             shift_resolve__abort_cmip6_resolution(diagnostic)
         }
-        future[, reference_partitions_json := NA_character_]
+        data.table::set(
+            future,
+            j = "reference_partitions_json",
+            value = rep(NA_character_, nrow(future))
+        )
     }
     selected <- shift_resolve__choose_cmip6_candidates(
         future,
@@ -2112,7 +2125,11 @@ shift_resolve__resolve_cmip6_selection <- function(
         grid = grid,
         diagnostic = diagnostic
     )
-    selected[, future_partitions_json := partitions_json]
+    data.table::set(
+        selected,
+        j = "future_partitions_json",
+        value = selected$partitions_json
+    )
     selected[]
 }
 # }}}
@@ -2237,6 +2254,59 @@ shift_resolve__files_from_query <- function(store, request, query_id) {
 }
 # }}}
 
+# Build a derived ShiftFiles stage preserving parent request/field metadata.
+# shift_resolve__files_stage {{{
+shift_resolve__files_stage <- function(files, query_id, rows, result_fields) {
+    shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = files@store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = files@meta$request,
+            dataset_count = files@meta$dataset_count,
+            datasets = NULL,
+            file_count = nrow(rows),
+            variables = unique(as.character(rows$variable_id)),
+            fields = files@meta$fields,
+            result_fields = result_fields
+        )
+    )
+}
+# }}}
+
+# Narrow one collected File stage to resolved partitions and validate services.
+# shift_resolve__resolve_role_files {{{
+shift_resolve__resolve_role_files <- function(
+    files,
+    selection,
+    experiments,
+    years,
+    role,
+    reporter,
+    control,
+    on_service = NULL
+) {
+    files <- shift_resolve__files_for_partitions(
+        files,
+        selection,
+        experiments = experiments,
+        years = unique(as.integer(years)),
+        role = role
+    )
+    if (!is.null(on_service)) {
+        on_service()
+    }
+    shift_resolve__resolve_file_services(
+        files,
+        role = role,
+        reporter = reporter,
+        refresh = control@refresh,
+        require_opendap = identical(control@download, "never")
+    )
+}
+# }}}
+
 # Resolve usable service endpoints for one collected File stage before its
 # catalog is used for scientific selection or extraction. Each service is
 # selected independently so a recoverable HTTP path cannot replace an OPeNDAP
@@ -2252,7 +2322,7 @@ shift_resolve__resolve_file_services <- function(
     checkmate::assert_string(role, min.chars = 1L)
     checkmate::assert_flag(refresh)
     checkmate::assert_flag(require_opendap)
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(store$close(), add = TRUE)
     result <- shift_inspect__stage_query_result(
         store,
@@ -2331,21 +2401,7 @@ shift_resolve__resolve_file_services <- function(
             )
         )
     }
-    shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = files@store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = files@meta$request,
-            dataset_count = files@meta$dataset_count,
-            datasets = NULL,
-            file_count = nrow(rows),
-            variables = unique(as.character(rows$variable_id)),
-            fields = files@meta$fields,
-            result_fields = result$fields
-        )
-    )
+    shift_resolve__files_stage(files, query_id, rows, result$fields)
 }
 # }}}
 
@@ -2638,7 +2694,7 @@ shift_resolve__collect_resolved_inputs <- function(
     reporter = NULL,
     job_id = NULL
 ) {
-    store <- shift_store(plan, create = TRUE)
+    store <- shift_inspect__store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     wanted_run_id <- run_id
     run_row <- morpher__private_store(store)$read_table("shift_run")
@@ -2850,108 +2906,71 @@ shift_resolve__collect_resolved_inputs <- function(
                     )
                     collected_reference
                 }
-                query_ids <- list(
-                    future = files@ids$query_id,
-                    reference = if (is.null(reference_files)) {
-                        NULL
-                    } else {
-                        reference_files@ids$query_id
-                    }
-                )
+                resolve_selection <- function(files_stage, ref_stage) {
+                    query_ids <<- list(
+                        future = files_stage@ids$query_id,
+                        reference = if (is.null(ref_stage)) {
+                            NULL
+                        } else {
+                            ref_stage@ids$query_id
+                        }
+                    )
+                    shift_resolve__resolve_cmip6_selection(
+                        plan,
+                        record = record_selection,
+                        future_catalog = shift_inspect__file_catalog(
+                            store,
+                            files_stage@ids$query_id
+                        ),
+                        reference_catalog = if (is.null(ref_stage)) {
+                            NULL
+                        } else {
+                            shift_inspect__file_catalog(
+                                store,
+                                ref_stage@ids$query_id
+                            )
+                        }
+                    )
+                }
                 # Resolve the scientific identity before making network calls for
                 # individual file services. Batch children pin one model/member/
                 # grid, so this removes unrelated partitions and gap years first.
-                selection <- shift_resolve__resolve_cmip6_selection(
-                    plan,
-                    record = record_selection,
-                    future_catalog = shift_inspect__file_catalog(
-                        store,
-                        files@ids$query_id
-                    ),
-                    reference_catalog = if (is.null(reference_files)) {
-                        NULL
-                    } else {
-                        shift_inspect__file_catalog(
-                            store,
-                            reference_files@ids$query_id
-                        )
-                    }
-                )
+                selection <- resolve_selection(files, reference_files)
                 future_experiments <- if (is.null(plan@meta$climate)) {
                     plan@meta$request@meta$experiment
                 } else {
                     plan@meta$climate@scenarios
                 }
-                files <- shift_resolve__files_for_partitions(
+                files <- shift_resolve__resolve_role_files(
                     files,
                     selection,
                     experiments = future_experiments,
-                    years = unique(as.integer(plan@meta$periods$year)),
-                    role = "future"
-                )
-                phase <- "services"
-                files <- shift_resolve__resolve_file_services(
-                    files,
+                    years = plan@meta$periods$year,
                     role = "future",
                     reporter = reporter,
-                    refresh = plan@meta$control@refresh,
-                    require_opendap = identical(
-                        plan@meta$control@download,
-                        "never"
-                    )
+                    control = plan@meta$control,
+                    on_service = function() {
+                        phase <<- "services"
+                    }
                 )
                 node_future_files <- as.integer(files@meta$file_count)
                 if (!is.null(reference_files)) {
-                    reference_files <- shift_resolve__files_for_partitions(
+                    reference_files <- shift_resolve__resolve_role_files(
                         reference_files,
                         selection,
                         experiments = plan@meta$reference@experiment,
-                        years = unique(as.integer(
-                            plan@meta$reference@periods$year
-                        )),
-                        role = "reference"
-                    )
-                    reference_files <- shift_resolve__resolve_file_services(
-                        reference_files,
+                        years = plan@meta$reference@periods$year,
                         role = "reference",
                         reporter = reporter,
-                        refresh = plan@meta$control@refresh,
-                        require_opendap = identical(
-                            plan@meta$control@download,
-                            "never"
-                        )
+                        control = plan@meta$control
                     )
                     node_reference_files <- as.integer(
                         reference_files@meta$file_count
                     )
                 }
-                phase <- "services"
-                query_ids <- list(
-                    future = files@ids$query_id,
-                    reference = if (is.null(reference_files)) {
-                        NULL
-                    } else {
-                        reference_files@ids$query_id
-                    }
-                )
                 # Service repair can remove an unusable logical file. Re-run the
                 # same coverage kernel so only executable selections are pinned.
-                selection <- shift_resolve__resolve_cmip6_selection(
-                    plan,
-                    record = record_selection,
-                    future_catalog = shift_inspect__file_catalog(
-                        store,
-                        files@ids$query_id
-                    ),
-                    reference_catalog = if (is.null(reference_files)) {
-                        NULL
-                    } else {
-                        shift_inspect__file_catalog(
-                            store,
-                            reference_files@ids$query_id
-                        )
-                    }
-                )
+                selection <- resolve_selection(files, reference_files)
                 list(
                     files = files,
                     reference_files = reference_files,
@@ -3168,10 +3187,16 @@ shift_resolve__selection_partition_rows <- function(
                 value = fallback
             )
         }
-        partitions[, `:=`(
-            source_id = selection$source_id[[i]],
-            variant_label = selection$variant_label[[i]]
-        )]
+        data.table::set(
+            partitions,
+            j = "source_id",
+            value = rep(selection$source_id[[i]], nrow(partitions))
+        )
+        data.table::set(
+            partitions,
+            j = "variant_label",
+            value = rep(selection$variant_label[[i]], nrow(partitions))
+        )
         rows[[length(rows) + 1L]] <- partitions
     }
     if (!length(rows)) {
@@ -3190,34 +3215,22 @@ shift_resolve__selection_partition_rows <- function(
 shift_resolve__partition_row_match <- function(rows, partitions, experiments) {
     rows <- data.table::as.data.table(rows)
     keep <- rep(FALSE, nrow(rows))
+    in_experiments <- rows$experiment_id %in% experiments
     for (i in seq_len(nrow(partitions))) {
         partition <- partitions[i]
         keep <- keep |
-            (shift_resolve__catalog_match(
-                rows$source_id,
-                partition$source_id[[1L]]
+            (shift_resolve__catalog_filter_mask(
+                rows,
+                list(
+                    source_id = partition$source_id[[1L]],
+                    variant_label = partition$variant_label[[1L]],
+                    frequency = partition$frequency[[1L]],
+                    table_id = partition$table_id[[1L]],
+                    grid_label = partition$grid_label[[1L]],
+                    variable_id = partition$variable_id[[1L]]
+                )
             ) &
-                shift_resolve__catalog_match(
-                    rows$variant_label,
-                    partition$variant_label[[1L]]
-                ) &
-                shift_resolve__catalog_match(
-                    rows$frequency,
-                    partition$frequency[[1L]]
-                ) &
-                shift_resolve__catalog_match(
-                    rows$table_id,
-                    partition$table_id[[1L]]
-                ) &
-                shift_resolve__catalog_match(
-                    rows$grid_label,
-                    partition$grid_label[[1L]]
-                ) &
-                shift_resolve__catalog_match(
-                    rows$variable_id,
-                    partition$variable_id[[1L]]
-                ) &
-                rows$experiment_id %in% experiments)
+                in_experiments)
     }
     keep
 }
@@ -3237,21 +3250,18 @@ shift_resolve__file_year_match <- function(rows, years = NULL) {
     }
     ranges <- shift_resolve__catalog_fill_time_ranges(rows)
     keep <- rep(TRUE, nrow(ranges))
-    for (i in seq_len(nrow(ranges))) {
-        start <- suppressWarnings(as.POSIXct(
-            ranges$datetime_start[[i]],
-            tz = "UTC"
-        ))
-        stop <- suppressWarnings(as.POSIXct(
-            ranges$datetime_end[[i]],
-            tz = "UTC"
-        ))
-        if (is.na(start) || is.na(stop)) {
-            next
-        }
-        first <- as.integer(format(start, "%Y", tz = "UTC"))
-        last <- as.integer(format(stop, "%Y", tz = "UTC"))
-        keep[[i]] <- any(years >= min(first, last) & years <= max(first, last))
+    starts <- shift_resolve__parse_utc(ranges$datetime_start)
+    stops <- shift_resolve__parse_utc(ranges$datetime_end)
+    valid <- which(!is.na(starts) & !is.na(stops))
+    if (!length(valid)) {
+        return(keep)
+    }
+    first <- as.integer(format(starts[valid], "%Y", tz = "UTC"))
+    last <- as.integer(format(stops[valid], "%Y", tz = "UTC"))
+    lo <- pmin(first, last)
+    hi <- pmax(first, last)
+    for (i in seq_along(valid)) {
+        keep[[valid[[i]]]] <- any(years >= lo[[i]] & years <= hi[[i]])
     }
     keep
 }
@@ -3270,7 +3280,7 @@ shift_resolve__files_for_partitions <- function(
 ) {
     role <- match.arg(role)
     partitions <- shift_resolve__selection_partition_rows(selection, role)
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     result <- shift_inspect__stage_query_result(
         store,
@@ -3288,21 +3298,7 @@ shift_resolve__files_for_partitions <- function(
     }
     query_id <- store$add_files(selected, label = sprintf("resolved-%s", role))
     selected_rows <- selected$to_data_table()
-    shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = files@store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = files@meta$request,
-            dataset_count = files@meta$dataset_count,
-            datasets = NULL,
-            file_count = selected$count(),
-            variables = unique(as.character(selected_rows$variable_id)),
-            fields = files@meta$fields,
-            result_fields = selected$fields
-        )
-    )
+    shift_resolve__files_stage(files, query_id, selected_rows, selected$fields)
 }
 # }}}
 
@@ -3440,6 +3436,237 @@ shift_resolve__morph_complete_plan_selection <- function(
             plan_id = paste(skipped, collapse = ", "),
             action = "Inspect `shift_coverage()` for skipped plans, or set `complete_only = FALSE` to include them."
         )
+    )
+}
+# }}}
+
+# Capture the resolver's actual candidate tables, not a later reconstruction
+# using a changed catalog or selection policy. Explanations refer only to the
+# requested models and frequency/table/grid combinations actually evaluated.
+# shift_selection__evidence {{{
+shift_selection__evidence <- function(
+    plan,
+    future,
+    historical,
+    selected,
+    reference_required
+) {
+    future <- data.table::as.data.table(data.table::copy(future))
+    historical <- data.table::as.data.table(data.table::copy(historical))
+    selected <- data.table::as.data.table(data.table::copy(selected))
+    meta <- plan@meta
+    climate <- meta$climate
+    member <- if (is.null(climate)) {
+        meta$request@meta$variant
+    } else {
+        climate@member
+    }
+    grid <- if (is.null(climate)) {
+        meta$request@meta$filters$grid_label
+    } else {
+        climate@grid
+    }
+    models <- if (is.null(climate)) meta$request@meta$source else climate@model
+    identity <- c(
+        "source_id",
+        "variant_label",
+        "frequency",
+        "required_partition_key",
+        "requirement_key"
+    )
+    if (nrow(future)) {
+        matched_reference <- rep(!isTRUE(reference_required), nrow(future))
+        if (isTRUE(reference_required) && nrow(historical)) {
+            matching <- future[
+                historical[historical$complete %in% TRUE],
+                on = identity,
+                which = TRUE,
+                nomatch = 0L
+            ]
+            matched_reference[unique(matching)] <- TRUE
+        }
+        chosen <- rep(FALSE, nrow(future))
+        if (nrow(selected)) {
+            matching <- future[
+                selected,
+                on = identity,
+                which = TRUE,
+                nomatch = 0L
+            ]
+            chosen[unique(matching)] <- TRUE
+        }
+        reason <- rep(
+            if (nrow(selected)) {
+                "eligible_alternative_not_selected"
+            } else {
+                "selection_not_completed"
+            },
+            nrow(future)
+        )
+        reason[!matched_reference] <- "no_complete_matching_reference"
+        reason[!future$complete %in% TRUE] <- "future_coverage_incomplete"
+        if (!is.null(member)) {
+            reason[
+                !future$variant_label %in% member
+            ] <- "user_member_constraint"
+        }
+        if (!is.null(grid)) {
+            reason[!future$grid_label %in% grid] <- "user_grid_constraint"
+        }
+        reason[chosen] <- "selected"
+        data.table::set(
+            future,
+            j = "matching_reference",
+            value = matched_reference
+        )
+        data.table::set(future, j = "selected", value = chosen)
+        data.table::set(future, j = "reason", value = reason)
+    }
+    list(
+        scope = "file_candidates_for_requested_models",
+        package_version = as.character(utils::packageVersion("epwshiftr")),
+        required_variables = morpher__variable_requirements(meta$recipe),
+        input_variables = morpher__input_variables(meta$recipe),
+        reference_required = reference_required,
+        allow_partial = meta$control@allow_partial,
+        member_constraint = member,
+        grid_constraint = grid,
+        models_without_candidates = setdiff(models, future$source_id),
+        future = as.data.frame(future),
+        reference = as.data.frame(historical),
+        selected = as.data.frame(selected)
+    )
+}
+# }}}
+
+# Attach immutable selection evidence to the existing run event store. Content
+# identity avoids duplicate records when shared inputs are registered again.
+# shift_selection__persist {{{
+shift_selection__persist <- function(store, run_id, evidence) {
+    if (is.character(evidence)) {
+        evidence <- jsonlite::fromJSON(evidence, simplifyVector = FALSE)
+    }
+    shift_job__run_event(
+        store,
+        run_id,
+        stage = "resolve",
+        status = "selection",
+        message = "Recorded input selection evidence.",
+        details = list(kind = "input_selection", evidence = evidence),
+        snapshot = FALSE,
+        event_id = store__hash(
+            run_id,
+            "input_selection",
+            shift_persist__spec_json(evidence)
+        )
+    )
+    invisible(NULL)
+}
+# }}}
+
+# Decode only known tabular fields. Keep attempts and checks as lists so a
+# single record has the same public shape as several node/phase records.
+# shift_selection__decode {{{
+shift_selection__decode <- function(record) {
+    record$checks <- lapply(record$checks, function(check) {
+        for (field in c("future", "reference", "selected")) {
+            rows <- lapply(check[[field]], function(row) {
+                lapply(row, function(value) if (is.null(value)) NA else value)
+            })
+            check[[field]] <- data.table::rbindlist(
+                rows,
+                use.names = TRUE,
+                fill = TRUE
+            )
+        }
+        check
+    })
+    record
+}
+# }}}
+
+#' Inspect Recorded Climate Input Selection
+#'
+#' Read the original workflow configuration, pinned selection, and candidate
+#' checks saved during File-catalog resolution. No remote queries or candidate
+#' recalculation are performed. Missing records in older runs remain explicitly
+#' unavailable.
+#'
+#' @param x A `ShiftPlan`, finished `ShiftRun`, a stage associated with a run,
+#'   or a `ShiftBatch`. Running jobs must finish before durable inspection.
+#'
+#' @return A list with `state`, `run_id`, `requested`, `resolved`, `attempts`,
+#'   `cases`, and `diagnostics`. Batches return a named list per child.
+#'   Each attempt identifies its index node and outcome. Its `checks` retain
+#'   candidate tables before and after service resolution, query IDs, required
+#'   variables and explicit constraints. Future candidate rows carry a `reason`.
+#'
+#' @details
+#' The scope is the File-level candidates evaluated for requested models.
+#' It does not include every model in ESGF, candidates excluded by upstream
+#' Dataset discovery or server filters, or a history of arbitrary user filters.
+#' `eligible_alternative_not_selected` describes execution selection, not a
+#' scientific ranking. `future_coverage_incomplete` and
+#' `no_complete_matching_reference` describe coverage or input pairing.
+#' `user_member_constraint` and `user_grid_constraint` identify explicit limits
+#' when those alternatives occur in the evaluated table. An empty check list
+#' means failure occurred before candidates could be evaluated. An attempt may
+#' fail after selecting candidates, for example during service access.
+#'
+#' Plans return `state = "planned"`. Finished runs without captured candidates
+#' return `state = "not_recorded"`, retaining any saved configuration and final
+#' selection. Captured attempts return `state = "recorded"`, which does not
+#' imply successful weather generation. Inspect the attempt outcome and cases.
+#'
+#' @export
+# shift_selection {{{
+shift_selection <- function(x) {
+    shift_stage__assert_stage(x)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(lapply(x@meta$children, shift_selection))
+    }
+    if (S7::S7_inherits(x, ShiftPlan)) {
+        return(list(
+            state = "planned",
+            run_id = NULL,
+            requested = shift_persist__plan_spec(x),
+            resolved = NULL,
+            attempts = list(),
+            cases = shift_cases(x),
+            diagnostics = shift_diagnostics(x)
+        ))
+    }
+    x <- shift_run_get(x)
+    if (x@meta$run$status[[1L]] %in% c("queued", "running", "stopping")) {
+        cli::cli_abort("Read durable input selection after the run finishes.")
+    }
+    row <- x@meta$run
+    events <- x@meta$events
+    events <- events[events$status == "selection"]
+    attempts <- lapply(events$details_json, function(value) {
+        details <- jsonlite::fromJSON(value, simplifyVector = FALSE)
+        if (!identical(details$kind, "input_selection")) {
+            return(NULL)
+        }
+        shift_selection__decode(details$evidence)
+    })
+    attempts <- Filter(Negate(is.null), attempts)
+    resolved <- row$resolved_spec_json[[1L]]
+    list(
+        state = if (length(attempts)) "recorded" else "not_recorded",
+        run_id = row$run_id[[1L]],
+        requested = jsonlite::fromJSON(
+            row$spec_json[[1L]],
+            simplifyVector = FALSE
+        ),
+        resolved = if (is.na(resolved) || !nzchar(resolved)) {
+            NULL
+        } else {
+            jsonlite::fromJSON(resolved, simplifyVector = FALSE)
+        },
+        attempts = attempts,
+        cases = shift_cases(x, refresh = FALSE),
+        diagnostics = shift_diagnostics(x, refresh = FALSE)
     )
 }
 # }}}

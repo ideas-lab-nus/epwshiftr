@@ -7,40 +7,93 @@ test_that("schema__load_lazy() exposes standalone SchemaDoc constants", {
     expect_true(S7::S7_inherits(SCHEMA_RESULT_AGGREGATION, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_ESG_DICT, SchemaDoc))
     expect_true(S7::S7_inherits(SCHEMA_DOWNLOADER_CONFIG, SchemaDoc))
+    expect_true(S7::S7_inherits(SCHEMA_SHIFT_WORKFLOW_CONFIG, SchemaDoc))
 })
 # }}}
-# schema_paths() {{{
-test_that("schema_paths() exposes expected logical paths for package schemas", {
-    expect_true("$parameter" %in% schema_paths(SCHEMA_QUERY))
+# compiled schema structure {{{
+test_that("compiled package schemas expose expected fields", {
+    binding_target <- function(node, key) {
+        idx <- match(key, schema_flat__binding_names(node@exact))
+        expect_false(is.na(idx), info = key)
+        node@exact[[idx]]@target
+    }
 
-    response_paths <- schema_paths(SCHEMA_RESPONSE)
-    expect_true("$responseHeader$params" %in% response_paths)
-    expect_true("$response$docs" %in% response_paths)
-    expect_true("$facet_counts$facet_fields" %in% response_paths)
+    expect_true(
+        "parameter" %in%
+            schema_flat__binding_names(schema__compiled("QUERY")@root@exact)
+    )
 
-    result_paths <- schema_paths(SCHEMA_RESULT_DATASET)
-    expect_true("$parameter" %in% result_paths)
-    expect_true("$response" %in% result_paths)
-    expect_true("$defs$response_header$params" %in% result_paths)
-    expect_true("$defs$response_body$docs" %in% result_paths)
-    expect_true("$defs$facet_counts$facet_fields" %in% result_paths)
+    response_root <- schema__compiled("RESPONSE")@root
+    expect_true(
+        "params" %in%
+            schema_flat__binding_names(
+                binding_target(response_root, "responseHeader")@exact
+            )
+    )
+    expect_true(
+        "docs" %in%
+            schema_flat__binding_names(
+                binding_target(response_root, "response")@exact
+            )
+    )
+    expect_true(
+        "facet_fields" %in%
+            schema_flat__binding_names(
+                binding_target(response_root, "facet_counts")@exact
+            )
+    )
 
-    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_FILE))
-    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_AGGREGATION))
+    dataset_root <- schema__compiled("RESULT_DATASET")@root
+    expect_true(all(
+        c("parameter", "response") %in%
+            schema_flat__binding_names(dataset_root@exact)
+    ))
+    expect_true(all(
+        c("response_header", "response_body", "facet_counts") %in%
+            names(SCHEMA_RESULT_DATASET@defs)
+    ))
+    expect_true(
+        "parameter" %in%
+            schema_flat__binding_names(
+                schema__compiled("RESULT_FILE")@root@exact
+            )
+    )
+    expect_true(
+        "parameter" %in%
+            schema_flat__binding_names(
+                schema__compiled("RESULT_AGGREGATION")@root@exact
+            )
+    )
 
-    dict_paths <- schema_paths(SCHEMA_ESG_DICT)
-    expect_true("$project" %in% dict_paths)
-    expect_true("$profile" %in% dict_paths)
-    expect_true("$payload$any[2]$vocab" %in% dict_paths)
-    expect_true("$payload$any[2]$request" %in% dict_paths)
+    dict_root <- schema__compiled("ESG_DICT")@root
+    expect_true(all(
+        c("project", "profile", "payload") %in%
+            schema_flat__binding_names(dict_root@exact)
+    ))
+    payload_branch <- binding_target(dict_root, "payload")@branches[[2L]]
+    expect_true(all(
+        c("vocab", "request") %in%
+            schema_flat__binding_names(payload_branch@exact)
+    ))
 
-    downloader_paths <- schema_paths(SCHEMA_DOWNLOADER_CONFIG)
-    expect_true("$schema_version" %in% downloader_paths)
-    expect_true("$manifest" %in% downloader_paths)
-    expect_true("$n_workers" %in% downloader_paths)
-    expect_true("$ssl_verifypeer" %in% downloader_paths)
-    expect_true("$connect_timeout" %in% downloader_paths)
-    expect_true("$node_policy$cooldown_after_failures" %in% downloader_paths)
+    dl_root <- schema__compiled("DOWNLOADER_CONFIG")@root
+    expect_true(all(
+        c(
+            "schema_version",
+            "manifest",
+            "n_workers",
+            "ssl_verifypeer",
+            "connect_timeout",
+            "node_policy"
+        ) %in%
+            schema_flat__binding_names(dl_root@exact)
+    ))
+    expect_true(
+        "cooldown_after_failures" %in%
+            schema_flat__binding_names(
+                binding_target(dl_root, "node_policy")@exact
+            )
+    )
 })
 # }}}
 # SCHEMA_DOWNLOADER_CONFIG {{{
@@ -519,6 +572,82 @@ test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
         auto_unbox = TRUE
     )
     expect_error(esg_result()$load(bad_file))
+})
+# }}}
+# schema__compiled() {{{
+test_that("schema__compiled() compiles each package schema once per process", {
+    for (name in names(schema__compiled_documents)) {
+        first <- schema__compiled(name)
+        expect_true(
+            S7::S7_inherits(first, SchemaFlat),
+            info = name
+        )
+        # Reuse must return the stored object, not a recompiled copy.
+        expect_identical(schema__compiled(name), first, info = name)
+    }
+})
+
+test_that("schema__compiled() rejects unknown schema names", {
+    expect_error(schema__compiled("NOT_A_SCHEMA"))
+    expect_error(schema__compiled(NA_character_))
+    expect_error(schema__compiled(c("QUERY", "ESG_DICT")))
+})
+
+test_that("compiled validation reports the same diagnostics as document validation", {
+    skip_on_cran()
+    # An empty list violates every package schema's required structure; the
+    # message must not depend on whether the compiled form was cached.
+    for (name in names(schema__compiled_documents)) {
+        document <- get(schema__compiled_documents[[name]])
+        expected <- schema_validate(
+            document,
+            list(),
+            mode = "check",
+            name = "payload"
+        )
+        actual <- schema_validate(
+            schema__compiled(name),
+            list(),
+            mode = "check",
+            name = "payload"
+        )
+        expect_identical(actual, expected, info = name)
+        expect_type(actual, "character")
+    }
+})
+
+test_that("a failed compilation is not cached and can be retried", {
+    saved <- as.list(schema__compiled_cache, all.names = TRUE)
+    withr::defer({
+        rm(
+            list = ls(schema__compiled_cache, all.names = TRUE),
+            envir = schema__compiled_cache
+        )
+        list2env(saved, envir = schema__compiled_cache)
+    })
+    rm(
+        list = ls(schema__compiled_cache, all.names = TRUE),
+        envir = schema__compiled_cache
+    )
+
+    with_mocked_bindings(
+        expect_error(schema__compiled("QUERY"), "compile failed"),
+        schema_flat__compile = function(x) stop("compile failed")
+    )
+    expect_false(exists(
+        "QUERY",
+        envir = schema__compiled_cache,
+        inherits = FALSE
+    ))
+
+    # Outside the mock the real compiler runs, so the same name now succeeds and
+    # the completed result is stored.
+    compiled <- schema__compiled("QUERY")
+    expect_true(S7::S7_inherits(compiled, SchemaFlat))
+    expect_identical(
+        get("QUERY", envir = schema__compiled_cache, inherits = FALSE),
+        compiled
+    )
 })
 # }}}
 

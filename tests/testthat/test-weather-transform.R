@@ -1,4 +1,4 @@
-test_that("weather transform registry exposes every canonical method once", {
+test_that("weather transform registry exposes canonical methods with controlled metadata", {
     transforms <- weather_transforms()
     tuples <- paste(
         transforms$scale,
@@ -10,38 +10,28 @@ test_that("weather transform registry exposes every canonical method once", {
     expect_identical(anyDuplicated(tuples), 0L)
     expect_setequal(transforms$scale, WEATHER_TRANSFORM_SCALES)
     expect_false(any(
-        c(
-            "recipe",
-            "backend",
-            "profile",
-            "policy",
-            "component"
-        ) %in%
+        c("recipe", "backend", "profile", "policy", "component") %in%
             names(transforms)
     ))
 
-    resolved_recipes <- unlist(lapply(
-        transform__records(),
-        function(record) unname(record$recipe)
-    ))
+    resolved_recipes <- unlist(lapply(transform__records(), function(r) {
+        unname(r$recipe)
+    }))
     expect_setequal(resolved_recipes, epw_morph_recipes()$name)
     expect_false(any(grepl("_", transforms$reconstruction_label)))
-    expect_true(all(is.na(
-        transforms[!(scale == "daily" & method == "epwshiftr"), reconstruction]
-    )))
+    expect_true(all(is.na(transforms[
+        !(scale == "daily" & method == "epwshiftr"),
+        reconstruction
+    ])))
     expect_setequal(
         transforms[scale == "daily" & method == "epwshiftr", reconstruction],
         c("power", "btws")
     )
-})
-
-test_that("public catalog uses controlled evidence and status labels", {
-    transforms <- weather_transforms()
 
     expect_true(all(transforms$evidence %in% WEATHER_TRANSFORM_EVIDENCE))
     expect_true(all(transforms$status %in% WEATHER_RECIPE_STATUSES))
     expect_true(all(lengths(transforms$references) > 0L))
-    daily_adjustments <- transforms[
+    daily_adj <- transforms[
         method %in%
             c(
                 "linear_scaling",
@@ -53,61 +43,11 @@ test_that("public catalog uses controlled evidence and status labels", {
                 "isimip3basd"
             )
     ]
-    expect_true(all(daily_adjustments$evidence == "adapted_publication"))
-    expect_identical(
-        transforms[method == "edcdfm", evidence],
-        "experimental"
-    )
+    expect_true(all(daily_adj$evidence == "adapted_publication"))
+    expect_identical(transforms[method == "edcdfm", evidence], "experimental")
 })
 
-test_that("transform type enforces complete role contracts", {
-    transform <- daily_transform("qdm")
-    invalid_role <- transform
-    requirement <- invalid_role@required_inputs$model_future
-    requirement@role <- "model_historical"
-    expect_error(
-        invalid_role@required_inputs <- utils::modifyList(
-            invalid_role@required_inputs,
-            list(model_future = requirement)
-        ),
-        "matching WeatherInputRequirement"
-    )
-
-    overlapping <- transform
-    expect_error(
-        overlapping@optional_inputs <- list(
-            model_future = overlapping@required_inputs$model_future
-        ),
-        "both required and optional"
-    )
-
-    missing_frequency <- monthly_transform("epwshiftr")
-    expect_error(
-        missing_frequency@optional_variable_frequencies <- list(),
-        "Optional variable metadata"
-    )
-
-    incomplete_frequency <- monthly_transform("epwshiftr")
-    expect_error(
-        incomplete_frequency@optional_variable_frequencies$model_future$tasmax <-
-            NULL,
-        "Every optional source variable"
-    )
-
-    missing_reference <- transform
-    expect_error(
-        missing_reference@references <- NA_character_,
-        "scientific references"
-    )
-
-    unnamed_options <- transform
-    expect_error(
-        unnamed_options@options <- list(1),
-        "uniquely named scientific settings"
-    )
-})
-
-test_that("scale-specific constructors resolve fixed and selectable reconstruction", {
+test_that("scale-specific constructors, role validators, and printing enforce contracts", {
     original_morphing <- monthly_transform("original_morphing")
     bws_btws <- monthly_transform("bws_btws")
     power <- daily_transform("epwshiftr")
@@ -120,7 +60,6 @@ test_that("scale-specific constructors resolve fixed and selectable reconstructi
         c("tas", "tasmax", "tasmin") %in%
             original_morphing@required_inputs$model_future@variable_sets[[1L]]
     ))
-    expect_identical(bws_btws@scale, "monthly")
     expect_identical(bws_btws@source_frequencies$model_future, "mon")
     expect_identical(bws_btws@reconstruction, "bws_btws_weather")
     expect_equal(
@@ -130,36 +69,148 @@ test_that("scale-specific constructors resolve fixed and selectable reconstructi
     expect_identical(power@reconstruction, "power")
     expect_identical(daily_btws@reconstruction, "btws")
     expect_identical(hourly@output_type, "multi_year")
-    expect_error(
-        monthly_transform("original_morphing", reconstruction = "btws"),
-        "fixed hourly reconstruction"
-    )
-    expect_error(daily_transform("unknown"), "Available methods")
-    expect_error(monthly_transform("qdm"), "Unknown monthly")
-})
 
-test_that("printed transforms hide internal execution identifiers", {
-    output <- capture.output(
-        print(monthly_transform("original_morphing")),
-        type = "message"
-    )
-
-    expect_true(any(grepl("Transformation scale: monthly", output)))
-    expect_true(any(grepl("Required source frequency", output)))
-    expect_true(any(grepl(
-        "Hourly reconstruction: Original morphing field equations",
-        output
-    )))
+    # Printed transforms hide internal execution identifiers
+    printed <- capture.output(print(original_morphing), type = "message")
+    expect_true(any(grepl("Transformation scale: monthly", printed)))
     expect_false(any(grepl(
-        paste(
-            "original_morphing_monthly|original_morphing_field_equations|paper_faithful|",
-            "legacy_epw_field_closure|backend"
-        ),
-        output
+        "original_morphing_monthly|original_morphing_field_equations|paper_faithful|legacy_epw_field_closure|backend",
+        printed
     )))
+
+    # S7 role/metadata invariants
+    qdm <- daily_transform("qdm")
+    bad_req <- qdm@required_inputs$model_future
+    bad_req@role <- "model_historical"
+    expect_error(
+        qdm@required_inputs <- utils::modifyList(
+            qdm@required_inputs,
+            list(model_future = bad_req)
+        ),
+        "matching WeatherInputRequirement"
+    )
+    expect_error(
+        {
+            x <- qdm
+            x@optional_inputs <- list(
+                model_future = x@required_inputs$model_future
+            )
+        },
+        "both required and optional"
+    )
+    expect_error(
+        {
+            x <- monthly_transform("epwshiftr")
+            x@optional_variable_frequencies <- list()
+        },
+        "Optional variable metadata"
+    )
+    expect_error(
+        {
+            x <- monthly_transform("epwshiftr")
+            x@optional_variable_frequencies$model_future$tasmax <- NULL
+        },
+        "Every optional source variable"
+    )
+    expect_error(
+        {
+            x <- qdm
+            x@references <- NA_character_
+        },
+        "scientific references"
+    )
+    expect_error(
+        {
+            x <- qdm
+            x@options <- list(1)
+        },
+        "uniquely named scientific settings"
+    )
 })
 
-test_that("public transforms always resolve the canonical physical treatment", {
+test_that("transform options validate schemas, reject unknown settings, and round-trip", {
+    daily <- daily_transform("epwshiftr", window_days = 15L)
+    restored <- transform__from_spec(transform__spec_value(daily))
+    expect_identical(restored@options, daily@options)
+    expect_identical(restored@recipe, daily@recipe)
+
+    qdm <- daily_transform("qdm")
+    linear <- daily_transform(
+        "linear_scaling",
+        climatology_window_days = 15L,
+        zero_tolerance = 0.01
+    )
+    expect_named(
+        qdm@options$signal_overrides$tas,
+        names(
+            component__get(
+                "signal",
+                "quantile_delta_mapping_daily"
+            )@metadata$signal_profiles$tas$settings
+        )
+    )
+    expect_identical(linear@options$climatology_window_days, 15L)
+    expect_equal(linear@options$signal_overrides$tas$zero_tolerance, 0.01)
+
+    # Parameterized invalid constructor and option rejection
+    invalid_cases <- list(
+        list(
+            fn = monthly_transform,
+            args = list("original_morphing", reconstruction = "btws"),
+            pat = "fixed hourly reconstruction"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("unknown"),
+            pat = "Available methods"
+        ),
+        list(
+            fn = monthly_transform,
+            args = list("qdm"),
+            pat = "Unknown monthly"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("ek", policy = "harmonized"),
+            pat = "Unknown transformation option"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("sobie_curry", profile = "enhanced"),
+            pat = "Unknown transformation option"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("epwshiftr", unknown_setting = TRUE),
+            pat = "Unknown transformation option"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("epwshiftr", window_days = 14L),
+            pat = "must be odd"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("qdm", seasonal_window_days = 2L),
+            pat = "must be odd"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("qdm", trend_preservation = "nonsense"),
+            pat = "Must be element"
+        ),
+        list(
+            fn = daily_transform,
+            args = list("isimip3basd", n_quantiles = 0L),
+            pat = "not >= 1"
+        )
+    )
+    for (case in invalid_cases) {
+        expect_error(do.call(case$fn, case$args), case$pat)
+    }
+})
+
+test_that("built-in transforms resolve canonical physical policy, survive persistence, and reject drift", {
     for (record in transform__records()) {
         for (reconstruction in record$reconstructions) {
             transform <- transform__new(
@@ -173,126 +224,12 @@ test_that("public transforms always resolve the canonical physical treatment", {
             )
             recipe <- transform__recipe(transform)
             spec <- morpher__recipe_spec(recipe)
-
             expect_identical(recipe$policy, spec@default_policy)
             expect_identical(
                 epwphys__recipe_policy(recipe)@name,
                 unname(spec@physical_policies[[spec@default_policy]])
             )
-        }
-    }
 
-    expect_error(
-        daily_transform("ek", policy = "harmonized"),
-        "Unknown transformation option"
-    )
-    expect_error(
-        daily_transform("sobie_curry", profile = "enhanced"),
-        "Unknown transformation option"
-    )
-})
-
-test_that("transform options use method schemas and survive persistence", {
-    daily <- daily_transform("epwshiftr", window_days = 15L)
-    restored <- transform__from_spec(transform__spec_value(daily))
-
-    expect_identical(restored@scale, daily@scale)
-    expect_identical(restored@method, daily@method)
-    expect_identical(restored@recipe, daily@recipe)
-    expect_identical(restored@recipe_version, daily@recipe_version)
-    expect_identical(restored@options, daily@options)
-    expect_error(
-        daily_transform("epwshiftr", unknown_setting = TRUE),
-        "Unknown transformation option"
-    )
-    expect_error(
-        daily_transform("epwshiftr", window_days = 14L),
-        "must be odd"
-    )
-})
-
-test_that("stored recipes recover their public reconstruction label", {
-    transform <- monthly_transform("original_morphing")
-    restored <- transform__from_recipe_object(transform__recipe(transform))
-
-    expect_identical(restored@reconstruction, transform@reconstruction)
-    expect_identical(
-        restored@reconstruction_label,
-        "Original morphing field equations"
-    )
-})
-
-test_that("signal transforms validate values and persist complete defaults", {
-    qdm <- daily_transform("qdm")
-    linear <- daily_transform(
-        "linear_scaling",
-        climatology_window_days = 15L,
-        zero_tolerance = 0.01
-    )
-
-    expect_named(
-        qdm@options$signal_overrides$tas,
-        names(method__get("quantile_delta_mapping_daily")@parameters$tas)
-    )
-    expect_identical(linear@options$climatology_window_days, 15L)
-    expect_equal(
-        linear@options$signal_overrides$tas$zero_tolerance,
-        0.01
-    )
-    expect_error(
-        daily_transform("qdm", seasonal_window_days = 2L),
-        "must be odd"
-    )
-    expect_error(
-        daily_transform("qdm", trend_preservation = "nonsense"),
-        "Must be element"
-    )
-    expect_error(
-        daily_transform("isimip3basd", n_quantiles = 0L),
-        "not >= 1"
-    )
-})
-
-test_that("persisted transforms reject reconstruction and catalog drift", {
-    transform <- daily_transform("qdm")
-    spec <- transform__spec_value(transform)
-    expect_true(all(
-        c(
-            "method_version",
-            "required_inputs",
-            "optional_inputs",
-            "provenance"
-        ) %in%
-            names(spec)
-    ))
-
-    changed_reconstruction <- spec
-    changed_reconstruction$reconstruction <- "btws"
-    expect_error(
-        transform__from_spec(changed_reconstruction),
-        "fixed hourly reconstruction"
-    )
-
-    changed_contract <- spec
-    changed_contract$provenance$status <- "production"
-    expect_error(
-        transform__from_spec(changed_contract),
-        "recorded scientific contract"
-    )
-})
-
-test_that("every built-in transform survives both persistence boundaries", {
-    for (record in transform__records()) {
-        for (reconstruction in record$reconstructions) {
-            transform <- transform__new(
-                record$scale,
-                record$method,
-                if (length(record$reconstructions) > 1L) {
-                    reconstruction
-                } else {
-                    NULL
-                }
-            )
             value <- transform__spec_value(transform)
             round_trip <- jsonlite::fromJSON(
                 jsonlite::toJSON(
@@ -304,53 +241,58 @@ test_that("every built-in transform survives both persistence boundaries", {
                 simplifyVector = TRUE
             )
             restored <- transform__from_spec(round_trip)
-
-            # JSON may represent a whole-valued double as an integer, but the
-            # validated scientific value and canonical selection must agree.
             expect_equal(restored@options, transform@options)
             expect_identical(restored@recipe, transform@recipe)
-            expect_identical(
-                restored@reconstruction,
-                transform@reconstruction
-            )
+            expect_identical(restored@reconstruction, transform@reconstruction)
 
-            recipe <- cli_shift__recipe_from_json(
-                morpher__json(transform__recipe(transform))
-            )
-            recipe_transform <- transform__from_recipe_object(recipe)
-            expect_identical(recipe_transform@recipe, transform@recipe)
+            recipe_rt <- transform__from_recipe_object(cli_shift__recipe_from_json(morpher__json(
+                recipe
+            )))
+            expect_identical(recipe_rt@recipe, transform@recipe)
+            expect_identical(recipe_rt@reconstruction, transform@reconstruction)
             expect_identical(
-                recipe_transform@reconstruction,
-                transform@reconstruction
+                recipe_rt@reconstruction_label,
+                transform@reconstruction_label
             )
         }
     }
+
+    # Persisted transforms reject reconstruction and catalog drift
+    spec <- transform__spec_value(daily_transform("qdm"))
+    expect_true(all(
+        c(
+            "method_version",
+            "required_inputs",
+            "optional_inputs",
+            "provenance"
+        ) %in%
+            names(spec)
+    ))
+
+    bad_recon <- spec
+    bad_recon$reconstruction <- "btws"
+    expect_error(transform__from_spec(bad_recon), "fixed hourly reconstruction")
+
+    bad_contract <- spec
+    bad_contract$provenance$status <- "production"
+    expect_error(
+        transform__from_spec(bad_contract),
+        "recorded scientific contract"
+    )
 })
 
 test_that("resolved options update the public input contract", {
-    required_snow <- monthly_transform(
-        "epwshiftr",
-        snow_depth = "required"
-    )
-    huss_only <- monthly_transform(
-        "epwshiftr",
-        humidity_source = "huss"
-    )
-    precipitation_off <- lapply(
-        c("original_morphing", "epwshiftr"),
-        function(method) {
-            monthly_transform(method, precipitation = "off")
-        }
-    )
+    required_snow <- monthly_transform("epwshiftr", snow_depth = "required")
+    huss_only <- monthly_transform("epwshiftr", humidity_source = "huss")
 
     expect_true(all(vapply(
         required_snow@required_inputs$model_future@variable_sets,
-        function(variables) "snd" %in% variables,
+        function(v) "snd" %in% v,
         logical(1L)
     )))
     expect_true(all(vapply(
         required_snow@optional_inputs$model_historical@variable_sets,
-        function(variables) "snd" %in% variables,
+        function(v) "snd" %in% v,
         logical(1L)
     )))
     expect_identical(
@@ -367,24 +309,20 @@ test_that("resolved options update the public input contract", {
             "pr"
         ))
     )
-    for (transform in precipitation_off) {
+
+    for (method in c("original_morphing", "epwshiftr")) {
+        transform <- monthly_transform(method, precipitation = "off")
         expect_false(any(vapply(
             transform@required_inputs$model_future@variable_sets,
-            function(variables) "pr" %in% variables,
+            function(v) "pr" %in% v,
             logical(1L)
         )))
         recipe <- transform__recipe(transform)
         expect_identical(recipe$options$precipitation, "off")
         expect_false(
-            "pr" %in%
-                epw_morph_variables(
-                    recipe,
-                    include_optional = TRUE
-                )
+            "pr" %in% epw_morph_variables(recipe, include_optional = TRUE)
         )
-        expect_false(morpher__recipe_rules(
-            recipe
-        )[step == "precip", required])
+        expect_false(morpher__recipe_rules(recipe)[step == "precip", required])
         expect_true(
             "liquid_precip_depth" %in%
                 morpher__weather_field_roles(recipe)$inherited_fields
@@ -392,17 +330,7 @@ test_that("resolved options update the public input contract", {
     }
 })
 
-test_that("transform execution requires its declared reference inputs", {
-    transform <- daily_transform("qdm")
-    expect_true(transform__requires_input(transform, "model_historical"))
-    expect_true(transform__requires_input(transform, "observed_reference"))
-    expect_error(
-        transform__validate_execution_inputs(transform),
-        "requires.*reference"
-    )
-})
-
-test_that("reference objects retain distinct semantic input roles", {
+test_that("reference roles and required vs optional source frequencies remain distinct", {
     periods <- epw_morph_periods(reference = 1995:2014)
     historical <- shift_reference_from_plan("historical-plan", periods)
     observed <- shift_reference_from_plan(
@@ -416,23 +344,29 @@ test_that("reference objects retain distinct semantic input roles", {
         ids = list(plan_id = "observed-stage-plan"),
         meta = list(periods = periods)
     )
-    transform <- daily_transform("qdm")
+    qdm <- daily_transform("qdm")
 
+    expect_true(transform__requires_input(qdm, "model_historical"))
+    expect_true(transform__requires_input(qdm, "observed_reference"))
+    expect_error(
+        transform__validate_execution_inputs(qdm),
+        "requires.*reference"
+    )
     expect_error(
         transform__validate_execution_inputs(
-            transform,
+            qdm,
             reference = historical,
             observed_reference = historical
         ),
         "declares role.*model_historical"
     )
     expect_invisible(transform__validate_execution_inputs(
-        transform,
+        qdm,
         reference = historical,
         observed_reference = observed
     ))
     expect_invisible(transform__validate_execution_inputs(
-        transform,
+        qdm,
         reference = historical,
         observed_reference = observed_stage
     ))
@@ -443,25 +377,78 @@ test_that("reference objects retain distinct semantic input roles", {
         )$role,
         "observed_reference"
     )
-})
 
-test_that("required and optional source frequencies remain distinguishable", {
     daily <- daily_transform("epwshiftr")
     hourly <- hourly_transform("kernel_qdm")
-
     expect_identical(daily@source_frequencies$model_future, "day")
     expect_identical(
         daily@optional_variable_frequencies$model_future,
         list(tasmin = "day", tasmax = "day")
     )
     expect_false(any(
-        c("tasmin", "tasmax") %in%
-            names(hourly@source_frequencies$model_future)
+        c("tasmin", "tasmax") %in% names(hourly@source_frequencies$model_future)
     ))
     expect_named(
         hourly@optional_variable_frequencies$model_future,
         c("tasmin", "tasmax")
     )
+})
+
+test_that("all built-in recipes, backends, and policy profiles satisfy registration contracts", {
+    recipes <- epw_morph_recipes()
+    expect_setequal(recipes$name, WEATHER_RECIPE_DEFAULTS)
+    expect_true(all(EPW_MORPH_BACKEND_DEFAULTS %in% epw_morph_backends()))
+
+    expected_backend_recipes <- c(
+        "original_morphing_monthly",
+        "epwshiftr_monthly",
+        "bws_btws_monthly",
+        "ek_daily_factors",
+        "quantile_mapping_morphing_daily",
+        "sobie_curry_daily"
+    )
+    expect_identical(
+        recipe__get("original_morphing_monthly")@method_version,
+        2L
+    )
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 4L)
+
+    for (name in WEATHER_RECIPE_DEFAULTS) {
+        spec <- recipe__get(name)
+        backend <- epw_morph_backend(spec@backend)
+        expect_true(S7::S7_inherits(spec, WeatherRecipeSpec))
+        expect_true(inherits(backend, "EpwMorphBackend"))
+        expect_identical(length(recipe__target_calendar(spec)), 1L)
+        expect_true(spec@default_policy %in% names(spec@policy_profiles))
+        expect_identical(
+            names(spec@physical_policies),
+            names(spec@policy_profiles)
+        )
+        if (name %in% expected_backend_recipes) {
+            expect_identical(spec@implementation, "backend")
+            expect_identical(spec@components, list())
+            expect_null(backend$component_pipeline())
+        } else {
+            expect_identical(spec@implementation, "pipeline")
+            expect_identical(names(spec@components), WEATHER_COMPONENT_STAGES)
+            expect_identical(
+                spec@components,
+                pipeline__records(backend$component_pipeline())
+            )
+        }
+        for (policy in names(spec@policy_profiles)) {
+            resolved <- epw_morph_recipe(name, policy = policy)
+            expect_identical(resolved$policy, policy)
+            expect_identical(
+                resolved$profile,
+                unname(spec@policy_profiles[[policy]])
+            )
+            expect_identical(
+                epwphys__recipe_policy(resolved)@name,
+                unname(spec@physical_policies[[policy]])
+            )
+        }
+    }
 })
 
 # vim: fdm=marker :

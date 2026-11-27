@@ -1,4 +1,4 @@
-#' @include shift-stage.R source-era5.R source-cds.R
+#' @include shift-stage.R source-reanalysis.R
 NULL
 
 # ERA reanalysis to CF weather input
@@ -1266,7 +1266,7 @@ reanalysis__materialize <- function(
         period = "observed",
         arg = "calibration$years"
     )
-    store <- shift_store(x)
+    store <- shift_inspect__store(x)
     identities <- reanalysis__identities(
         spec,
         site,

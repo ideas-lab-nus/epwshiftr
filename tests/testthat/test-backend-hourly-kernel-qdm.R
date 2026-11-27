@@ -4,6 +4,45 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+# Memoize deterministic (year, calendar) hourly CF grids across variables and
+# roles so integration tests avoid repeating identical calendar decompositions.
+# hourly_kqdm_test__year_grid {{{
+hourly_kqdm_test__year_grid <- local({
+    cache <- new.env(parent = emptyenv())
+    function(year, calendar) {
+        year <- as.integer(year)
+        key <- paste0(year, "|", calendar)
+        hit <- cache[[key]]
+        if (!is.null(hit)) {
+            return(hit)
+        }
+        year_days <- cf_time__year_days(year, calendar)[[1L]]
+        hour_index <- seq.int(0L, year_days * 24L - 1L)
+        fields <- cf_time_offset2date(
+            hour_index %/% 24L,
+            data.frame(year = year, month = 1L, day = 1L),
+            calendar
+        )
+        fields$hour <- hour_index %% 24L
+        fields$minute <- 0L
+        fields$second <- 0
+        coordinates <- cf_time__coordinates(fields, calendar)
+        hit <- list(
+            n = length(hour_index),
+            hour = fields$hour,
+            annual = coordinates$annual_phase,
+            daylight = pmax(0, sin(pi * (fields$hour - 6) / 12)),
+            time = as.POSIXct(sprintf("%04d-01-01", year), tz = "UTC") +
+                hour_index * 3600,
+            coordinates = coordinates,
+            cf_second_of_day = as.numeric(fields$hour) * 3600
+        )
+        cache[[key]] <- hit
+        hit
+    }
+})
+# }}}
+
 # Construct one complete hourly variable over one or more native-calendar years
 # so the integration fixture can exercise every post-interpolation component.
 # hourly_kqdm_test__series {{{
@@ -28,40 +67,32 @@ hourly_kqdm_test__series <- function(
     )
     rows <- lapply(seq_along(years), function(index) {
         year <- as.integer(years[[index]])
-        year_days <- cf_time__year_days(year, calendar)[[1L]]
-        hour_index <- seq.int(0L, year_days * 24L - 1L)
-        fields <- cf_time_offset2date(
-            hour_index %/% 24L,
-            data.frame(year = year, month = 1L, day = 1L),
-            calendar
-        )
-        fields$hour <- hour_index %% 24L
-        fields$minute <- 0L
-        fields$second <- 0
-        coordinates <- cf_time__coordinates(fields, calendar)
-        annual <- coordinates$annual_phase
-        daylight <- pmax(0, sin(pi * (fields$hour - 6) / 12))
+        grid <- hourly_kqdm_test__year_grid(year, calendar)
+        n <- grid$n
+        hour <- grid$hour
+        annual <- grid$annual
+        daylight <- grid$daylight
         base <- switch(
             variable,
             tas = 288 +
                 8 * sin(2 * pi * annual) +
-                3 * sin(2 * pi * fields$hour / 24),
+                3 * sin(2 * pi * hour / 24),
             ps = 101325 + 500 * sin(2 * pi * annual),
             huss = 0.008 +
                 0.001 * sin(2 * pi * annual) +
-                0.0002 * cos(2 * pi * fields$hour / 24),
+                0.0002 * cos(2 * pi * hour / 24),
             hurs = 55 +
                 12 * sin(2 * pi * annual) +
-                3 * cos(2 * pi * fields$hour / 24),
+                3 * cos(2 * pi * hour / 24),
             uas = 2 +
                 0.4 * sin(2 * pi * annual) +
-                0.1 * cos(2 * pi * fields$hour / 24),
+                0.1 * cos(2 * pi * hour / 24),
             vas = -3 +
                 0.3 * sin(2 * pi * annual) -
-                0.1 * sin(2 * pi * fields$hour / 24),
+                0.1 * sin(2 * pi * hour / 24),
             sfcWind = 3 +
                 0.6 * sin(2 * pi * annual) +
-                0.2 * cos(2 * pi * fields$hour / 24),
+                0.2 * cos(2 * pi * hour / 24),
             rsds = 1 + daylight * (450 + 80 * sin(2 * pi * annual)),
             rsdsdiff = 1 + daylight * (120 + 20 * sin(2 * pi * annual))
         )
@@ -86,10 +117,10 @@ hourly_kqdm_test__series <- function(
         }
         value <- value + (index - 1L) * 0.01
         data.frame(
-            site_id = rep.int("A", length(hour_index)),
+            site_id = rep.int("A", n),
             source_id = rep.int(
                 if (identical(role, "observed")) "station" else "example-model",
-                length(hour_index)
+                n
             ),
             experiment_id = rep.int(
                 switch(
@@ -98,25 +129,24 @@ hourly_kqdm_test__series <- function(
                     historical = "historical",
                     future = "ssp585"
                 ),
-                length(hour_index)
+                n
             ),
-            variant_label = rep.int("r1i1p1f1", length(hour_index)),
-            grid_label = rep.int("gn", length(hour_index)),
-            table_id = rep.int("hour", length(hour_index)),
+            variant_label = rep.int("r1i1p1f1", n),
+            grid_label = rep.int("gn", n),
+            table_id = rep.int("hour", n),
             period = rep.int(
                 if (identical(role, "future")) "2060s" else "reference",
-                length(hour_index)
+                n
             ),
-            variable_id = rep.int(variable, length(hour_index)),
+            variable_id = rep.int(variable, n),
             value = as.numeric(value),
-            units = rep.int(units, length(hour_index)),
-            frequency = rep.int("hour", length(hour_index)),
-            time = as.POSIXct(sprintf("%04d-01-01", year), tz = "UTC") +
-                hour_index * 3600,
-            lon = rep.int(103.98, length(hour_index)),
-            lat = rep.int(1.37, length(hour_index)),
-            coordinates,
-            cf_second_of_day = as.numeric(fields$hour) * 3600,
+            units = rep.int(units, n),
+            frequency = rep.int("hour", n),
+            time = grid$time,
+            lon = rep.int(103.98, n),
+            lat = rep.int(1.37, n),
+            grid$coordinates,
+            cf_second_of_day = grid$cf_second_of_day,
             stringsAsFactors = FALSE
         )
     })
@@ -259,7 +289,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         frequency = HOURLY_KQDM_MODEL_FREQUENCIES
     )
     periods <- epw_morph_periods(`2060s` = 2061:2062)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
@@ -406,19 +436,44 @@ test_that("hourly frequency diagnostics validate only declared model variables",
     expect_identical(invalid$code[[1L]], "unsupported_climate_frequency")
 })
 
+# Share the immutable base hourly/3-hourly role tables across the two 2-year
+# integration tests; each caller receives independent data.table copies.
+# hourly_kqdm_test__base_inputs {{{
+hourly_kqdm_test__base_inputs <- local({
+    cached <- NULL
+    function() {
+        if (is.null(cached)) {
+            cached <<- list(
+                observed = hourly_kqdm_test__role(2001L, "observed", "noleap"),
+                historical = hourly_kqdm_test__model_role(
+                    1991L,
+                    "historical",
+                    "360_day"
+                ),
+                future = hourly_kqdm_test__model_role(
+                    2061:2062,
+                    "future",
+                    "360_day"
+                )
+            )
+        }
+        list(
+            observed = data.table::copy(cached$observed),
+            historical = data.table::copy(cached$historical),
+            future = data.table::copy(cached$future),
+            epw = if (exists("get_cached_epw", mode = "function")) {
+                get_cached_epw()
+            } else {
+                epw_file_read(get_cache_epw())
+            }
+        )
+    }
+})
+# }}}
+
 test_that("hourly kernel QDM produces two physically closed EPW years", {
     skip_on_cran()
-    observed <- hourly_kqdm_test__role(2001L, "observed", "noleap")
-    historical <- hourly_kqdm_test__model_role(
-        1991L,
-        "historical",
-        "360_day"
-    )
-    future <- hourly_kqdm_test__model_role(
-        2061:2062,
-        "future",
-        "360_day"
-    )
+    inputs <- hourly_kqdm_test__base_inputs()
     recipe <- epw_morph_recipe(
         "hourly_kernel_qdm",
         options = list(
@@ -426,10 +481,10 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
         )
     )
     context <- morpher__context(
-        epw = epw_file_read(get_cache_epw()),
-        climate = future,
-        reference_climate = historical,
-        observed_reference = observed,
+        epw = inputs$epw,
+        climate = inputs$future,
+        reference_climate = inputs$historical,
+        observed_reference = inputs$observed,
         recipe = recipe,
         by = "site_id"
     )
@@ -511,7 +566,8 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
 
 test_that("longwave extension runs through reconstruction, QDM and EPW output", {
     skip_on_cran()
-    observed <- hourly_kqdm_test__role(2001L, "observed")
+    inputs <- hourly_kqdm_test__base_inputs()
+    observed <- inputs$observed
     longwave <- data.table::copy(observed[variable_id == "tas"])
     longwave[, `:=`(
         variable_id = "rlds",
@@ -524,11 +580,8 @@ test_that("longwave extension runs through reconstruction, QDM and EPW output", 
         longwave[, `:=`(variable_id = "rlds", value = 330 + value / 100)]
         data.table::rbindlist(list(data, longwave), fill = TRUE)
     }
-    historical <- add_longwave(hourly_kqdm_test__model_role(
-        1991L,
-        "historical"
-    ))
-    future <- add_longwave(hourly_kqdm_test__model_role(2061:2062, "future"))
+    historical <- add_longwave(inputs$historical)
+    future <- add_longwave(inputs$future)
     overrides <- c(
         hourly_kqdm_test__overrides(),
         list(rlds = list(grid_points = 128L, min_samples = 3L))
@@ -541,7 +594,7 @@ test_that("longwave extension runs through reconstruction, QDM and EPW output", 
         )
     )
     context <- morpher__context(
-        epw = epw_file_read(get_cache_epw()),
+        epw = inputs$epw,
         climate = future,
         reference_climate = historical,
         observed_reference = observed,

@@ -1,3 +1,65 @@
+# Check whether a value is a non-empty, non-missing scalar character string.
+# source__has_text {{{
+source__has_text <- function(x) {
+    is.character(x) && length(x) == 1L && !is.na(x) && nzchar(x)
+}
+# }}}
+
+# Read an optional JSON sidecar or handoff file, treating missing or unreadable
+# files as absent without interrupting polling or recovery.
+# source__read_json_or_null {{{
+source__read_json_or_null <- function(path, simplify = TRUE) {
+    if (!source__has_text(path) || !file.exists(path)) {
+        return(NULL)
+    }
+    tryCatch(
+        jsonlite::read_json(path, simplifyVector = simplify),
+        error = function(e) NULL,
+        warning = function(w) NULL
+    )
+}
+# }}}
+
+# Collect a resolved mirai task and normalize worker/transport errors into an R
+# error condition so callers share one error-handling path.
+# source__collect_mirai {{{
+source__collect_mirai <- function(task) {
+    value <- mirai::collect_mirai(task)
+    message <- mirai_error_message(value)
+    if (nzchar(message)) {
+        return(simpleError(message))
+    }
+    value
+}
+# }}}
+
+# Build deterministic single-threaded worker options for source readers.
+# Immediate transfer warnings ride in the serialized option list so static
+# checks see no unevaluated worker globals.
+# source__worker_settings {{{
+source__worker_settings <- function(output = FALSE) {
+    settings <- shift_execution__options()
+    settings$epwshiftr.progress <- FALSE
+    settings$epwshiftr.mirai_workers <- 1L
+    if (isTRUE(output)) {
+        settings$warn <- 1L
+    }
+    settings
+}
+# }}}
+
+# Remove a dispatched job's request-local progress handoff file after completion
+# or confirmed worker retirement so a replacement reader never reuses stale state.
+# source__unlink_progress {{{
+source__unlink_progress <- function(http) {
+    path <- attr(http, "source_progress", exact = TRUE)
+    if (!is.null(path)) {
+        unlink(path)
+    }
+    invisible(NULL)
+}
+# }}}
+
 #' Create a reusable pool of source-reading workers
 #'
 #' Pass this pool to `EsgStore$extract(pool = pool)`. Automatic HTTP fallback
@@ -24,6 +86,7 @@
 #' @return An opaque pool with `poll()`, `status()` and `close()` methods.
 #'   Drain pending tickets before calling `close()`.
 #' @export
+# source_pool {{{
 source_pool <- function(
     workers = 4L,
     timeout = 180,
@@ -33,10 +96,12 @@ source_pool <- function(
 ) {
     source__pool(workers, timeout, output, download_dir, download_timeout)
 }
+# }}}
 
 # Own a reusable bounded reader pool. Each slot has a separate mirai compute
 # profile so a timed-out native reader can be replaced without cancelling peers.
 # Stores and collection callbacks remain exclusively in the calling process.
+# source__pool {{{
 source__pool <- function(
     workers = 4L,
     timeout = 180,
@@ -80,10 +145,9 @@ source__pool <- function(
             }
             Sys.sleep(.01)
         }
-        value <- mirai::collect_mirai(task)
-        message <- mirai_error_message(value)
-        if (nzchar(message)) {
-            stop(message)
+        value <- source__collect_mirai(task)
+        if (inherits(value, "error")) {
+            stop(conditionMessage(value))
         }
         value
     }
@@ -129,21 +193,12 @@ source__pool <- function(
         )
         registered <- TRUE
         libraries <- shift_execution__library_paths()
-        settings <- shift_execution__options()
-        # Immediate transfer warnings use the existing serialized option list,
-        # avoiding an unevaluated worker-global symbol in package checks.
-        if (output) {
-            settings$warn <- 1L
-        }
+        settings <- source__worker_settings(output = output)
         ready <- await(mirai::mirai(
             {
                 .libPaths(libraries)
                 loadNamespace("epwshiftr")
                 options(settings)
-                options(
-                    epwshiftr.mirai_workers = 1L,
-                    epwshiftr.progress = FALSE
-                )
                 data.table::setDTthreads(1L)
                 TRUE
             },
@@ -191,6 +246,9 @@ source__pool <- function(
                 Sys.sleep(.01)
             }
         }
+        # An active reader cannot publish after confirmed retirement. Its
+        # request-local descriptor must not be reused by a replacement reader.
+        source__unlink_progress(slot$active$entry$job$http)
         mirai::daemons(0L, .compute = slot$profile)
         slots[i] <<- list(NULL)
     }
@@ -274,17 +332,7 @@ source__pool <- function(
             # file duration on a healthy, continuously progressing reader.
             subset_progress <- active$entry$job$subset_progress
             if (!is.null(subset_progress)) {
-                progress <- tryCatch(
-                    if (file.exists(subset_progress)) {
-                        jsonlite::read_json(
-                            subset_progress,
-                            simplifyVector = TRUE
-                        )
-                    } else {
-                        NULL
-                    },
-                    error = function(e) NULL
-                )
+                progress <- source__read_json_or_null(subset_progress)
                 count <- if (is.null(progress$blocks)) 0 else progress$blocks
                 previous <- if (is.null(active$subset_blocks)) {
                     0
@@ -305,20 +353,31 @@ source__pool <- function(
             }
             http <- active$entry$job$http
             if (!is.null(download_timeout) && !is.null(http)) {
-                # Sample metadata at most once a second. Existing partial bytes
-                # are the baseline; rewriting them cannot manufacture progress.
+                # Sample small generation records and filesystem metadata only.
+                # Each retained generation has its own byte high-water mark.
                 if (now - active$progress_sample >= min(1, timeout / 4)) {
                     active$progress_sample <- now
-                    if (file.exists(http$manifest)) {
+                    transfer <- source__transfer_descriptor(active$entry$job)
+                    if (!is.null(transfer) || file.exists(http$manifest)) {
                         if (is.null(active$transfer_started)) {
                             active$transfer_started <- now
                             active$last_progress <- now
                         }
-                        size <- source__transfer_size(active$entry$job)
-                        if (size > active$transfer_bytes) {
-                            active$transfer_bytes <- size
+                        sizes <- source__transfer_state(
+                            active$entry$job,
+                            transfer
+                        )
+                        previous <- active$transfer_bytes[names(sizes)]
+                        grown <- sizes > 0 &
+                            (is.na(previous) | sizes > previous)
+                        if (any(grown)) {
                             active$last_progress <- now
                         }
+                        previous[is.na(previous)] <- 0
+                        active$transfer_bytes[names(sizes)] <- pmax(
+                            sizes,
+                            previous
+                        )
                     }
                     slots[[i]]$active <<- active
                 }
@@ -342,11 +401,8 @@ source__pool <- function(
                 )
                 start(i)
             } else {
-                value <- mirai::collect_mirai(active$task)
-                message <- mirai_error_message(value)
-                if (nzchar(message)) {
-                    value <- simpleError(message)
-                }
+                value <- source__collect_mirai(active$task)
+                source__unlink_progress(http)
                 slots[[i]]$active <<- NULL
             }
             outcome <- tryCatch(
@@ -397,6 +453,14 @@ source__pool <- function(
             # Send only the reader and its small job descriptor. This explicit
             # binding also lets static checks resolve the remote expression
             # without exporting collection callbacks or suppressing globals.
+            # A unique handoff path binds the worker's selected transfer to this
+            # dispatch; a stale descriptor cannot represent a later attempt.
+            if (!is.null(download_timeout) && !is.null(entry$job$http)) {
+                attr(entry$job$http, "source_progress") <- tempfile(
+                    "epwshiftr-source-progress-",
+                    fileext = ".json"
+                )
+            }
             request <- list(read = entry$read, job = entry$job)
             task <- mirai::mirai(
                 tryCatch(request$read(request$job), error = base::identity),
@@ -413,7 +477,7 @@ source__pool <- function(
                 transfer_bytes = if (is.null(download_timeout)) {
                     0
                 } else {
-                    source__transfer_size(entry$job)
+                    source__transfer_state(entry$job)
                 }
             )
             keys[[i]] <- entry$job$source_key
@@ -452,9 +516,7 @@ source__pool <- function(
             return(invisible(NULL))
         }
         guard()
-        busy <- length(queue) ||
-            any(vapply(slots, function(s) !is.null(s$active), logical(1L)))
-        if (busy && !force) {
+        if (!force && !pool$idle()) {
             stop("Drain source jobs before closing the pool.")
         }
         for (i in seq_along(slots)) {
@@ -471,9 +533,11 @@ source__pool <- function(
     initialized <- TRUE
     pool
 }
+# }}}
 
 # Own a lazy pool across consecutive internal subset calls in one coordinator.
 # Failed calls discard only this session's pool; budgets and stores stay caller-owned.
+# opendap__session {{{
 opendap__session <- function(workers, timeout) {
     checkmate::assert_count(workers, positive = TRUE)
     checkmate::assert_number(timeout, lower = .1, finite = TRUE)
@@ -520,25 +584,123 @@ opendap__session <- function(workers, timeout) {
     }
     session
 }
+# }}}
 
-# Count retained bytes using filesystem metadata only. A rename from .part to
-# .done/final keeps the same high-water mark and never reads a weather array.
-source__transfer_size <- function(job) {
+# Read the tiny atomic handoff emitted only after common recovery selects and
+# locks an exact task. The coordinator never inspects a live DuckDB manifest.
+# source__transfer_descriptor {{{
+source__transfer_descriptor <- function(job) {
+    path <- attr(job$http, "source_progress", exact = TRUE)
+    transfer <- source__read_json_or_null(path)
+    if (
+        !is.list(transfer) ||
+            !identical(transfer$schema, "epwshiftr-source-progress-v1")
+    ) {
+        return(NULL)
+    }
+    transfer
+}
+# }}}
+
+# Keep an independent high-water mark for each byte generation. A replacement
+# from zero can grow below the prior partial length; retained history never
+# appears under a canonical .part/.done pathname or supplies active progress.
+# source__transfer_state {{{
+source__transfer_state <- function(
+    job,
+    transfer = source__transfer_descriptor(job)
+) {
     http <- job$http
     if (is.null(http)) {
-        return(0)
+        return(stats::setNames(numeric(), character()))
     }
-    paths <- list.files(
-        http$temp,
-        pattern = "[.](part|done)$",
-        full.names = TRUE,
-        all.files = TRUE
+    list_transfer <- function(dir, pattern) {
+        list.files(dir, pattern = pattern, full.names = TRUE, all.files = TRUE)
+    }
+    if (is.null(transfer)) {
+        paths <- list_transfer(http$temp, "[.](part|done)$")
+        piece_dirs <- list_transfer(http$temp, "[.]pieces$")
+        target <- if (is.null(job$file$title)) {
+            character()
+        } else {
+            file.path(http$dest, job$file$title[[1L]])
+        }
+    } else {
+        # Saved Downloader temp/target locations are authoritative, including
+        # adopted legacy layouts. Other tasks in that directory stay excluded.
+        paths <- file.path(
+            transfer$temp,
+            paste0(transfer$task_id, c(".part", ".done"))
+        )
+        piece_dirs <- file.path(
+            transfer$temp,
+            paste0(transfer$task_id, ".pieces")
+        )
+        target <- transfer$target_path
+    }
+    # Only canonical task .pieces directories participate. Do not recurse into
+    # retained histories or infer progress from a directory's modification time.
+    paths <- c(
+        paths,
+        list_transfer(piece_dirs, "[.](part|done)$"),
+        target
     )
-    if (!is.null(job$file$title)) {
-        paths <- c(paths, file.path(http$dest, job$file$title[[1L]]))
+    # Downloader atomically publishes this small sidecar before body writes.
+    # A missing legacy sidecar still uses a stable pathname identity so merely
+    # rewriting its existing bytes cannot extend the reader's stall deadline.
+    records <- sub("[.](part|done)$", ".transfer.json", paths)
+    if (!is.null(transfer)) {
+        # Final publication carries the task's same generation. Renaming or
+        # copying its complete file must not announce a second byte history.
+        records[paths == transfer$target_path] <- file.path(
+            transfer$temp,
+            paste0(transfer$task_id, ".transfer.json")
+        )
     }
-    sizes <- file.info(paths, extra_cols = FALSE)$size
-    max(c(0, sizes[is.finite(sizes)]))
+
+    # Piece publication renames 000001.done.part to 000001.done while its
+    # generation stays in 000001.done.transfer.json, preventing a false jump.
+    piece_done <- grepl("[.]pieces$", basename(dirname(paths))) &
+        grepl("[.]done$", paths)
+    records[piece_done] <- paste0(paths[piece_done], ".transfer.json")
+
+    identities <- vapply(
+        records,
+        function(path) {
+            state <- if (grepl("[.]transfer[.]json$", path)) {
+                source__read_json_or_null(path)
+            } else {
+                NULL
+            }
+            generation <- if (is.list(state)) state$generation else NULL
+            if (source__has_text(generation)) {
+                paste(path, generation, sep = "::")
+            } else {
+                path
+            }
+        },
+        character(1L)
+    )
+    # Read generation before size: replacement moves old bytes before publishing
+    # a new sidecar, so an old large stat cannot become the new generation's
+    # high-water mark. A concurrent rename may simply defer one sample.
+    info <- file.info(paths, extra_cols = FALSE)
+    valid <- is.finite(info$size) & !is.na(info$isdir) & !info$isdir
+    sizes <- info$size[valid]
+    identities <- identities[valid]
+    if (!length(sizes)) {
+        return(stats::setNames(numeric(), character()))
+    }
+    # .part -> .done renames retain the same identity and cannot count twice.
+    vapply(split(sizes, identities), max, numeric(1L))
 }
+# }}}
+
+# Count the largest retained generation without reading a weather payload.
+# source__transfer_size {{{
+source__transfer_size <- function(job) {
+    max(c(0, source__transfer_state(job)))
+}
+# }}}
 
 # vim: fdm=marker :

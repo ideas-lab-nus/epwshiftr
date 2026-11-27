@@ -13,10 +13,6 @@ lpad <- function(x, pad = " ", width = NULL) {
 unlst <- function(x) unlist(x, FALSE, FALSE)
 # }}}
 
-# trim_ws {{{
-trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
-# }}}
-
 # to_title_case {{{
 to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
@@ -35,14 +31,6 @@ priv <- function(x) {
     checkmate::assert_r6(x)
     x$.__enclos_env__[["private"]] <- value
     invisible(x)
-}
-# }}}
-
-# vmsg {{{
-vmsg <- function(..., sep = "") {
-    if (getOption("epwshiftr.verbose", FALSE)) {
-        message(paste(..., sep = "\n"))
-    }
 }
 # }}}
 
@@ -78,23 +66,6 @@ verbose <- function(...) {
         cat(msg, "\n", sep = "")
     }
     invisible(msg)
-}
-# }}}
-
-# vb {{{
-vb <- function(...) {
-    if (!getOption("epwshiftr.verbose", FALSE)) {
-        return(NULL)
-    }
-    paste0(...)
-}
-# }}}
-
-# with_silent {{{
-with_silent <- function(expr) {
-    old <- options("epwshiftr.verbose" = FALSE)
-    on.exit(options(old), add = TRUE)
-    force(expr)
 }
 # }}}
 
@@ -884,18 +855,6 @@ write_parquet_file <- function(dt, path) {
 }
 # }}}
 # mirai helpers
-# mirai_default_workers {{{
-mirai_default_workers <- function(n) {
-    if (!n) {
-        return(0L)
-    }
-
-    workers <- shift_execution__options()$epwshiftr.mirai_workers
-
-    max(1L, min(as.integer(workers), n))
-}
-# }}}
-
 # mirai_error_message {{{
 mirai_error_message <- function(result) {
     if (inherits(result, "miraiError")) {
@@ -915,31 +874,6 @@ mirai_error_message <- function(result) {
 }
 # }}}
 
-# mirai_worker_bindings {{{
-mirai_worker_bindings <- function(symbols = character()) {
-    ns <- asNamespace("epwshiftr")
-    symbols <- unique(c(
-        "J",
-        "copy",
-        "rbindlist",
-        "set",
-        "setcolorder",
-        "setnames",
-        symbols
-    ))
-    symbols <- symbols[symbols %in% ls(ns, all.names = TRUE)]
-
-    bindings <- mget(symbols, envir = ns, inherits = FALSE)
-    local <- vapply(
-        bindings,
-        function(x) is.function(x) && identical(environment(x), ns),
-        logical(1L)
-    )
-    attr(bindings, "local_symbols") <- names(bindings)[local]
-    bindings
-}
-# }}}
-
 # Delegate pool ownership to the independently copyable downloader runtime.
 # All package callers retain the same startup and cancellation semantics.
 mirai__start_pool <- function(n, dispatcher = TRUE, .compute, output = FALSE) {
@@ -951,145 +885,6 @@ mirai__start_pool <- function(n, dispatcher = TRUE, .compute, output = FALSE) {
     )
 }
 
-# mirai_lapply {{{
-mirai_lapply <- function(
-    X,
-    FUN,
-    ...,
-    workers = NULL,
-    symbols = character(),
-    label = "mirai task"
-) {
-    checkmate::assert_function(FUN)
-
-    n <- length(X)
-    if (!n) {
-        return(vector("list", 0L))
-    }
-
-    workers <- if (is.null(workers)) {
-        mirai_default_workers(n)
-    } else {
-        max(1L, min(as.integer(workers), n))
-    }
-    dot_args <- list(...)
-
-    if (workers <= 1L) {
-        return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
-    }
-
-    compute_profile <- sprintf(
-        "epwshiftr-%s-%s",
-        gsub("[^A-Za-z0-9]+", "-", label),
-        fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
-    )
-    mirai__start_pool(workers, dispatcher = TRUE, .compute = compute_profile)
-    on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
-
-    worker_symbols <- mirai_worker_bindings(symbols)
-    tasks <- lapply(X, function(x) {
-        mirai::mirai(
-            {
-                old_env <- environment(FUN)
-                worker_env <- new.env(parent = old_env)
-                if (length(worker_symbols)) {
-                    local_symbols <- attr(
-                        worker_symbols,
-                        "local_symbols",
-                        exact = TRUE
-                    )
-                    list2env(worker_symbols, envir = worker_env)
-                    for (nm in local_symbols) {
-                        if (is.function(worker_env[[nm]])) {
-                            environment(worker_env[[nm]]) <- worker_env
-                        }
-                    }
-                }
-                environment(FUN) <- worker_env
-
-                do.call(FUN, c(list(x), dot_args))
-            },
-            FUN = FUN,
-            x = x,
-            dot_args = dot_args,
-            worker_symbols = worker_symbols,
-            .compute = compute_profile
-        )
-    })
-
-    results <- lapply(tasks, mirai::collect_mirai)
-    errors <- vapply(results, mirai_error_message, character(1L))
-    failed <- nzchar(errors)
-    if (any(failed)) {
-        stop(
-            sprintf(
-                "Failed to complete %s for %d task(s). First error: %s",
-                label,
-                sum(failed),
-                errors[failed][[1L]]
-            ),
-            call. = FALSE
-        )
-    }
-
-    results
-}
-# }}}
-
-# mirai_map {{{
-mirai_map <- function(
-    FUN,
-    ...,
-    workers = NULL,
-    symbols = character(),
-    label = "mirai map"
-) {
-    args <- list(...)
-    if (!length(args)) {
-        stop("At least one mapped input is required.", call. = FALSE)
-    }
-
-    lens <- vapply(args, length, integer(1L))
-    if (!lens[[1L]]) {
-        return(vector("list", 0L))
-    }
-    if (length(unique(lens)) != 1L) {
-        stop("Mapped inputs must have the same length.", call. = FALSE)
-    }
-
-    items <- lapply(seq_len(lens[[1L]]), function(i) lapply(args, `[[`, i))
-    mirai_lapply(
-        items,
-        function(item) do.call(FUN, item),
-        workers = workers,
-        symbols = symbols,
-        label = label
-    )
-}
-# }}}
-
-# netcdf_mirai_symbols {{{
-netcdf_mirai_symbols <- function(extra = character()) {
-    ns <- asNamespace("epwshiftr")
-    unique(c(
-        "CF_TIME_CALENDARS",
-        "CF_TIME_UNIT_SECONDS",
-        grep("^cf_time_", ls(ns, all.names = TRUE), value = TRUE),
-        "get_nc_atts",
-        "get_nc_axes",
-        "get_nc_dims",
-        "get_nc_meta",
-        "get_nc_time",
-        "get_nc_time_att",
-        "match_nc_time",
-        "normalize_cf_calendar",
-        "parse_cf_time",
-        "to_radian",
-        "tunnel_dist",
-        extra
-    ))
-}
-# }}}
 # store_hash_file
 # store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
@@ -1119,95 +914,6 @@ store_write_json_atomic <- function(x, path, ...) {
     path
 }
 # }}}
-# store_cmip6_index_active_key
-# store_cmip6_index_active_key {{{
-store_cmip6_index_active_key <- function() {
-    "active_cmip6_index_artifact_id"
-}
-# }}}
-# store_cmip6_index_dir
-# store_cmip6_index_dir {{{
-store_cmip6_index_dir <- function(init = TRUE) {
-    checkmate::assert_flag(init)
-    path <- store_path("queries", "cmip6-index", root = store_dir(init = init))
-    if (isTRUE(init)) {
-        dir.create(path, recursive = TRUE, showWarnings = FALSE)
-    }
-    path
-}
-# }}}
-# store_cmip6_index_path
-# store_cmip6_index_path {{{
-store_cmip6_index_path <- function(index_id, init = TRUE) {
-    checkmate::assert_string(index_id, min.chars = 1L)
-    file.path(store_cmip6_index_dir(init), sprintf("%s.csv", index_id))
-}
-# }}}
-# store_cmip6_index_save
-# store_cmip6_index_save {{{
-store_cmip6_index_save <- function(index) {
-    checkmate::assert_data_table(index)
-
-    dir <- store_cmip6_index_dir(init = TRUE)
-    tmp <- tempfile(pattern = "cmip6-index-", tmpdir = dir, fileext = ".csv")
-    on.exit(unlink(tmp, force = TRUE), add = TRUE)
-    data.table::fwrite(index, tmp)
-
-    index_id <- store_hash_file(tmp)
-    path <- store_cmip6_index_path(index_id, init = TRUE)
-    if (!file.exists(path)) {
-        if (!file.rename(tmp, path)) {
-            ok <- file.copy(tmp, path, overwrite = TRUE)
-            if (!isTRUE(ok)) {
-                stop(
-                    sprintf(
-                        "Failed to save CMIP6 index artifact to '%s'.",
-                        path
-                    ),
-                    call. = FALSE
-                )
-            }
-        }
-    }
-
-    store <- EsgStore$new(store_dir(init = TRUE))
-    on.exit(store$close(), add = TRUE)
-    artifact_id <- store$register_artifact(
-        kind = "cmip6_index",
-        path = path,
-        role = "input",
-        project = "CMIP6",
-        metadata = list(
-            rows = nrow(index),
-            columns = names(index)
-        )
-    )
-    store$set_meta(store_cmip6_index_active_key(), artifact_id)
-
-    path
-}
-# }}}
-# store_cmip6_index_active_path
-# store_cmip6_index_active_path {{{
-store_cmip6_index_active_path <- function() {
-    root <- store_dir(init = FALSE)
-    if (!dir.exists(root)) {
-        return(NULL)
-    }
-
-    store <- EsgStore$new(root, create = FALSE)
-    on.exit(store$close(), add = TRUE)
-    artifact_id <- store$get_meta(store_cmip6_index_active_key())
-    if (is.null(artifact_id) || is.na(artifact_id) || !nzchar(artifact_id)) {
-        return(NULL)
-    }
-
-    tryCatch(
-        store$artifact_path(artifact_id),
-        error = function(e) NULL
-    )
-}
-# }}}
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
     ".",
@@ -1232,7 +938,6 @@ utils::globalVariables(c(
     "all_candidates_cooling",
     "all_native_grid",
     "alpha",
-    "attribute",
     "availability_join_key",
     "avg_latency",
     "baseline_opaque_sky_cover",
@@ -1353,7 +1058,6 @@ utils::globalVariables(c(
     "method",
     "month",
     "name",
-    "natts",
     "node_attempt_count",
     "node_avg_latency",
     "node_cooldown_rank",
@@ -1461,6 +1165,30 @@ utils::globalVariables(c(
 # compact_list {{{
 compact_list <- function(x) {
     x[vapply(x, Negate(is.null), logical(1L))]
+}
+# }}}
+
+# Render the shared footer used when a print method displays only part of an
+# object.
+# print__truncation_footer {{{
+print__truncation_footer <- function(x, n, newline_before = is.data.frame(x)) {
+    # Remove CLI's default body indentation so the footer aligns with the
+    # surrounding dictionary or query-result content.
+    div <- cli::cli_div(
+        theme = list(
+            body = list(`padding-left` = 0L, `margin-left` = 0L)
+        )
+    )
+    total <- if (is.data.frame(x)) nrow(x) else length(x)
+    if (n < total) {
+        if (newline_before) {
+            cli::cli_text()
+        }
+        cli::cli_text(cli::col_grey(
+            "# ... with {total - n} more item{?s}"
+        ))
+    }
+    cli::cli_end(div)
 }
 # }}}
 

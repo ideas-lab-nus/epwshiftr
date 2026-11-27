@@ -2,6 +2,18 @@
 # identity already belongs to the surrounding morphing case.
 DIRECT_MODEL_SEQUENCE_ID <- "direct-model"
 
+# Return the first non-NULL validation error string across supplied checks.
+# sequence__first_error {{{
+sequence__first_error <- function(...) {
+    for (item in list(...)) {
+        if (!is.null(item)) {
+            return(item)
+        }
+    }
+    NULL
+}
+# }}}
+
 # Return the supplied error when a sequence identifier is not one safe scalar.
 # sequence__identifier_error {{{
 sequence__identifier_error <- function(value, message) {
@@ -16,20 +28,9 @@ sequence__identifier_error <- function(value, message) {
 }
 # }}}
 
-# Keep year validation identical across every typed weather-sequence member.
-# sequence__positive_year_error {{{
-sequence__positive_year_error <- function(value) {
-    if (length(value) != 1L || is.na(value) || value < 1L) {
-        return("`weather_year` must be one positive integer.")
-    }
-    NULL
-}
-# }}}
-
 # Validate optional sequence metadata without imposing a value schema.
 # sequence__provenance_error {{{
 sequence__provenance_error <- function(value) {
-    # Empty provenance is valid; populated provenance must have stable keys.
     if (
         length(value) &&
             (is.null(names(value)) ||
@@ -47,12 +48,7 @@ sequence__provenance_error <- function(value) {
 sequence__member_class_error <- function(members, class, message) {
     if (
         !length(members) ||
-            !all(vapply(
-                members,
-                S7::S7_inherits,
-                logical(1L),
-                class = class
-            ))
+            !all(vapply(members, S7::S7_inherits, logical(1L), class = class))
     ) {
         return(message)
     }
@@ -60,33 +56,123 @@ sequence__member_class_error <- function(members, class, message) {
 }
 # }}}
 
-# Reject repeated identities while leaving identity construction to each class.
-# sequence__unique_values_error {{{
-sequence__unique_values_error <- function(values, message) {
-    if (anyDuplicated(values)) {
-        return(message)
+# Validate shared signal-group identity fields on direct-model and mapped series.
+# sequence__validate_group_series {{{
+sequence__validate_group_series <- function(
+    group_id,
+    key,
+    variables,
+    key_atomic = FALSE
+) {
+    if (
+        length(group_id) != 1L ||
+            is.na(group_id) ||
+            !grepl("^[a-z][a-z0-9-]*$", group_id)
+    ) {
+        return("`group_id` must use lower-case letters, numbers, and hyphens.")
+    }
+    if (length(key)) {
+        bad_names <- is.null(names(key)) ||
+            any(!nzchar(names(key))) ||
+            anyDuplicated(names(key))
+        bad_values <- isTRUE(key_atomic) &&
+            (any(vapply(key, length, integer(1L)) != 1L) ||
+                any(!vapply(key, is.atomic, logical(1L))))
+        if (bad_names || bad_values) {
+            return(
+                if (isTRUE(key_atomic)) {
+                    "`key` must be a uniquely named list of atomic scalar values."
+                } else {
+                    "`key` must be a uniquely named list."
+                }
+            )
+        }
+    }
+    if (
+        !length(variables) ||
+            anyNA(variables) ||
+            any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", variables)) ||
+            anyDuplicated(variables)
+    ) {
+        return("`variables` must contain unique CMIP-style identifiers.")
     }
     NULL
 }
 # }}}
 
-# Require member years to be both unique and already in ascending order.
-# sequence__ordered_years_error {{{
-sequence__ordered_years_error <- function(years, message) {
+# Validate the common header fields shared across all sequence member classes.
+# sequence__validate_member_header {{{
+sequence__validate_member_header <- function(
+    sequence_id,
+    weather_year,
+    calendar,
+    calendar_name = "calendar",
+    cf_calendar = TRUE,
+    id_message = "`sequence_id` contains unsupported characters.",
+    provenance = list()
+) {
+    sequence__first_error(
+        sequence__identifier_error(sequence_id, id_message),
+        if (
+            length(weather_year) != 1L ||
+                is.na(weather_year) ||
+                weather_year < 1L
+        ) {
+            "`weather_year` must be one positive integer."
+        },
+        if (isTRUE(cf_calendar)) {
+            if (
+                length(calendar) != 1L ||
+                    is.na(calendar) ||
+                    !calendar %in% CF_TIME_CALENDARS
+            ) {
+                sprintf(
+                    "`%s` must identify one supported CF calendar.",
+                    calendar_name
+                )
+            }
+        } else if (
+            length(calendar) != 1L || is.na(calendar) || !nzchar(calendar)
+        ) {
+            sprintf("`%s` must be one non-empty string.", calendar_name)
+        },
+        sequence__provenance_error(provenance)
+    )
+}
+# }}}
+
+# Validate homogeneous member classes, unique ascending years, shared sequence
+# identity, and provenance across all typed direct-model sequence containers.
+# sequence__validate_members {{{
+sequence__validate_members <- function(
+    members,
+    class,
+    class_name,
+    label,
+    year_label = "weather years",
+    provenance = list()
+) {
+    error <- sequence__member_class_error(
+        members,
+        class,
+        sprintf("`members` must contain %s objects.", class_name)
+    )
+    if (!is.null(error)) {
+        return(error)
+    }
+    years <- vapply(members, function(m) m@weather_year, integer(1L))
     if (anyDuplicated(years) || !identical(years, sort(years))) {
-        return(message)
+        return(sprintf(
+            "%s must use unique ascending %s.",
+            label,
+            year_label
+        ))
     }
-    NULL
-}
-# }}}
-
-# Require every member to carry one common scalar sequence identity.
-# sequence__shared_values_error {{{
-sequence__shared_values_error <- function(values, message) {
-    if (length(unique(values)) != 1L) {
-        return(message)
+    sequence_ids <- vapply(members, function(m) m@sequence_id, character(1L))
+    if (length(unique(sequence_ids)) != 1L) {
+        return(sprintf("%s must share one `sequence_id`.", label))
     }
-    NULL
+    sequence__provenance_error(provenance)
 }
 # }}}
 
@@ -95,16 +181,43 @@ sequence__shared_values_error <- function(values, message) {
 sequence__shared_sets_error <- function(sets, message) {
     if (
         length(sets) > 1L &&
-            !all(vapply(
-                sets[-1L],
-                identical,
-                logical(1L),
-                sets[[1L]]
-            ))
+            !all(vapply(sets[-1L], identical, logical(1L), sets[[1L]]))
     ) {
         return(message)
     }
     NULL
+}
+# }}}
+
+# Shared EPW template input requirement and extraction helper for direct-model
+# hourly, physics, and output components.
+# sequence__epw_template_requirement {{{
+sequence__epw_template_requirement <- function() {
+    list(
+        weather_template = component__input_requirement(
+            "weather_template",
+            representations = "epw",
+            frequencies = "hour",
+            calendars = "gregorian"
+        )
+    )
+}
+# }}}
+
+# sequence__epw_template_input {{{
+sequence__epw_template_input <- function(inputs, require_epw_file = FALSE) {
+    template_input <- weather__get_input(inputs, "weather_template")
+    if (
+        !S7::S7_inherits(template_input, WeatherInput) ||
+            !identical(template_input@representation, "epw") ||
+            (isTRUE(require_epw_file) &&
+                !inherits(template_input@source, "EpwFile"))
+    ) {
+        cli::cli_abort(
+            "Role `weather_template` must contain an EPW WeatherInput."
+        )
+    }
+    template_input@source
 }
 # }}}
 
@@ -238,56 +351,30 @@ DirectModelSeries <- S7::new_class(
         variables = S7::new_property(S7::class_character),
         adjusted = S7::new_property(S7::class_any)
     ),
-    # validator {{{
     validator = function(self) {
-        if (
-            length(self@group_id) != 1L ||
-                is.na(self@group_id) ||
-                !grepl("^[a-z][a-z0-9-]*$", self@group_id)
-        ) {
-            return(
-                "`group_id` must use lower-case letters, numbers, and hyphens."
-            )
-        }
-        if (
-            length(self@key) &&
-                (is.null(names(self@key)) ||
-                    any(!nzchar(names(self@key))) ||
-                    anyDuplicated(names(self@key)) ||
-                    any(vapply(self@key, length, integer(1L)) != 1L) ||
-                    any(!vapply(self@key, is.atomic, logical(1L))))
-        ) {
-            return(
-                "`key` must be a uniquely named list of atomic scalar values."
-            )
-        }
-        if (
-            !length(self@variables) ||
-                anyNA(self@variables) ||
-                any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables)) ||
-                anyDuplicated(self@variables)
-        ) {
-            return("`variables` must contain unique CMIP-style identifiers.")
-        }
-        if (!S7::S7_inherits(self@adjusted, AdjustedWeatherSeries)) {
-            return("`adjusted` must be an AdjustedWeatherSeries object.")
-        }
-        if (!identical(self@adjusted@output_role, "model_future")) {
-            return(
-                "Direct model realization requires a `model_future` signal output."
-            )
-        }
-        if (
-            !setequal(
+        sequence__first_error(
+            sequence__validate_group_series(
+                self@group_id,
+                self@key,
                 self@variables,
-                unique(self@adjusted@data[["variable_id"]])
-            )
-        ) {
-            return("`variables` must match the adjusted series variables.")
-        }
-        NULL
+                key_atomic = TRUE
+            ),
+            if (!S7::S7_inherits(self@adjusted, AdjustedWeatherSeries)) {
+                "`adjusted` must be an AdjustedWeatherSeries object."
+            },
+            if (!identical(self@adjusted@output_role, "model_future")) {
+                "Direct model realization requires a `model_future` signal output."
+            },
+            if (
+                !setequal(
+                    self@variables,
+                    unique(self@adjusted@data[["variable_id"]])
+                )
+            ) {
+                "`variables` must match the adjusted series variables."
+            }
+        )
     }
-    # }}}
 )
 # }}}
 
@@ -303,45 +390,28 @@ DirectModelSequenceMember <- S7::new_class(
         series = S7::new_property(S7::class_list),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
-    # validator {{{
     validator = function(self) {
-        error <- sequence__identifier_error(
-            self@sequence_id,
-            "`sequence_id` contains unsupported characters."
+        error <- sequence__first_error(
+            sequence__validate_member_header(
+                self@sequence_id,
+                self@weather_year,
+                self@calendar,
+                provenance = self@provenance
+            ),
+            sequence__member_class_error(
+                self@series,
+                DirectModelSeries,
+                "`series` must contain DirectModelSeries objects."
+            )
         )
         if (!is.null(error)) {
             return(error)
         }
-        error <- sequence__positive_year_error(self@weather_year)
-        if (!is.null(error)) {
-            return(error)
-        }
-        if (
-            length(self@calendar) != 1L ||
-                is.na(self@calendar) ||
-                !self@calendar %in% CF_TIME_CALENDARS
-        ) {
-            return("`calendar` must identify one supported CF calendar.")
-        }
-        error <- sequence__member_class_error(
-            self@series,
-            DirectModelSeries,
-            "`series` must contain DirectModelSeries objects."
-        )
-        if (!is.null(error)) {
-            return(error)
-        }
-        group_ids <- vapply(
-            self@series,
-            function(item) item@group_id,
-            character(1L)
-        )
-        error <- sequence__unique_values_error(
-            group_ids,
-            "Direct-model group identities must be unique within a year."
-        )
-        if (!is.null(error)) {
-            return(error)
+        group_ids <- vapply(self@series, function(x) x@group_id, character(1L))
+        if (anyDuplicated(group_ids)) {
+            return(
+                "Direct-model group identities must be unique within a year."
+            )
         }
         for (item in self@series) {
             error <- sequence__direct_year_error(
@@ -353,13 +423,8 @@ DirectModelSequenceMember <- S7::new_class(
                 return(error)
             }
         }
-        error <- sequence__provenance_error(self@provenance)
-        if (!is.null(error)) {
-            return(error)
-        }
         NULL
     }
-    # }}}
 )
 # }}}
 
@@ -374,73 +439,40 @@ DirectModelSequence <- S7::new_class(
         time_step_seconds = S7::new_property(S7::class_numeric),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
-    # validator {{{
     validator = function(self) {
-        error <- sequence__member_class_error(
-            self@members,
-            DirectModelSequenceMember,
-            "`members` must contain DirectModelSequenceMember objects."
+        error <- sequence__first_error(
+            sequence__validate_members(
+                self@members,
+                DirectModelSequenceMember,
+                "DirectModelSequenceMember",
+                "Direct-model members",
+                provenance = self@provenance
+            ),
+            if (
+                length(self@frequency) != 1L ||
+                    is.na(self@frequency) ||
+                    !nzchar(self@frequency)
+            ) {
+                "`frequency` must identify one adjusted-series frequency."
+            },
+            if (
+                length(self@time_step_seconds) != 1L ||
+                    is.na(self@time_step_seconds) ||
+                    !is.finite(self@time_step_seconds) ||
+                    self@time_step_seconds <= 0
+            ) {
+                "`time_step_seconds` must be one positive finite number."
+            }
         )
         if (!is.null(error)) {
             return(error)
         }
-        if (
-            length(self@frequency) != 1L ||
-                is.na(self@frequency) ||
-                !nzchar(self@frequency)
-        ) {
-            return("`frequency` must identify one adjusted-series frequency.")
-        }
-        if (
-            length(self@time_step_seconds) != 1L ||
-                is.na(self@time_step_seconds) ||
-                !is.finite(self@time_step_seconds) ||
-                self@time_step_seconds <= 0
-        ) {
-            return("`time_step_seconds` must be one positive finite number.")
-        }
-        years <- vapply(
-            self@members,
-            function(member) member@weather_year,
-            integer(1L)
-        )
-        error <- sequence__ordered_years_error(
-            years,
-            "Direct-model members must use unique ascending weather years."
-        )
-        if (!is.null(error)) {
-            return(error)
-        }
-        sequence_ids <- vapply(
-            self@members,
-            function(member) member@sequence_id,
-            character(1L)
-        )
-        calendars <- vapply(
-            self@members,
-            function(member) member@calendar,
-            character(1L)
-        )
-        error <- sequence__shared_values_error(
-            sequence_ids,
-            "Direct-model members must share one `sequence_id`."
-        )
-        if (!is.null(error)) {
-            return(error)
-        }
-        error <- sequence__shared_values_error(
-            calendars,
-            "Direct-model members must share one CF calendar."
-        )
-        if (!is.null(error)) {
-            return(error)
+        calendars <- vapply(self@members, function(m) m@calendar, character(1L))
+        if (length(unique(calendars)) != 1L) {
+            return("Direct-model members must share one CF calendar.")
         }
         group_ids <- lapply(self@members, function(member) {
-            sort(vapply(
-                member@series,
-                function(item) item@group_id,
-                character(1L)
-            ))
+            sort(vapply(member@series, function(x) x@group_id, character(1L)))
         })
         error <- sequence__shared_sets_error(
             group_ids,
@@ -464,13 +496,8 @@ DirectModelSequence <- S7::new_class(
                 }
             }
         }
-        error <- sequence__provenance_error(self@provenance)
-        if (!is.null(error)) {
-            return(error)
-        }
         NULL
     }
-    # }}}
 )
 # }}}
 
@@ -739,34 +766,28 @@ WeatherSequenceMember <- S7::new_class(
         data = S7::new_property(S7::class_any),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
-    # validator {{{
     validator = function(self) {
-        error <- sequence__identifier_error(
-            self@sequence_id,
-            "`sequence_id` must contain only letters, numbers, dots, underscores, or hyphens."
+        error <- sequence__first_error(
+            sequence__validate_member_header(
+                self@sequence_id,
+                self@weather_year,
+                self@calendar,
+                cf_calendar = FALSE,
+                id_message = "`sequence_id` must contain only letters, numbers, dots, underscores, or hyphens.",
+                provenance = self@provenance
+            ),
+            if (length(self@stochastic_seed) != 1L) {
+                "`stochastic_seed` must be one integer or `NA_integer_`."
+            },
+            if (!is.data.frame(self@data) || !nrow(self@data)) {
+                "`data` must be a non-empty hourly weather table."
+            },
+            if (!"year" %in% names(self@data)) {
+                "`data` must contain an EPW `year` column."
+            }
         )
         if (!is.null(error)) {
             return(error)
-        }
-        error <- sequence__positive_year_error(self@weather_year)
-        if (!is.null(error)) {
-            return(error)
-        }
-        if (
-            length(self@calendar) != 1L ||
-                is.na(self@calendar) ||
-                !nzchar(self@calendar)
-        ) {
-            return("`calendar` must be one non-empty string.")
-        }
-        if (length(self@stochastic_seed) != 1L) {
-            return("`stochastic_seed` must be one integer or `NA_integer_`.")
-        }
-        if (!is.data.frame(self@data) || !nrow(self@data)) {
-            return("`data` must be a non-empty hourly weather table.")
-        }
-        if (!"year" %in% names(self@data)) {
-            return("`data` must contain an EPW `year` column.")
         }
         years <- unique(as.integer(self@data[["year"]]))
         if (
@@ -776,13 +797,8 @@ WeatherSequenceMember <- S7::new_class(
         ) {
             return("Every hourly row must match `weather_year`.")
         }
-        error <- sequence__provenance_error(self@provenance)
-        if (!is.null(error)) {
-            return(error)
-        }
         NULL
     }
-    # }}}
 )
 # }}}
 
@@ -802,58 +818,56 @@ WeatherSequenceResult <- S7::new_class(
         factors = S7::new_property(S7::class_any, default = NULL),
         provenance = S7::new_property(S7::class_list, default = list())
     ),
-    # validator {{{
     validator = function(self) {
-        if (
-            length(self@backend) != 1L ||
-                is.na(self@backend) ||
-                !nzchar(self@backend)
-        ) {
-            return("`backend` must be one non-empty string.")
-        }
-        if (!inherits(self@epw, "EpwFile")) {
-            return("`epw` must be an internal EpwFile object.")
-        }
-        if (
-            length(self@output_type) != 1L ||
-                is.na(self@output_type) ||
-                !self@output_type %in% c("future_year", "multi_year")
-        ) {
-            return("`output_type` must be `future_year` or `multi_year`.")
-        }
-        error <- sequence__member_class_error(
-            self@members,
-            WeatherSequenceMember,
-            "`members` must contain WeatherSequenceMember objects."
+        error <- sequence__first_error(
+            if (
+                length(self@backend) != 1L ||
+                    is.na(self@backend) ||
+                    !nzchar(self@backend)
+            ) {
+                "`backend` must be one non-empty string."
+            },
+            if (!inherits(self@epw, "EpwFile")) {
+                "`epw` must be an internal EpwFile object."
+            },
+            if (
+                length(self@output_type) != 1L ||
+                    is.na(self@output_type) ||
+                    !self@output_type %in% c("future_year", "multi_year")
+            ) {
+                "`output_type` must be `future_year` or `multi_year`."
+            },
+            sequence__member_class_error(
+                self@members,
+                WeatherSequenceMember,
+                "`members` must contain WeatherSequenceMember objects."
+            ),
+            if (
+                identical(self@output_type, "future_year") &&
+                    length(self@members) != 1L
+            ) {
+                "A `future_year` result must contain exactly one member."
+            },
+            if (
+                identical(self@output_type, "multi_year") &&
+                    length(self@members) < 2L
+            ) {
+                "A `multi_year` result must contain at least two members."
+            },
+            sequence__provenance_error(self@provenance)
         )
         if (!is.null(error)) {
             return(error)
-        }
-        if (
-            identical(self@output_type, "future_year") &&
-                length(self@members) != 1L
-        ) {
-            return("A `future_year` result must contain exactly one member.")
-        }
-        if (
-            identical(self@output_type, "multi_year") &&
-                length(self@members) < 2L
-        ) {
-            return("A `multi_year` result must contain at least two members.")
         }
         keys <- vapply(
             self@members,
-            function(member) {
-                paste(member@sequence_id, member@weather_year, sep = "\r")
-            },
+            function(m) paste(m@sequence_id, m@weather_year, sep = "\r"),
             character(1L)
         )
-        error <- sequence__unique_values_error(
-            keys,
-            "Sequence member `sequence_id` and `weather_year` pairs must be unique."
-        )
-        if (!is.null(error)) {
-            return(error)
+        if (anyDuplicated(keys)) {
+            return(
+                "Sequence member `sequence_id` and `weather_year` pairs must be unique."
+            )
         }
         template <- self@epw$data()
         required <- setdiff(names(template), "datetime")
@@ -870,13 +884,8 @@ WeatherSequenceResult <- S7::new_class(
                 "Every sequence member must contain a complete baseline-shaped EPW year."
             )
         }
-        error <- sequence__provenance_error(self@provenance)
-        if (!is.null(error)) {
-            return(error)
-        }
         NULL
     }
-    # }}}
 )
 # }}}
 
@@ -1130,14 +1139,7 @@ sequence__epw_output_component <- function() {
         name = "direct_model_epw_result",
         stage = "output",
         label = "Direct-model multi-year EPW result",
-        required_inputs = list(
-            weather_template = component__input_requirement(
-                "weather_template",
-                representations = "epw",
-                frequencies = "hour",
-                calendars = "gregorian"
-            )
-        ),
+        required_inputs = sequence__epw_template_requirement(),
         input_kinds = "epw_hourly_weather_sequence",
         output_kinds = "weather_sequence_result",
         scopes = "multivariate",

@@ -365,7 +365,7 @@ enhanced_test__change_climate <- function(reference = FALSE) {
 # }}}
 
 test_that("disabled precipitation preserves baseline EPW fields", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     baseline <- data.table::as.data.table(epw$data())[, .(
         liquid_precip_depth,
         liquid_precip_rate
@@ -429,7 +429,7 @@ test_that("disabled precipitation preserves baseline EPW fields", {
 
 test_that("Original morphing runner behavior is fixed across modes and profiles", {
     skip_on_cran()
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     future <- enhanced_test__change_climate()
     reference <- enhanced_test__change_climate(reference = TRUE)
     contexts <- list(
@@ -491,7 +491,7 @@ test_that("Original morphing runner behavior is fixed across modes and profiles"
 
 test_that("Original morphing production case contexts preserve identity and isolation", {
     skip_on_cran()
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     future_a <- enhanced_test__change_climate()
     reference_a <- enhanced_test__change_climate(reference = TRUE)
     future_b <- data.table::copy(future_a)
@@ -588,7 +588,7 @@ test_that("original-morphing profiles and current recipe JSON have explicit sema
 
 test_that("legacy profile preserves the historical 35-field EPW golden output", {
     input <- get_cache_epw()
-    epw <- epw_file_read(input)
+    epw <- get_cached_epw()
     context <- morpher__context(
         epw,
         enhanced_test__legacy_climate(),
@@ -837,7 +837,7 @@ test_that("specific humidity round trips and saturates at physical bounds", {
 
 
 test_that("enhanced runner integrates HUSS, radiation, snow, and final headers", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     context <- morpher__context(
         epw,
         enhanced_test__change_climate(),
@@ -953,7 +953,7 @@ test_that("integrated solar geometry and radiation models obey EPW closure", {
 
 
 test_that("snow depth uses metres-to-centimetres ratios without new events", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     weather <- epw$data()
     weather[, snow_depth := 0]
     # Place the synthetic event away from the month-boundary transition so the
@@ -1015,7 +1015,7 @@ test_that("snow depth uses metres-to-centimetres ratios without new events", {
 
 test_that("structured EPW headers round trip and enhanced policies recalculate", {
     path <- get_cache_epw()
-    epw <- epw_file_read(path)
+    epw <- get_cached_epw()
     untouched <- tempfile(fileext = ".epw")
     epw$save(untouched, overwrite = TRUE)
     expect_identical(readLines(path, n = 8L), readLines(untouched, n = 8L))
@@ -1046,7 +1046,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     variables <- morpher__input_variables(transform__recipe(transform))
     climate <- shift_cmip6("Model-A", "ssp585")
     periods <- epw_morph_periods(`2060s` = 2055:2065)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
@@ -1137,58 +1137,6 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
 test_that("exact Amon and LImon partitions gate File rows and extraction plans", {
     skip_on_cran()
 
-    file_doc <- function(path, variable_id) {
-        data.frame(
-            id = sprintf("%s|dataset", basename(path)),
-            dataset_id = "dataset",
-            size = 123,
-            checksum = "abc",
-            checksum_type = "SHA256",
-            instance_id = "instance",
-            master_id = "master",
-            replica = FALSE,
-            tracking_id = "hdl:test/file",
-            title = basename(path),
-            version = 20260101L,
-            latest = TRUE,
-            retracted = FALSE,
-            deprecated = FALSE,
-            datetime_start = "2060-01-01T00:00:00Z",
-            datetime_end = "2060-12-31T23:59:59Z",
-            data_node = "example.org",
-            activity_id = "ScenarioMIP",
-            institution_id = "Test",
-            source_id = "Model-A",
-            experiment_id = "ssp585",
-            variant_label = "r1i1p1f1",
-            frequency = "mon",
-            table_id = "Amon",
-            variable_id = variable_id,
-            grid_label = "gn",
-            url = I(list(c(
-                sprintf("%s|application/netcdf|OPENDAP", path),
-                sprintf("%s|application/netcdf|HTTPServer", path)
-            ))),
-            check.names = FALSE
-        )
-    }
-    file_result <- function(docs) {
-        params <- query_param__as_store(list(
-            project = "CMIP6",
-            distrib = TRUE,
-            limit = 10L,
-            type = "File",
-            format = QUERY_PARAM__FORMAT_JSON
-        ))
-        response <- esgf_test__response(docs)
-        query_result__new(
-            EsgResultFile,
-            index_node = "https://example.org",
-            params = params,
-            result = response
-        )
-    }
-
     paths <- c(tas = tempfile(fileext = ".nc"), snd = tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
     write_local_cmip6_netcdf_fixture(paths[["snd"]], 2060L, "snd")
@@ -1204,16 +1152,21 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
     docs <- data.table::rbindlist(
         lapply(seq_len(nrow(combinations)), function(i) {
             variable_id <- combinations$variable_id[[i]]
-            row <- file_doc(paths[[variable_id]], variable_id)
             suffix <- sprintf(
                 "%s-%s-%s",
                 variable_id,
                 combinations$table_id[[i]],
                 combinations$grid_label[[i]]
             )
+            row <- esgf_test__file_docs(
+                path = basename(paths[[variable_id]]),
+                opendap_url = paths[[variable_id]],
+                download_url = paths[[variable_id]],
+                variable_id = variable_id,
+                frequency = "mon",
+                table_id = combinations$table_id[[i]]
+            )
             row$source_id <- "Model-A"
-            row$frequency <- "mon"
-            row$table_id <- combinations$table_id[[i]]
             row$grid_label <- combinations$grid_label[[i]]
             row$dataset_id <- paste0("dataset-", suffix)
             row$master_id <- paste0("master-", suffix)
@@ -1228,7 +1181,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
 
     store_path <- tempfile("enhanced-partition-store-")
     store <- EsgStore$new(store_path)
-    query_id <- store$add_files(file_result(as.data.frame(docs)))
+    query_id <- store$add_files(esgf_test__file_result(as.data.frame(docs)))
     store$close()
     request <- shift_request(
         project = "CMIP6",
@@ -1297,7 +1250,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         fallback = "error"
     )
     coverage <- shift_coverage(climate)
-    expect_equal(length(shift_ids(climate)$plan_id), 2L)
+    expect_equal(length(shift_inspect__ids(climate)$plan_id), 2L)
     expect_true(all(coverage$complete))
     expect_setequal(coverage$variable_id, c("tas", "snd"))
 })
@@ -1705,7 +1658,7 @@ test_that("Original morphing combined temperature uses average daily EPW range",
 # Humidity and snow have their own smoothing paths. Changing only provenance
 # years must not change either physical result or its saved factors.
 test_that("humidity and snow smoothing ignore representative source-year labels", {
-    epw <- epw_file_read(get_cache_epw())
+    epw <- get_cached_epw()
     weather <- data.table::copy(epw$data())
     data.table::set(weather, j = "year", value = 2001L)
     data.table::set(
@@ -1766,7 +1719,16 @@ test_that("humidity and snow smoothing ignore representative source-year labels"
         strict = TRUE
     )
     results <- lapply(list(weather, mixed), function(data) {
-        temperature <- original_morphing__change_tdb(data, context, "auto")
+        temperature <- original_morphing__field(
+            data,
+            context,
+            "tas",
+            "dry_bulb_temperature",
+            "auto",
+            change_factor = TRUE,
+            max_var = "tasmax",
+            min_var = "tasmin"
+        )
         list(
             humidity = original_morphing__huss_state(
                 data,
@@ -1797,6 +1759,286 @@ test_that("humidity and snow smoothing ignore representative source-year labels"
         results[[2L]]$snow$snow_depth,
         tolerance = 1e-12
     )
+})
+
+# Build a representative EPW year with known monthly signals. Source-year labels
+# are deliberately independent of the physical month/day ordering of the year.
+# monthly_calendar_test__year {{{
+monthly_calendar_test__year <- function(mixed = FALSE) {
+    time <- seq(
+        as.POSIXct("2001-01-01", tz = "UTC"),
+        by = "hour",
+        length.out = 8760L
+    )
+    month <- as.integer(format(time, "%m"))
+    day <- as.integer(format(time, "%d"))
+    hour <- as.integer(format(time, "%H")) + 1L
+    year <- if (mixed) {
+        c(
+            1991L,
+            1985L,
+            1994L,
+            1982L,
+            1993L,
+            1987L,
+            1992L,
+            1981L,
+            1990L,
+            1983L,
+            1989L,
+            1986L
+        )[month]
+    } else {
+        rep.int(2001L, length(time))
+    }
+    data.table::data.table(
+        datetime = as.POSIXct(
+            sprintf("%d-%02d-%02d", year, month, day),
+            tz = "UTC"
+        ) +
+            hour * 3600,
+        year = year,
+        month = month,
+        day = day,
+        hour = hour,
+        minute = 60L,
+        temperature = 20 + 5 * sin(2 * pi * (hour - 8) / 24),
+        epw_mean = 20,
+        delta_target = sin(2 * pi * month / 12),
+        alpha_target = 0.2 * cos(2 * pi * month / 12),
+        method_applied = "combined"
+    )
+}
+# }}}
+
+# A TMY's source years must not change its cyclic factors. Reversed input order
+# additionally checks that smoothing restores caller order after calendar sorting.
+test_that("monthly smoothing follows the representative calendar across source years", {
+    ordinary <- monthly_calendar_test__year()
+    mixed <- monthly_calendar_test__year(mixed = TRUE)
+    before <- data.table::copy(mixed)
+    for (method in c("shift", "combined", "stretch")) {
+        for (width in c(72L, 73L)) {
+            expected <- morpher__smooth_enhanced_factors(
+                ordinary,
+                "temperature",
+                method,
+                width
+            )
+            actual <- morpher__smooth_enhanced_factors(
+                mixed,
+                "temperature",
+                method,
+                width
+            )
+            expect_equal(actual$delta, expected$delta, tolerance = 1e-12)
+            expect_equal(actual$alpha, expected$alpha, tolerance = 1e-12)
+            expect_identical(actual$datetime, mixed$datetime)
+            reverse <- nrow(mixed):1L
+            reordered <- morpher__smooth_enhanced_factors(
+                mixed[reverse],
+                "temperature",
+                method,
+                width
+            )
+            expect_equal(
+                reordered$delta,
+                expected$delta[reverse],
+                tolerance = 1e-12
+            )
+            expect_equal(
+                reordered$alpha,
+                expected$alpha[reverse],
+                tolerance = 1e-12
+            )
+            expect_identical(reordered$datetime, mixed$datetime[reverse])
+        }
+    }
+    expect_identical(mixed, before)
+})
+
+test_that("HUSS state morphing applies specific humidity delta without shadowing tdb delta", {
+    epw <- get_cached_epw()
+    data_epw <- epw_file__calculation_weather(
+        suppressMessages(epw$clone()$add_unit()$data())
+    )
+    future <- enhanced_test__change_climate()
+    reference <- enhanced_test__change_climate(reference = TRUE)
+    context <- original_morphing_test__context(
+        epw,
+        future,
+        "original_morphing",
+        "enhanced",
+        reference
+    )
+    tdb <- original_morphing__field(
+        data_epw,
+        context,
+        "tas",
+        "dry_bulb_temperature",
+        "auto",
+        change_factor = TRUE,
+        max_var = "tasmax",
+        min_var = "tasmin"
+    )
+    pressure <- original_morphing__field(
+        data_epw,
+        context,
+        "psl",
+        "atmospheric_pressure",
+        "shift",
+        change_factor = TRUE
+    )
+    humidity <- original_morphing__huss_state(data_epw, context, tdb, pressure)
+    rh <- humidity$rh
+    tdew <- humidity$tdew
+
+    # Specific-humidity change is +0.002 kg/kg across every month, whereas
+    # `tdb$delta` is +2 degC; shadowing would corrupt `huss_delta` by 1000x.
+    expect_equal(rh$delta, rep(0.002, nrow(rh)), tolerance = 1e-12)
+    expect_false(any(abs(rh$delta - tdb$delta) < 1))
+    expect_true(all(rh$relative_humidity >= 0 & rh$relative_humidity <= 100))
+    expect_gt(sum(rh$relative_humidity < 100 - 1e-6), 0.9 * nrow(rh))
+    expect_gt(sum(rh$factor_status == "ok"), 0.9 * nrow(rh))
+    expect_true(all(
+        tdew$dew_point_temperature <= tdb$dry_bulb_temperature + 1e-10
+    ))
+
+    # Verify ASHRAE psychrometric closure between morphed tdb, pressure, RH,
+    # dew point, and baseline + delta specific humidity.
+    baseline_huss <- epwphys__huss_from_rh_si(
+        as.numeric(data_epw$dry_bulb_temperature),
+        as.numeric(data_epw$relative_humidity),
+        as.numeric(data_epw$atmospheric_pressure)
+    )
+    sat_huss <- epwphys__saturation_huss_si(
+        tdb$dry_bulb_temperature,
+        pressure$atmospheric_pressure
+    )
+    expected_huss <- pmin(pmax(baseline_huss + rh$delta, 0), sat_huss)
+    closed_huss <- epwphys__huss_from_rh_si(
+        tdb$dry_bulb_temperature,
+        rh$relative_humidity,
+        pressure$atmospheric_pressure
+    )
+    expect_equal(closed_huss, expected_huss, tolerance = 1e-8)
+    expect_equal(
+        tdew$dew_point_temperature,
+        epwphys__dew_point_from_rh(
+            tdb$dry_bulb_temperature,
+            rh$relative_humidity / 100
+        ),
+        tolerance = 1e-8
+    )
+})
+
+# Build a complete, constant-wind year so fallback arithmetic has an analytic
+# reference while cyclic smoothing still exercises both year boundaries.
+# monthly_stretch_test__year {{{
+monthly_stretch_test__year <- function() {
+    time <- seq(
+        as.POSIXct("2001-01-01", tz = "UTC"),
+        by = "hour",
+        length.out = 8760L
+    )
+    data.table::data.table(
+        datetime = time,
+        year = 2001L,
+        month = as.integer(format(time, "%m")),
+        day = as.integer(format(time, "%d")),
+        hour = as.integer(format(time, "%H")) + 1L,
+        minute = 60L,
+        wind_speed = 2
+    )
+}
+# }}}
+
+# Exercise both reference choices and the two invalid-stretch conditions.
+test_that("enhanced stretch fallbacks apply the recorded additive method", {
+    withr::local_options(epwshiftr.threshold_alpha = 3)
+    base_epw <- monthly_stretch_test__year()
+    january <- which(base_epw$month == 1L)
+    for (absolute in c(FALSE, TRUE)) {
+        for (reason in c("zero", "threshold")) {
+            for (width in c(0L, 72L)) {
+                epw <- data.table::copy(base_epw)
+                future <- data.table::data.table(
+                    month = 1:12,
+                    units = "m s-1",
+                    value = 4
+                )
+                reference <- data.table::copy(future)
+                data.table::set(reference, j = "value", value = 2)
+                if (reason == "zero") {
+                    data.table::set(reference, i = 1L, j = "value", value = 0)
+                    if (absolute) {
+                        data.table::set(
+                            epw,
+                            i = january,
+                            j = "wind_speed",
+                            value = 0
+                        )
+                    }
+                } else {
+                    data.table::set(future, i = 1L, j = "value", value = 10)
+                }
+                before <- data.table::copy(epw)
+                args <- list(
+                    var = "wind_speed",
+                    data_epw = epw,
+                    data_mean = future,
+                    type = "stretch",
+                    transition_hours = width
+                )
+                if (absolute) {
+                    fun <- original_morphing__from_monthly_enhanced
+                    baseline_mean <- mean(epw$wind_speed[january])
+                } else {
+                    fun <- original_morphing__from_monthly_change_enhanced
+                    args$reference_mean <- reference
+                    baseline_mean <- reference$value[1L]
+                }
+                actual <- do.call(fun, args)
+                expected <- epw$wind_speed[january] +
+                    future$value[1L] -
+                    baseline_mean
+                expect_equal(
+                    actual$wind_speed[january],
+                    expected,
+                    tolerance = 1e-12
+                )
+                expect_true(all(actual$method_applied[january] == "shift"))
+                expect_true(all(actual$alpha[january] == 0))
+                expect_true(all(grepl(
+                    "fallback_shift",
+                    actual$factor_status[january]
+                )))
+                expect_equal(
+                    actual$wind_speed,
+                    data.table::fifelse(
+                        actual$method_applied == "shift",
+                        epw$wind_speed + actual$delta,
+                        epw$wind_speed * actual$alpha
+                    ),
+                    tolerance = 1e-12
+                )
+                expect_identical(epw, before)
+            }
+        }
+    }
+})
+
+# Versioned recipe identity prevents corrected monthly outputs from reusing
+# artifacts produced before the fallback and HUSS delta arithmetic fixes.
+test_that("enhanced monthly recipe invalidates the earlier arithmetic identity", {
+    transform <- monthly_transform("epwshiftr")
+    expect_identical(transform@recipe_version, 4L)
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 4L)
+    for (version in c(1L, 2L, 3L)) {
+        spec <- transform__spec_value(transform)
+        spec$recipe_version <- version
+        expect_error(transform__from_spec(spec), "version")
+    }
 })
 
 # vim: fdm=marker :

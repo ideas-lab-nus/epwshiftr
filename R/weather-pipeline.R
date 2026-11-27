@@ -95,7 +95,6 @@ WeatherPipelinePlan <- S7::new_class(
         inputs = S7::new_property(S7::class_any),
         components = S7::new_property(S7::class_list)
     ),
-    # validator {{{
     validator = function(self) {
         if (!S7::S7_inherits(self@spec, WeatherPipelineSpec)) {
             return("`spec` must be a WeatherPipelineSpec object.")
@@ -103,59 +102,13 @@ WeatherPipelinePlan <- S7::new_class(
         if (!S7::S7_inherits(self@inputs, WeatherInputs)) {
             return("`inputs` must be a WeatherInputs object.")
         }
-        if (
-            !identical(names(self@components), WEATHER_COMPONENT_STAGES) ||
-                !all(vapply(
-                    self@components,
-                    S7::S7_inherits,
-                    logical(1L),
-                    class = WeatherComponentSpec
-                ))
-        ) {
+        if (!identical(names(self@components), WEATHER_COMPONENT_STAGES)) {
             return(
                 "`components` must contain resolved specifications for every stage."
             )
         }
         NULL
     }
-    # }}}
-)
-# }}}
-
-# WeatherPipelineExecution exposes every stage envelope for diagnostics while
-# retaining the final method result consumed by EpwMorphBackend.
-# WeatherPipelineExecution {{{
-WeatherPipelineExecution <- S7::new_class(
-    "WeatherPipelineExecution",
-    properties = list(
-        plan = S7::new_property(S7::class_any),
-        stages = S7::new_property(S7::class_list),
-        result = S7::new_property(S7::class_any)
-    ),
-    # validator {{{
-    validator = function(self) {
-        if (!S7::S7_inherits(self@plan, WeatherPipelinePlan)) {
-            return("`plan` must be a WeatherPipelinePlan object.")
-        }
-        if (
-            !identical(names(self@stages), WEATHER_COMPONENT_STAGES) ||
-                !all(vapply(
-                    self@stages,
-                    S7::S7_inherits,
-                    logical(1L),
-                    class = WeatherStageResult
-                ))
-        ) {
-            return(
-                "`stages` must contain one WeatherStageResult for every stage."
-            )
-        }
-        if (is.null(self@result)) {
-            return("`result` cannot be NULL.")
-        }
-        NULL
-    }
-    # }}}
 )
 # }}}
 
@@ -197,7 +150,7 @@ pipeline__records <- function(spec) {
 # records before resolving executable operations from the registry.
 # pipeline__from_records {{{
 pipeline__from_records <- function(records) {
-    if (is.null(records)) {
+    if (is.null(records) || !length(records)) {
         return(NULL)
     }
     if (is.character(records) && !is.null(names(records))) {
@@ -237,18 +190,15 @@ pipeline__compile <- function(spec, inputs) {
 }
 # }}}
 
-# Find the allowed frequency intersection declared for one or more semantic
-# input roles. NULL means that no component constrains those roles.
-# pipeline__frequency_choices {{{
-pipeline__frequency_choices <- function(
-    spec,
-    roles = c("model_historical", "model_future")
-) {
+# Collect one requirement property across every stage in a pipeline for the
+# selected semantic input roles.
+# pipeline__role_requirements {{{
+pipeline__role_requirements <- function(spec, roles, property) {
     if (!S7::S7_inherits(spec, WeatherPipelineSpec)) {
         cli::cli_abort("{.arg spec} must be a WeatherPipelineSpec object.")
     }
     checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
-    choices <- list()
+    values <- list()
     for (stage in WEATHER_COMPONENT_STAGES) {
         component <- component__get(stage, spec@components[[stage]])
         requirements <- c(
@@ -256,12 +206,24 @@ pipeline__frequency_choices <- function(
             component@optional_inputs
         )
         for (role in intersect(roles, names(requirements))) {
-            frequencies <- requirements[[role]]@frequencies
-            if (length(frequencies)) {
-                choices[[length(choices) + 1L]] <- frequencies
+            entry <- S7::prop(requirements[[role]], property)
+            if (length(entry)) {
+                values[[length(values) + 1L]] <- entry
             }
         }
     }
+    values
+}
+# }}}
+
+# Find the allowed frequency intersection declared for one or more semantic
+# input roles. NULL means that no component constrains those roles.
+# pipeline__frequency_choices {{{
+pipeline__frequency_choices <- function(
+    spec,
+    roles = c("model_historical", "model_future")
+) {
+    choices <- pipeline__role_requirements(spec, roles, "frequencies")
     if (!length(choices)) {
         return(NULL)
     }
@@ -282,26 +244,8 @@ pipeline__variable_frequencies <- function(
     spec,
     roles = c("model_historical", "model_future")
 ) {
-    if (!S7::S7_inherits(spec, WeatherPipelineSpec)) {
-        cli::cli_abort("{.arg spec} must be a WeatherPipelineSpec object.")
-    }
-    checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
-    mappings <- list()
-    for (stage in WEATHER_COMPONENT_STAGES) {
-        component <- component__get(stage, spec@components[[stage]])
-        requirements <- c(
-            component@required_inputs,
-            component@optional_inputs
-        )
-        for (role in intersect(roles, names(requirements))) {
-            mapping <- requirements[[role]]@variable_frequencies
-            if (length(mapping)) {
-                mappings[[length(mappings) + 1L]] <- mapping
-            }
-        }
-    }
     weather__combine_variable_frequencies(
-        mappings,
+        pipeline__role_requirements(spec, roles, "variable_frequencies"),
         "Pipeline components"
     )
 }
@@ -463,8 +407,8 @@ pipeline__stage_table <- function(stages) {
 }
 # }}}
 
-# Execute one compiled pipeline in stage order and return both inspectable stage
-# envelopes and the final backend result.
+# Execute one compiled pipeline in stage order and return the final backend
+# result with its stage provenance attached.
 # pipeline__execute {{{
 pipeline__execute <- function(plan, context, options = list()) {
     if (!S7::S7_inherits(plan, WeatherPipelinePlan)) {
@@ -497,11 +441,7 @@ pipeline__execute <- function(plan, context, options = list()) {
         # representative-year results without flattening their member data.
         final@parts$component_pipeline <- pipeline__stage_table(stages)
     }
-    WeatherPipelineExecution(
-        plan = plan,
-        stages = stages,
-        result = final
-    )
+    final
 }
 # }}}
 
@@ -510,12 +450,7 @@ pipeline__execute <- function(plan, context, options = list()) {
 pipeline__run <- function(spec, context) {
     checkmate::assert_class(context, "morpher__context")
     plan <- pipeline__compile(spec, context$inputs)
-    execution <- pipeline__execute(
-        plan,
-        context,
-        options = context$recipe$options
-    )
-    execution@result
+    pipeline__execute(plan, context, options = context$recipe$options)
 }
 # }}}
 

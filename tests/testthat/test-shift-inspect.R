@@ -255,7 +255,7 @@ test_that("staged summaries preserve output identities, transforms and weather g
         )
     )
     # Isolate result restoration; exercise real public grouping and EPW reads.
-    testthat::local_mocked_bindings(shift_result = function(...) stage)
+    testthat::local_mocked_bindings(shift_inspect__result = function(...) stage)
     summary <- shift_summary(
         run,
         refresh = FALSE,
@@ -280,6 +280,41 @@ test_that("staged summaries preserve output identities, transforms and weather g
     expect_equal(summary$epw_files, c(2L, 1L))
     expect_equal(summary$mean_temperature_c, c(15, 40))
     expect_equal(summary$temperature_hours, c(2L, 1L))
+})
+
+# Identity-row reads must match store$query(), including empty results and
+# errors from a closed store.
+test_that("identity row reads match store queries", {
+    path <- tempfile("inspect-rows-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    on.exit(store$close(), add = TRUE)
+    store$set_meta("sentinel", "keep")
+
+    expected <- store$query(
+        "SELECT * FROM \"store_meta\" WHERE \"key\" IN ('sentinel')"
+    )
+    expect_identical(
+        shift_inspect__rows(store, "store_meta", "key", "sentinel"),
+        expected
+    )
+    expect_identical(
+        shift_inspect__rows(store, "store_meta", "key", "no-such-key"),
+        store$query(
+            "SELECT * FROM \"store_meta\" WHERE \"key\" IN ('no-such-key')"
+        )
+    )
+})
+
+test_that("identity row reads reject a closed store", {
+    path <- tempfile("inspect-rows-closed-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    store$close()
+    expect_error(
+        shift_inspect__rows(store, "store_meta", "key", "schema_version"),
+        "closed"
+    )
 })
 
 # vim: fdm=marker :

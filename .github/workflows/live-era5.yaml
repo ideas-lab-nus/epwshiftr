@@ -15,6 +15,7 @@ concurrency:
 jobs:
   era5-live:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     env:
       ECMWF_DATASTORES_KEY: ${{ secrets.ECMWF_DATASTORES_KEY }}
@@ -45,4 +46,4 @@ jobs:
       - name: Run the live ERA5 workflow
         shell: Rscript {0}
         run: |
-          devtools::test(filter = "era5-live", stop_on_failure = TRUE)
+          devtools::test(filter = "^era5-epw$", stop_on_failure = TRUE)

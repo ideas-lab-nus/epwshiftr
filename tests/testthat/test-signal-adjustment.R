@@ -43,29 +43,6 @@ adjusted_series_test__subdaily <- function(
 }
 # }}}
 
-# Build a compact daily table without depending on helpers from another test
-# file or assigning Gregorian dates to non-Gregorian calendars.
-# adjusted_series_test__daily {{{
-adjusted_series_test__daily <- function() {
-    fields <- cf_time_offset2date(
-        0:3,
-        data.frame(year = 2061L, month = 1L, day = 1L),
-        "noleap"
-    )
-    fields$hour <- 12L
-    fields$minute <- 0L
-    fields$second <- 0
-    data.frame(
-        variable_id = rep.int("tas", 4L),
-        value = c(280, 282, 284, 286),
-        units = rep.int("K", 4L),
-        frequency = rep.int("day", 4L),
-        cf_time__coordinates(fields, "noleap"),
-        stringsAsFactors = FALSE
-    )
-}
-# }}}
-
 test_that("shared signal requirements preserve the three-role contract", {
     requirements <- signal__three_role_requirements(
         as.list(c("tas", "pr")),
@@ -85,7 +62,7 @@ test_that("shared signal requirements preserve the three-role contract", {
 
 test_that("shared adjusted result validation retains diagnostic contracts", {
     daily <- bias__daily_adjusted_series(
-        adjusted_series_test__daily(),
+        signal_test__series("tas", 2061L, c(280, 282, 284, 286)),
         output_role = "model_future",
         transformation = "test_adjustment"
     )
@@ -146,6 +123,22 @@ test_that("shared future blocks preserve fitting-window edge diagnostics", {
     expect_false(blocks[[1L]]$truncated_right)
     expect_identical(blocks[[4L]]$output_years, 2050L)
     expect_true(blocks[[4L]]$truncated_right)
+
+    # Verify the published CDF-t (17/9) and SDM (30/10) block schedules.
+    cdft_blocks <- signal__future_blocks(2041:2067, 17L, 9L, "CDF-t")
+    expect_length(cdft_blocks, 3L)
+    expect_identical(cdft_blocks[[2L]]$output_years, 2050:2058)
+    expect_identical(cdft_blocks[[2L]]$window_years, 2046:2062)
+    expect_false(cdft_blocks[[2L]]$truncated_left)
+    expect_false(cdft_blocks[[2L]]$truncated_right)
+
+    sdm_blocks <- signal__future_blocks(2041:2070, 30L, 10L, "SDM")
+    expect_length(sdm_blocks, 3L)
+    expect_identical(sdm_blocks[[2L]]$output_years, 2051:2060)
+    expect_identical(sdm_blocks[[2L]]$window_years, 2041:2070)
+    expect_false(sdm_blocks[[2L]]$truncated_left)
+    expect_false(sdm_blocks[[2L]]$truncated_right)
+
     expect_error(
         signal__future_blocks(2041:2043 * 2L, 3L, 1L, "Test method"),
         "Test method requires contiguous future model years"
@@ -171,7 +164,7 @@ test_that("shared signal bounds return values and exact clipping counts", {
 })
 
 test_that("daily adjusted series remains a strict specialization", {
-    data <- adjusted_series_test__daily()
+    data <- signal_test__series("tas", 2061L, c(280, 282, 284, 286))
     adjusted <- bias__daily_adjusted_series(
         data,
         output_role = "model_future",
@@ -323,7 +316,7 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
         source,
         output_role = "model_future",
         transformation = "additive",
-        settings = list(grouping = "calendar_month"),
+        settings = list(transformation = "additive"),
         provenance = list(method = "test")
     )
 
@@ -385,7 +378,7 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
 # Shared daily/subdaily validators must retain the raw reader's distinction
 # when callers construct canonical weather tables directly.
 test_that("CF climatology cannot enter ordinary bias-adjustment samples", {
-    daily <- adjusted_series_test__daily()
+    daily <- signal_test__series("tas", 2061L, c(280, 282, 284, 286))
     daily$time_kind <- "climatology"
     expect_match(bias__daily_data_error(daily), "climatolog")
     subdaily <- adjusted_series_test__subdaily()
@@ -394,6 +387,503 @@ test_that("CF climatology cannot enter ordinary bias-adjustment samples", {
         bias__subdaily_data_error(subdaily, "3hr", 10800),
         "climatolog"
     )
+})
+
+test_that("shared three-role input validator enforces daily, subdaily, and missing contracts", {
+    observed <- bias_adjustment_test__series(
+        "tas",
+        2001L,
+        c(10, 12, 14, 16),
+        calendar = "360_day"
+    )
+    historical <- bias_adjustment_test__series(
+        "tas",
+        1991L,
+        c(9, 11, 13, 15),
+        calendar = "noleap"
+    )
+    future <- bias_adjustment_test__series(
+        "tas",
+        2061L,
+        c(11, 13, 15, 17),
+        calendar = "all_leap"
+    )
+    roles <- list(
+        observed_reference = observed,
+        model_historical = historical,
+        model_future = future
+    )
+
+    validated <- signal__validate_three_role_inputs(roles, "tas", "Test Method")
+    expect_named(validated, SIGNAL_THREE_INPUT_ROLES)
+
+    expect_error(
+        signal__validate_three_role_inputs(roles[-3L], "tas", "Test Method"),
+        "observed, historical-model, and future-model role payloads"
+    )
+
+    wrong_var <- roles
+    wrong_var$model_future$variable_id <- "pr"
+    expect_error(
+        signal__validate_three_role_inputs(wrong_var, "tas", "Test Method"),
+        "must contain only variable"
+    )
+
+    mixed_cal <- roles
+    mixed_cal$observed_reference <- rbind(
+        observed[1:2, ],
+        bias_adjustment_test__series(
+            "tas",
+            2001L,
+            c(14, 16),
+            months = c(2L, 2L),
+            days = c(1L, 2L),
+            calendar = "noleap"
+        )
+    )
+    expect_error(
+        signal__validate_three_role_inputs(mixed_cal, "tas", "Test Method"),
+        "one native calendar"
+    )
+
+    bad_units <- roles
+    bad_units$model_future$units <- "degC"
+    expect_error(
+        signal__validate_three_role_inputs(bad_units, "tas", "Test Method"),
+        "identical units"
+    )
+
+    negative <- roles
+    negative$model_future$value[[1L]] <- -1
+    expect_error(
+        signal__validate_three_role_inputs(
+            negative,
+            "tas",
+            "Test Method",
+            min_value = 0
+        ),
+        "non-negative"
+    )
+    expect_error(
+        signal__validate_three_role_inputs(
+            negative,
+            "tas",
+            "Test Method",
+            min_value = 0,
+            min_value_message = "Custom lower-bound failure."
+        ),
+        "Custom lower-bound failure"
+    )
+
+    missing_roles <- roles
+    missing_roles$observed_reference$value[[2L]] <- NA_real_
+    expect_error(
+        signal__validate_three_role_inputs(
+            missing_roles,
+            "tas",
+            "Test Method",
+            allow_missing = FALSE
+        ),
+        "missing values"
+    )
+    masked <- signal__validate_three_role_inputs(
+        missing_roles,
+        "tas",
+        "Test Method",
+        allow_missing = TRUE
+    )
+    expect_true(is.na(masked$observed_reference$value[[2L]]))
+    expect_identical(masked$observed_reference$value[[1L]], 10)
+
+    non_finite <- missing_roles
+    non_finite$observed_reference$value[[1L]] <- Inf
+    expect_error(
+        signal__validate_three_role_inputs(
+            non_finite,
+            "tas",
+            "Test Method",
+            allow_missing = TRUE
+        ),
+        "non-finite"
+    )
+
+    subdaily_roles <- list(
+        observed_reference = adjusted_series_test__subdaily(
+            year = 2001L,
+            frequency = "hour",
+            time_step_seconds = 3600
+        ),
+        model_historical = adjusted_series_test__subdaily(
+            year = 1991L,
+            frequency = "hour",
+            time_step_seconds = 3600
+        ),
+        model_future = adjusted_series_test__subdaily(
+            year = 2061L,
+            frequency = "hour",
+            time_step_seconds = 3600
+        )
+    )
+    subdaily_ok <- signal__validate_three_role_inputs(
+        subdaily_roles,
+        "tas",
+        "Hourly Method",
+        frequency = "hour",
+        time_step_seconds = 3600
+    )
+    expect_identical(
+        unique(subdaily_ok$model_future$frequency),
+        "hour"
+    )
+    expect_error(
+        signal__validate_three_role_inputs(
+            subdaily_roles,
+            "tas",
+            "Three-Hourly Method",
+            frequency = "3hr",
+            time_step_seconds = 10800
+        ),
+        "declared `frequency`"
+    )
+    wrong_freq <- roles
+    wrong_freq$model_future$frequency <- "hour"
+    expect_error(
+        signal__validate_three_role_inputs(
+            wrong_freq,
+            "tas",
+            "Daily Method",
+            frequency = "day"
+        ),
+        "must be `day`"
+    )
+})
+
+test_that("shared sample summaries and monthly block runner aggregate diagnostics", {
+    expect_identical(
+        signal__sample_summary(c(2, 4, 6)),
+        c(minimum = 2, median = 4, maximum = 6)
+    )
+    expect_identical(
+        signal__sample_summary(c(2L, 6L), include_median = FALSE),
+        c(minimum = 2L, maximum = 6L)
+    )
+
+    make_years <- function(years, offset) {
+        do.call(
+            rbind,
+            lapply(years, function(year) {
+                bias_adjustment_test__series(
+                    "tas",
+                    year,
+                    c(10, 12, 20, 22) + offset
+                )
+            })
+        )
+    }
+    series <- list(
+        observed_reference = make_years(2001:2002, 0),
+        model_historical = make_years(1991:1992, 0),
+        model_future = make_years(2041:2044, 5)
+    )
+    run <- signal__run_monthly_blocks(
+        series = series,
+        future_window_years = 4L,
+        output_block_years = 2L,
+        min_samples = 2L,
+        bounds = c(-Inf, 25),
+        method_label = "Block Method",
+        apply_window = function(
+            month,
+            block,
+            observed_rows,
+            historical_rows,
+            future_rows,
+            output_rows
+        ) {
+            list(
+                value = series$model_future$value[future_rows] + 1,
+                record = list(
+                    month = month,
+                    truncated_left = block$truncated_left,
+                    truncated_right = block$truncated_right,
+                    observed_samples = length(observed_rows),
+                    historical_samples = length(historical_rows),
+                    future_samples = length(future_rows)
+                )
+            )
+        }
+    )
+
+    expect_equal(
+        run$value,
+        pmin(series$model_future$value + 1, 25)
+    )
+    expect_identical(run$diagnostics$window_count, 4L)
+    expect_identical(run$diagnostics$truncated_edge_windows, 4L)
+    expect_identical(run$diagnostics$clipped_values, 8L)
+    expect_identical(
+        run$diagnostics$observed_window_samples,
+        c(minimum = 4, median = 4, maximum = 4)
+    )
+})
+
+test_that("all built-in signal and preprocess components satisfy registration and stage contracts", {
+    contracts <- list(
+        list(
+            stage = "signal",
+            name = "linear_scaling_daily",
+            register = bias__register_linear_scaling_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c("tas", "tasmin", "tasmax", "pr"),
+            published = c("tas", "tasmin", "tasmax", "pr"),
+            experimental = character()
+        ),
+        list(
+            stage = "signal",
+            name = "delta_change_daily",
+            register = bias__register_delta_change_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c("tas", "tasmin", "tasmax", "pr"),
+            published = c("tas", "tasmin", "tasmax", "pr"),
+            experimental = character()
+        ),
+        list(
+            stage = "signal",
+            name = "quantile_mapping_daily",
+            register = qm__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = TRUE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c(QM_PUBLISHED_VARIABLES, QM_EXPERIMENTAL_VARIABLES),
+            published = QM_PUBLISHED_VARIABLES,
+            experimental = QM_EXPERIMENTAL_VARIABLES
+        ),
+        list(
+            stage = "signal",
+            name = "quantile_delta_mapping_daily",
+            register = qdm__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = TRUE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c(QDM_PUBLISHED_VARIABLES, QDM_EXPERIMENTAL_VARIABLES),
+            published = QDM_PUBLISHED_VARIABLES,
+            experimental = QDM_EXPERIMENTAL_VARIABLES
+        ),
+        list(
+            stage = "signal",
+            name = "cdf_transform_daily",
+            register = cdft__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = TRUE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = CDFT_FAMIEN_VARIABLES,
+            published = CDFT_FAMIEN_VARIABLES,
+            experimental = character()
+        ),
+        list(
+            stage = "signal",
+            name = "equidistant_cdf_matching_daily",
+            register = edcdf__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = EDCDF_LI_VARIABLES,
+            published = character(),
+            experimental = EDCDF_LI_VARIABLES
+        ),
+        list(
+            stage = "signal",
+            name = "scaled_distribution_mapping_daily",
+            register = sdm__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c(SDM_PUBLISHED_VARIABLES, SDM_EXPERIMENTAL_VARIABLES),
+            published = SDM_PUBLISHED_VARIABLES,
+            experimental = SDM_EXPERIMENTAL_VARIABLES
+        ),
+        list(
+            stage = "signal",
+            name = "isimip3basd_daily",
+            register = isimip__register_component,
+            input_kinds = "calendar_indexed_daily_series",
+            output_kinds = "daily_adjusted_series",
+            scopes = "univariate",
+            stochastic = TRUE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = ISIMIP_VARIABLES,
+            published = ISIMIP_VARIABLES,
+            experimental = character()
+        ),
+        list(
+            stage = "signal",
+            name = "kernel_quantile_delta_mapping_hourly",
+            register = kqdm__register_component,
+            input_kinds = "calendar_indexed_hourly_series",
+            output_kinds = "subdaily_adjusted_series",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = SIGNAL_THREE_INPUT_ROLES,
+            variables = c(
+                KQDM_PUBLISHED_VARIABLES,
+                KQDM_EXPERIMENTAL_VARIABLES
+            ),
+            published = character(),
+            experimental = c(
+                KQDM_PUBLISHED_VARIABLES,
+                KQDM_EXPERIMENTAL_VARIABLES
+            )
+        ),
+        list(
+            stage = "preprocess",
+            name = "linear_temporal_interpolation",
+            register = temporal__register_linear_component,
+            input_kinds = "role_inputs",
+            output_kinds = "hourly_role_inputs",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = c("model_historical", "model_future"),
+            variables = TEMPORAL_LINEAR_VARIABLES
+        ),
+        list(
+            stage = "preprocess",
+            name = "solar_radiation_interpolation",
+            register = solar__register_component,
+            input_kinds = "role_inputs",
+            output_kinds = "hourly_role_inputs",
+            scopes = "univariate",
+            stochastic = FALSE,
+            required_roles = c("model_historical", "model_future"),
+            variables = SOLAR_RADIATION_VARIABLES
+        )
+    )
+
+    for (spec in contracts) {
+        spec$register()
+        component <- component__get(spec$stage, spec$name)
+        expect_true(
+            S7::S7_inherits(component, WeatherComponentSpec),
+            info = spec$name
+        )
+        expect_identical(component@stage, spec$stage, info = spec$name)
+        expect_identical(
+            component@input_kinds,
+            spec$input_kinds,
+            info = spec$name
+        )
+        expect_identical(
+            component@output_kinds,
+            spec$output_kinds,
+            info = spec$name
+        )
+        expect_identical(component@scopes, spec$scopes, info = spec$name)
+        expect_identical(
+            component@stochastic,
+            spec$stochastic,
+            info = spec$name
+        )
+        expect_identical(
+            sort(names(component@required_inputs)),
+            sort(spec$required_roles),
+            info = spec$name
+        )
+        for (role in spec$required_roles) {
+            req_vars <- unlist(
+                component@required_inputs[[role]]@variable_sets,
+                use.names = FALSE
+            )
+            expect_identical(
+                sort(req_vars),
+                sort(spec$variables),
+                info = paste(spec$name, role)
+            )
+        }
+
+        if (identical(spec$stage, "signal")) {
+            profiles <- component@metadata$signal_profiles
+            expect_identical(
+                sort(names(profiles)),
+                sort(spec$variables),
+                info = spec$name
+            )
+            for (variable in spec$published) {
+                expect_identical(
+                    profiles[[variable]]$evidence,
+                    "published",
+                    info = paste(spec$name, variable)
+                )
+                expect_true(
+                    length(profiles[[variable]]$references) >= 1L,
+                    info = paste(spec$name, variable)
+                )
+            }
+            for (variable in spec$experimental) {
+                expect_identical(
+                    profiles[[variable]]$evidence,
+                    "experimental",
+                    info = paste(spec$name, variable)
+                )
+            }
+
+            upstream_calendar <- component__spec(
+                name = paste0(spec$name, "_calendar_test"),
+                stage = "calendar",
+                input_kinds = "preprocessed_series",
+                output_kinds = spec$input_kinds,
+                operations = list(apply = identity)
+            )
+            downstream_sequence <- component__spec(
+                name = paste0(spec$name, "_sequence_test"),
+                stage = "sequence",
+                input_kinds = spec$output_kinds,
+                output_kinds = "weather_sequence",
+                operations = list(generate = identity)
+            )
+            expect_true(
+                component__compatible(upstream_calendar, component),
+                info = spec$name
+            )
+            expect_true(
+                component__compatible(component, downstream_sequence),
+                info = spec$name
+            )
+        } else {
+            expect_identical(
+                sort(component@metadata$supported_variables),
+                sort(spec$variables),
+                info = spec$name
+            )
+            downstream_calendar <- component__spec(
+                name = paste0(spec$name, "_calendar_test"),
+                stage = "calendar",
+                input_kinds = spec$output_kinds,
+                output_kinds = "calendar_indexed_hourly_series",
+                operations = list(apply = identity)
+            )
+            expect_true(
+                component__compatible(component, downstream_calendar),
+                info = spec$name
+            )
+        }
+    }
 })
 
 # vim: fdm=marker :

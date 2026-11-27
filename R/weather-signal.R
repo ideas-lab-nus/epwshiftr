@@ -5,10 +5,6 @@ NULL
 # experimental defaults introduced by an implementation.
 SIGNAL_PROFILE_EVIDENCE <- c("published", "experimental")
 
-# Signal execution either aborts at the first failed group or returns the
-# failure explicitly alongside successful group results.
-SIGNAL_ERROR_POLICIES <- c("abort", "collect")
-
 # Return the only successful signal-group payload shared by sequence-preserving
 # methods, while allowing each method to retain its own diagnostic identity.
 # signal__single_value {{{
@@ -103,6 +99,78 @@ signal__integer_setting <- function(value, name, lower, upper = Inf) {
         .var.name = paste0("resolved$", name)
     )
     as.integer(value)
+}
+# }}}
+
+# Validate a strictly positive finite scalar setting with an optional upper
+# bound while preserving a stable diagnostic variable name.
+# signal__positive_number {{{
+signal__positive_number <- function(
+    value,
+    name,
+    upper = Inf,
+    strict_upper = FALSE,
+    message = NULL
+) {
+    checkmate::assert_string(name, pattern = "^[A-Za-z][A-Za-z0-9_]*$")
+    checkmate::assert_number(upper, lower = 0)
+    checkmate::assert_flag(strict_upper)
+    checkmate::assert_string(message, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_number(
+        value,
+        lower = 0,
+        upper = upper,
+        finite = TRUE,
+        .var.name = paste0("resolved$", name)
+    )
+    above_upper <- if (strict_upper) value >= upper else value > upper
+    if (value <= 0 || above_upper) {
+        if (!is.null(message)) {
+            cli::cli_abort(message)
+        }
+        if (is.finite(upper)) {
+            if (strict_upper) {
+                cli::cli_abort(
+                    "`{name}` must lie strictly between zero and {upper}."
+                )
+            }
+            cli::cli_abort(
+                "`{name}` must be positive and at most {upper}."
+            )
+        }
+        cli::cli_abort("`{name}` must be positive.")
+    }
+    as.numeric(value)
+}
+# }}}
+
+# Validate and normalize the symmetric fitting-window and retained-block year
+# settings shared by block-wise monthly signal methods.
+# signal__validate_future_block_window {{{
+signal__validate_future_block_window <- function(resolved) {
+    checkmate::assert_list(resolved, names = "unique")
+    resolved$future_window_years <- signal__integer_setting(
+        resolved$future_window_years,
+        "future_window_years",
+        lower = 1L
+    )
+    resolved$output_block_years <- signal__integer_setting(
+        resolved$output_block_years,
+        "output_block_years",
+        lower = 1L
+    )
+    if (
+        resolved$output_block_years > resolved$future_window_years ||
+            (resolved$future_window_years -
+                resolved$output_block_years) %%
+                2L !=
+                0L
+    ) {
+        cli::cli_abort(
+            "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
+        )
+    }
+    resolved
 }
 # }}}
 
@@ -414,6 +482,88 @@ signal__variable_profile <- function(
 }
 # }}}
 
+# Build a list of SignalVariableProfile objects from a named settings map,
+# deriving per-variable evidence, references, and metadata consistently across
+# signal methods.
+# signal__build_profiles {{{
+signal__build_profiles <- function(
+    settings_by_variable,
+    published_variables = names(settings_by_variable),
+    references = character(),
+    method,
+    output_role = "model_future",
+    evidence_mode = c("by_variable", "all_published", "all_experimental"),
+    metadata_fn = NULL
+) {
+    checkmate::assert_list(
+        settings_by_variable,
+        min.len = 1L,
+        names = "unique"
+    )
+    if (
+        is.null(names(settings_by_variable)) ||
+            any(!nzchar(names(settings_by_variable)))
+    ) {
+        cli::cli_abort(
+            "{.arg settings_by_variable} must be named by variable ID."
+        )
+    }
+    checkmate::assert_character(
+        published_variables,
+        any.missing = FALSE,
+        unique = TRUE
+    )
+    references <- weather__descriptor_values(references, "references")
+    checkmate::assert_string(method, min.chars = 1L)
+    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
+    evidence_mode <- match.arg(evidence_mode)
+    if (!is.null(metadata_fn)) {
+        checkmate::assert_function(metadata_fn)
+    }
+
+    variables <- names(settings_by_variable)
+    lapply(variables, function(variable) {
+        published <- variable %in% published_variables
+        evidence <- switch(
+            evidence_mode,
+            by_variable = if (published) "published" else "experimental",
+            all_published = "published",
+            all_experimental = "experimental"
+        )
+        profile_references <- switch(
+            evidence_mode,
+            by_variable = if (published) references else character(),
+            all_published = references,
+            all_experimental = references
+        )
+        base_metadata <- list(
+            method = method,
+            output_role = output_role
+        )
+        extra_metadata <- if (is.null(metadata_fn)) {
+            list()
+        } else {
+            metadata_fn(variable, published)
+        }
+        if (length(extra_metadata)) {
+            checkmate::assert_list(extra_metadata, names = "unique")
+            overlap <- intersect(names(base_metadata), names(extra_metadata))
+            if (length(overlap)) {
+                base_metadata[overlap] <- NULL
+            }
+            base_metadata <- c(base_metadata, extra_metadata)
+        }
+        signal__variable_profile(
+            variable,
+            settings = settings_by_variable[[variable]],
+            evidence = evidence,
+            references = profile_references,
+            metadata = base_metadata
+        )
+    })
+}
+# }}}
+
 # Normalize profile collections by variable ID so construction order never
 # changes profile lookup or serialized metadata.
 # signal__profiles {{{
@@ -650,18 +800,26 @@ signal__diagnostic <- function(
 }
 # }}}
 
+# Serialize one SignalVariableProfile into a data-only record, allowing
+# callers to substitute override-resolved settings without altering provenance.
+# signal__profile_record {{{
+signal__profile_record <- function(profile, settings = profile@settings) {
+    list(
+        variable_id = profile@variable_id,
+        evidence = profile@evidence,
+        settings = settings,
+        references = profile@references,
+        metadata = profile@metadata
+    )
+}
+# }}}
+
 # Convert resolved profiles into data-only records that retain the actual
 # settings used after overrides as well as their original provenance.
 # signal__profile_records {{{
 signal__profile_records <- function(profiles) {
     lapply(profiles, function(resolved) {
-        list(
-            variable_id = resolved$profile@variable_id,
-            evidence = resolved$profile@evidence,
-            settings = resolved$settings,
-            references = resolved$profile@references,
-            metadata = resolved$profile@metadata
-        )
+        signal__profile_record(resolved$profile, resolved$settings)
     })
 }
 # }}}
@@ -824,15 +982,7 @@ signal__component <- function(
 
     # Executable functions stay process-local, while profile summaries in
     # metadata remain inspectable and serializable.
-    metadata$signal_profiles <- lapply(profiles, function(profile) {
-        list(
-            variable_id = profile@variable_id,
-            evidence = profile@evidence,
-            settings = profile@settings,
-            references = profile@references,
-            metadata = profile@metadata
-        )
-    })
+    metadata$signal_profiles <- lapply(profiles, signal__profile_record)
     state <- new.env(parent = emptyenv())
     apply <- function(
         inputs,

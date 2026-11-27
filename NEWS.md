@@ -1,5 +1,37 @@
 # epwshiftr (development version)
 
+* Apply the same source ownership and recovery checks to ordinary and pooled
+  Store extraction. Keep weakly identified records and endpoints separate;
+  reuse same-version replicas only with matching supported publisher evidence. (#333)
+
+* Bind resumable HTTP bytes to their actual GET responses, retain unsafe old
+  partials, and safely handle full responses to Range requests. Expose saved
+  transfer evidence separately from publisher checksum verification. (#333)
+
+* Preserve immutable acquisition lineage and check requested native files,
+  extraction caches, and Parquet outputs before reuse. Support offline reuse
+  with complete saved evidence, and identify missing evidence, source conflicts,
+  or changed bytes before explicit extraction replacement. (#333)
+
+* Consolidate the public `shift_*` API from 91 to 78 exports:
+  - Allow `ShiftRun` handles (for example from `shift_run_get()` or
+    `background = TRUE`) to be piped directly into `shift_download()`,
+    `shift_extract()`, `shift_morph()`, and `shift_epw_write()`.
+  - Extend `shift_epw_write()` with a `ShiftOutputs` method to export existing
+    written EPWs directly, absorbing `shift_epw_export()`.
+  - Rename `shift_reanalysis_data()` to `shift_data_reanalysis()` and unexport
+    the placeholder `shift_era6()`.
+  - Internalize low-level and redundant workflow helpers (`shift_result()`,
+    `shift_epw_export()`, `shift_target()`, `shift_runs()`, `shift_refresh()`,
+    `shift_store()`, `shift_artifacts()`, `shift_ids()`, `shift_complete()`,
+    `shift_plan()`, `shift_cmip6_scenario()`, and
+    `shift_reference_historical()`, retaining `historical_reference()` as the
+    public historical-reference constructor).
+
+* Bump the `epwshiftr_monthly` morphing recipe version from 3 to 4 following
+  the `huss_delta` humidity adjustment fix so persisted morphing plans from
+  earlier versions are invalidated cleanly.
+
 * Publish related Shift workflow result records in one transaction before updating
   the live snapshot, preserving distinct step, run and execution-attempt states. (#331)
 

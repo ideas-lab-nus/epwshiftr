@@ -358,8 +358,25 @@ temperature__output_write <- function(
 }
 # }}}
 
-# Build the sequence, physics, and output components shared by every workflow
-# that produces the package's daily temperature target representation.
+# Apply the constrained 24-hour projection to the preserved EPW sequence and
+# retain hourly and daily closure values for the later physics stage.
+# temperature__constrained_hourly_reconstruct {{{
+temperature__constrained_hourly_reconstruct <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    temperature__hourly_result(
+        data,
+        options,
+        daily__project_temperature
+    )
+}
+# }}}
+
+# Build the sequence, hourly, physics, and output components shared by every
+# workflow that produces the package's daily temperature target representation.
 # temperature__component_specs {{{
 temperature__component_specs <- function() {
     template <- component__input_requirement(
@@ -379,6 +396,21 @@ temperature__component_specs <- function() {
             scopes = "multivariate",
             operations = list(
                 generate = temperature__sequence_generate
+            )
+        ),
+        hourly = component__spec(
+            name = "constrained_daily_temperature",
+            stage = "hourly",
+            label = "Constrained 24-hour temperature reconstruction",
+            required_inputs = list(weather_template = template),
+            input_kinds = "daily_temperature_sequence",
+            output_kinds = "hourly_temperature_projected",
+            scopes = "multivariate",
+            operations = list(
+                reconstruct = temperature__constrained_hourly_reconstruct
+            ),
+            metadata = list(
+                reconstruction = "constrained_daily_temperature"
             )
         ),
         physics = component__spec(

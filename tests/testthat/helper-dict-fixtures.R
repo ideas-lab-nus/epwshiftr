@@ -341,47 +341,4 @@ local_esgvoc_source_store <- function(root) {
 }
 # }}}
 
-# local_esgdict_disk_cache {{{
-local_esgdict_disk_cache <- function(env = parent.frame()) {
-    cache_dir <- tempfile("epwshiftr-esgdict-cache-")
-    dir.create(cache_dir, recursive = TRUE)
-    cache <- DiskCache$new(
-        cache_dir,
-        max_size = Inf,
-        max_age = Inf,
-        max_n = Inf,
-        prune_on_init = FALSE
-    )
-    old <- cache__set(cache)
-
-    withr::defer(
-        {
-            cache__set(old)
-            unlink(cache_dir, recursive = TRUE)
-        },
-        envir = env
-    )
-
-    invisible(cache)
-}
-# }}}
-
-# local_cache_mode_for_test {{{
-local_cache_mode_for_test <- function(value, env = parent.frame()) {
-    old <- getOption("epwshiftr.cache")
-    options(epwshiftr.cache = value)
-
-    withr::defer(
-        {
-            if (is.null(old)) {
-                options(epwshiftr.cache = NULL)
-            } else {
-                options(epwshiftr.cache = old)
-            }
-        },
-        envir = env
-    )
-}
-# }}}
-
 # vim: fdm=marker :

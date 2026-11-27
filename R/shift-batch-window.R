@@ -109,6 +109,16 @@ shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
 }
 # }}}
 
+# Build the content-addressed filename for one consumer chunk in a window.
+# shift_batch_window__chunk_filename {{{
+shift_batch_window__chunk_filename <- function(identity, demand_id) {
+    paste0(
+        store__hash("shared-consumer-chunk-v1", identity, demand_id),
+        ".rds"
+    )
+}
+# }}}
+
 # Keep each completed native window behind a SHA-256 receipt. A missing receipt
 # is an interrupted write, while a checksum mismatch is an error that must not
 # silently replace evidence or contaminate child extraction caches.
@@ -157,13 +167,9 @@ shift_batch_window__window_read <- function(path, identity, demand_ids) {
         vapply(
             selected,
             function(chunk) {
-                expected <- paste0(
-                    store__hash(
-                        "shared-consumer-chunk-v1",
-                        identity,
-                        chunk$demand_id
-                    ),
-                    ".rds"
+                expected <- shift_batch_window__chunk_filename(
+                    identity,
+                    chunk$demand_id
                 )
                 file <- file.path(path, expected)
                 if (
@@ -229,14 +235,7 @@ shift_batch_window__window_write <- function(
     sources <- attr(values, "grid_sources", exact = TRUE)
     source_groups <- split(sources, by = "demand_id", keep.by = TRUE)
     chunks <- lapply(as.character(demand_ids), function(demand_id) {
-        filename <- paste0(
-            store__hash(
-                "shared-consumer-chunk-v1",
-                identity,
-                demand_id
-            ),
-            ".rds"
-        )
+        filename <- shift_batch_window__chunk_filename(identity, demand_id)
         target <- file.path(path, filename)
         temporary <- tempfile(pattern = "chunk-", tmpdir = path)
         on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
@@ -445,10 +444,6 @@ shift_batch_window__seed_consumer <- function(
         c("consumer_id", "site_id", "demand_id", "child_key")
     )
     sources <- data.table::copy(sources[, source_columns, with = FALSE])
-    requested <- c(
-        consumer$requested_start[[1L]],
-        consumer$requested_stop[[1L]]
-    )
     payload <- list(
         data = values,
         grid_sources = sources,
@@ -456,26 +451,67 @@ shift_batch_window__seed_consumer <- function(
         actual_start = metadata$actual_start,
         actual_end = metadata$actual_end
     )
-    plan <- data.table::data.table(
-        variable_id = consumer$variable_id[[1L]],
-        lon = consumer$lon[[1L]],
-        lat = consumer$lat[[1L]],
-        method = consumer$spatial_method[[1L]],
-        time_start = requested[[1L]],
-        time_stop = requested[[2L]]
-    )
-    path <- store__extract_cache_path(plan, acquisition)
+    payload <- source_recovery__attach(
+        list(
+            payload = payload,
+            opened = list(
+                access_method = "OPeNDAP",
+                target = acquisition$url_opendap[[1L]]
+            )
+        ),
+        acquisition
+    )$payload
+    path <- shift_batch_window__consumer_cache_path(consumer, acquisition)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     manifest_with_lock(
         path,
         {
-            if (is.null(store__extract_cache_read(path))) {
+            if (is.null(source_recovery__cache_read(path, acquisition))) {
                 store__extract_cache_write(path, payload)
             }
         },
         timeout = 86400
     )
     invisible(path)
+}
+# }}}
+
+# Visit each native window that overlaps at least one uncached consumer,
+# sharing overlap selection and window path/identity derivation across cache
+# inspection and source acquisition.
+# shift_batch_window__walk_windows {{{
+shift_batch_window__walk_windows <- function(
+    windows,
+    consumers,
+    cached,
+    directory,
+    source_identity,
+    visit,
+    pieces = NULL
+) {
+    if (is.null(pieces)) {
+        pieces <- vector("list", nrow(windows))
+    }
+    for (index in seq_len(nrow(windows))) {
+        window <- windows[index]
+        active <- consumers[
+            !cached &
+                consumers$time_start <= window$time_stop[[1L]] &
+                consumers$time_stop >= window$time_start[[1L]]
+        ]
+        if (!nrow(active)) {
+            next
+        }
+        window_id <- window$window_id[[1L]]
+        pieces[index] <- list(visit(
+            window = window,
+            active = active,
+            path = file.path(directory, window_id),
+            identity = store__hash(source_identity, window_id),
+            existing = pieces[[index]]
+        ))
+    }
+    pieces
 }
 # }}}
 
@@ -490,33 +526,29 @@ shift_batch_window__window_pieces <- function(
     consumers,
     cached
 ) {
-    pieces <- vector("list", nrow(windows))
     complete <- TRUE
-    for (index in seq_len(nrow(windows))) {
-        window <- windows[index]
-        active <- consumers[
-            !cached &
-                consumers$time_start <= window$time_stop[[1L]] &
-                consumers$time_stop >= window$time_start[[1L]]
-        ]
-        if (!nrow(active)) {
-            next
-        }
-        path <- file.path(directory, window$window_id[[1L]])
-        piece <- manifest_with_lock(
-            path,
-            shift_batch_window__window_read(
+    pieces <- shift_batch_window__walk_windows(
+        windows = windows,
+        consumers = consumers,
+        cached = cached,
+        directory = directory,
+        source_identity = identity,
+        visit = function(window, active, path, identity, existing) {
+            piece <- manifest_with_lock(
                 path,
-                store__hash(identity, window$window_id[[1L]]),
-                active$demand_id
-            ),
-            timeout = 86400
-        )
-        if (is.null(piece)) {
-            complete <- FALSE
+                shift_batch_window__window_read(
+                    path,
+                    identity,
+                    active$demand_id
+                ),
+                timeout = 86400
+            )
+            if (is.null(piece)) {
+                complete <<- FALSE
+            }
+            piece
         }
-        pieces[index] <- list(piece)
-    }
+    )
     list(pieces = pieces, complete = complete)
 }
 # }}}
@@ -543,22 +575,31 @@ shift_batch_window__seed_pending <- function(
 }
 # }}}
 
+# Resolve the ordinary extraction cache path for a single consumer demand.
+# shift_batch_window__consumer_cache_path {{{
+shift_batch_window__consumer_cache_path <- function(consumer, acquisition) {
+    plan <- data.table::data.table(
+        variable_id = consumer$variable_id[[1L]],
+        lon = consumer$lon[[1L]],
+        lat = consumer$lat[[1L]],
+        method = consumer$spatial_method[[1L]],
+        time_start = consumer$requested_start[[1L]],
+        time_stop = consumer$requested_stop[[1L]]
+    )
+    store__extract_cache_path(plan, acquisition)
+}
+# }}}
+
 # Use the ordinary cache identity for every demand, including optional inputs.
 # shift_batch_window__cache_paths {{{
 shift_batch_window__cache_paths <- function(acquisition, consumers) {
     vapply(
         seq_len(nrow(consumers)),
         function(index) {
-            consumer <- consumers[index]
-            plan <- data.table::data.table(
-                variable_id = consumer$variable_id[[1L]],
-                lon = consumer$lon[[1L]],
-                lat = consumer$lat[[1L]],
-                method = consumer$spatial_method[[1L]],
-                time_start = consumer$requested_start[[1L]],
-                time_stop = consumer$requested_stop[[1L]]
+            shift_batch_window__consumer_cache_path(
+                consumers[index],
+                acquisition
             )
-            store__extract_cache_path(plan, acquisition)
         },
         character(1L)
     )
@@ -593,7 +634,12 @@ shift_batch_window__prefetch_acquisition <- function(
     consumers <- consumers[keep]
     cache_paths <- cache_paths[keep]
     cached <- if (is.null(cached)) {
-        vapply(cache_paths, store__extract_cache_available, logical(1L))
+        vapply(
+            cache_paths,
+            source_recovery__cache_available,
+            logical(1L),
+            file = acquisition
+        )
     } else {
         cached[keep]
     }
@@ -797,79 +843,76 @@ shift_batch_window__prefetch_acquisition <- function(
     if (!nrow(windows)) {
         return(invisible(0L))
     }
-    pieces <- if (is.null(restored)) {
-        vector("list", nrow(windows))
-    } else {
-        restored$pieces
-    }
-    for (index in seq_len(nrow(windows))) {
-        window <- windows[index]
-        active <- consumers[
-            !cached &
-                consumers$time_start <= window$time_stop[[1L]] &
-                consumers$time_stop >= window$time_start[[1L]]
-        ]
-        if (!nrow(active)) {
-            next
-        }
-        if (!is.null(pieces[[index]])) {
-            next
-        }
-        identity <- store__hash(source_identity, window$window_id[[1L]])
-        path <- file.path(directory, window$window_id[[1L]])
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-        # The receipt check and source read share one lock so concurrent
-        # resumes cannot replace each other's incomplete window directory.
-        piece <- manifest_with_lock(
-            path,
-            {
-                cached_window <- shift_batch_window__window_read(
-                    path,
-                    identity,
-                    active$demand_id
-                )
-                if (!is.null(cached_window)) {
-                    cached_window
-                } else {
-                    active <- data.table::copy(active)
-                    data.table::set(
-                        active,
-                        j = "time_start",
-                        value = pmax(active$time_start, window$time_start[[1L]])
-                    )
-                    data.table::set(
-                        active,
-                        j = "time_stop",
-                        value = pmin(active$time_stop, window$time_stop[[1L]])
-                    )
-                    bounded <- data.table::copy(acquisition)
-                    data.table::set(
-                        bounded,
-                        j = "time_start",
-                        value = window$time_start
-                    )
-                    data.table::set(
-                        bounded,
-                        j = "time_stop",
-                        value = window$time_stop
-                    )
-                    values <- shift_batch_read__read_acquisition(
-                        dataset,
-                        bounded,
-                        active
-                    )
-                    shift_batch_window__window_write(
+    pieces <- shift_batch_window__walk_windows(
+        windows = windows,
+        consumers = consumers,
+        cached = cached,
+        directory = directory,
+        source_identity = source_identity,
+        pieces = if (is.null(restored)) NULL else restored$pieces,
+        visit = function(window, active, path, identity, existing) {
+            if (!is.null(existing)) {
+                return(existing)
+            }
+            dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+            # The receipt check and source read share one lock so concurrent
+            # resumes cannot replace each other's incomplete window directory.
+            manifest_with_lock(
+                path,
+                {
+                    cached_window <- shift_batch_window__window_read(
                         path,
                         identity,
-                        values,
                         active$demand_id
                     )
-                }
-            },
-            timeout = 86400
-        )
-        pieces[[index]] <- piece
-    }
+                    if (!is.null(cached_window)) {
+                        cached_window
+                    } else {
+                        active <- data.table::copy(active)
+                        data.table::set(
+                            active,
+                            j = "time_start",
+                            value = pmax(
+                                active$time_start,
+                                window$time_start[[1L]]
+                            )
+                        )
+                        data.table::set(
+                            active,
+                            j = "time_stop",
+                            value = pmin(
+                                active$time_stop,
+                                window$time_stop[[1L]]
+                            )
+                        )
+                        bounded <- data.table::copy(acquisition)
+                        data.table::set(
+                            bounded,
+                            j = "time_start",
+                            value = window$time_start
+                        )
+                        data.table::set(
+                            bounded,
+                            j = "time_stop",
+                            value = window$time_stop
+                        )
+                        values <- shift_batch_read__read_acquisition(
+                            dataset,
+                            bounded,
+                            active
+                        )
+                        shift_batch_window__window_write(
+                            path,
+                            identity,
+                            values,
+                            active$demand_id
+                        )
+                    }
+                },
+                timeout = 86400
+            )
+        }
+    )
     shift_batch_window__seed_pending(
         acquisition,
         consumers,
@@ -894,19 +937,12 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     ) {
         return(invisible(0L))
     }
-    statuses <- vapply(
-        batch@meta$children,
-        function(child) {
-            shift_status(child, refresh = FALSE)
-        },
-        character(1L)
-    )
+    statuses <- shift_batch__child_statuses(batch@meta$children)
     if (all(statuses == "completed")) {
         return(invisible(0L))
     }
     eligible <- names(batch@meta$children)[
-        !statuses %in%
-            c("completed", "queued", "running", "stopping", "waiting")
+        !statuses %in% SHIFT_BATCH_LIVE_STATUSES
     ]
     consumers <- shared$consumers[shared$consumers$child_key %in% eligible]
     if (!nrow(consumers)) {
@@ -939,8 +975,9 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
         unique_paths <- unique(paths[needed])
         available <- vapply(
             unique_paths,
-            store__extract_cache_available,
-            logical(1L)
+            source_recovery__cache_available,
+            logical(1L),
+            file = acquisition
         )
         position <- match(paths, unique_paths)
         cached <- rep(TRUE, length(paths))
@@ -989,6 +1026,116 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     }
     attr(completed, "failures") <- failures
     invisible(completed)
+}
+# }}}
+
+# Read one planned file for all linked consumers from a single open dataset.
+# Consumer IDs remain distinct when methods reuse a site, while source cells
+# and native time slices are shared.
+# shift_batch_read__read_acquisition {{{
+shift_batch_read__read_acquisition <- function(
+    dataset,
+    acquisition,
+    consumers
+) {
+    checkmate::assert_data_table(acquisition, nrows = 1L)
+    checkmate::assert_data_table(consumers, min.rows = 1L)
+    required <- c(
+        "acquisition_id",
+        "demand_id",
+        "child_key",
+        "site_id",
+        "role",
+        "variable_id",
+        "lon",
+        "lat",
+        "spatial_method",
+        "time_start",
+        "time_stop"
+    )
+    checkmate::assert_names(names(consumers), must.include = required)
+    checkmate::assert_names(
+        names(acquisition),
+        must.include = c(
+            "acquisition_id",
+            "time_start",
+            "time_stop",
+            "url_opendap",
+            "url_download"
+        )
+    )
+    # An acquisition represents one physical file. Refuse to label values from
+    # another open dataset with this file's consumer and source provenance.
+    checkmate::assert_character(dataset$url, len = 1L, any.missing = FALSE)
+    endpoints <- unlist(
+        acquisition[1L, c("url_opendap", "url_download"), with = FALSE],
+        use.names = FALSE
+    )
+    endpoints <- endpoints[!is.na(endpoints) & nzchar(endpoints)]
+    if (!dataset$url[[1L]] %in% endpoints) {
+        stop(
+            "The open dataset does not match the acquisition source URL.",
+            call. = FALSE
+        )
+    }
+    if (
+        anyNA(consumers$acquisition_id) ||
+            !all(
+                consumers$acquisition_id == acquisition$acquisition_id[[1L]]
+            ) ||
+            data.table::uniqueN(consumers$variable_id) != 1L
+    ) {
+        stop(
+            "Consumers must reference one acquisition and one variable.",
+            call. = FALSE
+        )
+    }
+
+    # Positional read IDs distinguish repeated physical sites across methods
+    # without changing their original site_id or demand_id provenance.
+    read_id <- as.character(seq_len(nrow(consumers)))
+    targets <- data.table::data.table(
+        site_id = read_id,
+        lon = consumers$lon,
+        lat = consumers$lat,
+        method = consumers$spatial_method,
+        time_start = consumers$time_start,
+        time_stop = consumers$time_stop
+    )
+    values <- dataset__read_regions(
+        dataset,
+        consumers$variable_id[[1L]],
+        targets,
+        time = c(acquisition$time_start[[1L]], acquisition$time_stop[[1L]])
+    )
+    sources <- attr(values, "grid_sources", exact = TRUE)
+    slices <- attr(values, "read_slices", exact = TRUE)
+    # The positional IDs are internal to this read; both value and provenance
+    # tables must restore the same consumer columns, including on empty reads.
+    restore_consumers <- function(table) {
+        position <- match(table$site_id, read_id)
+        data.table::setnames(table, "site_id", "consumer_id")
+        for (column in c("site_id", "demand_id", "child_key")) {
+            data.table::set(
+                table,
+                j = column,
+                value = consumers[[column]][position]
+            )
+        }
+        table
+    }
+    values <- restore_consumers(values)
+    # The value table records the consumer's future/historical role. Grid
+    # provenance retains its spatial role, such as nearest or a corner.
+    data.table::set(
+        values,
+        j = "role",
+        value = consumers$role[match(values$consumer_id, read_id)]
+    )
+    sources <- restore_consumers(sources)
+    attr(values, "grid_sources") <- sources
+    attr(values, "read_slices") <- slices
+    values
 }
 # }}}
 

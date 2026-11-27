@@ -47,11 +47,6 @@ bws__attainable_mean_bounds <- function(
     if (!length(value) || any(!is.finite(value))) {
         cli::cli_abort("BWS input must contain finite values.")
     }
-    if (upper < lower) {
-        cli::cli_abort(
-            "BWS requires an upper bound at least as large as its lower bound."
-        )
-    }
     if (abs(upper - lower) <= tolerance) {
         return(c(lower = lower, upper = upper))
     }
@@ -216,6 +211,42 @@ bws__bounded_normalized_projection <- function(
 }
 # }}}
 
+# Assemble the canonical BWS projection payload shared by degenerate and solved
+# interior branches.
+# bws__project_result {{{
+bws__project_result <- function(
+    value,
+    baseline_mean,
+    target,
+    lower,
+    upper,
+    projected_mean = baseline_mean,
+    scale = 0,
+    m = 1,
+    n = 1,
+    status = "projected_bws",
+    closure_error = projected_mean - target$target_mean
+) {
+    list(
+        value = value,
+        baseline_mean = baseline_mean,
+        requested_target_mean = target$requested_target_mean,
+        target_mean = target$target_mean,
+        projected_mean = projected_mean,
+        lower = lower,
+        upper = upper,
+        attainable_lower = target$attainable_lower,
+        attainable_upper = target$attainable_upper,
+        target_adjustment = target$target_adjustment,
+        scale = scale,
+        m = m,
+        n = n,
+        status = status,
+        closure_error = closure_error
+    )
+}
+# }}}
+
 # Project one bounded series to a requested mean while preserving every value
 # at the declared lower or upper bound. An unattainable mean is resolved to the
 # nearest attainable boundary and returned with its original request and reason
@@ -229,21 +260,6 @@ bws__project <- function(
     tolerance = 1e-8
 ) {
     value <- as.numeric(value)
-    checkmate::assert_number(target_mean, finite = TRUE)
-    checkmate::assert_number(lower, finite = TRUE)
-    checkmate::assert_number(upper, lower = lower, finite = TRUE)
-    checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
-    if (!length(value) || any(!is.finite(value))) {
-        cli::cli_abort("BWS input must contain finite values.")
-    }
-    if (upper < lower) {
-        cli::cli_abort(
-            "BWS requires an upper bound at least as large as its lower bound."
-        )
-    }
-    if (any(value < lower - tolerance | value > upper + tolerance)) {
-        cli::cli_abort("BWS input contains values outside its declared bounds.")
-    }
     target <- bws__resolve_target_mean(
         value,
         requested_target_mean = target_mean,
@@ -251,6 +267,9 @@ bws__project <- function(
         upper = upper,
         tolerance = tolerance
     )
+    if (any(value < lower - tolerance | value > upper + tolerance)) {
+        cli::cli_abort("BWS input contains values outside its declared bounds.")
+    }
     target_mean <- target$target_mean
 
     baseline_mean <- mean(value)
@@ -266,42 +285,17 @@ bws__project <- function(
                 class = "epwshiftr_bws_infeasible_error"
             )
         }
-        return(list(
-            value = value,
-            baseline_mean = baseline_mean,
-            requested_target_mean = target$requested_target_mean,
-            target_mean = target_mean,
-            projected_mean = baseline_mean,
-            lower = lower,
-            upper = upper,
-            attainable_lower = target$attainable_lower,
-            attainable_upper = target$attainable_upper,
-            target_adjustment = target$target_adjustment,
-            scale = 0,
-            m = 1,
-            n = 1,
-            status = "projected_bws_collapsed_range",
-            closure_error = baseline_mean - target_mean
+        return(bws__project_result(
+            value,
+            baseline_mean,
+            target,
+            lower,
+            upper,
+            status = "projected_bws_collapsed_range"
         ))
     }
     if (abs(target_mean - baseline_mean) <= tolerance) {
-        return(list(
-            value = value,
-            baseline_mean = baseline_mean,
-            requested_target_mean = target$requested_target_mean,
-            target_mean = target_mean,
-            projected_mean = baseline_mean,
-            lower = lower,
-            upper = upper,
-            attainable_lower = target$attainable_lower,
-            attainable_upper = target$attainable_upper,
-            target_adjustment = target$target_adjustment,
-            scale = 0,
-            m = 1,
-            n = 1,
-            status = "projected_bws",
-            closure_error = baseline_mean - target_mean
-        ))
+        return(bws__project_result(value, baseline_mean, target, lower, upper))
     }
 
     span <- upper - lower
@@ -330,22 +324,18 @@ bws__project <- function(
         )
     }
 
-    list(
-        value = projected,
-        baseline_mean = baseline_mean,
-        requested_target_mean = target$requested_target_mean,
-        target_mean = target_mean,
-        projected_mean = mean(projected),
-        lower = lower,
-        upper = upper,
-        attainable_lower = target$attainable_lower,
-        attainable_upper = target$attainable_upper,
-        target_adjustment = target$target_adjustment,
-        scale = shape$scale,
-        m = shape$m,
-        n = shape$n,
-        status = shape$status,
-        closure_error = closure_error
+    bws__project_result(
+        projected,
+        baseline_mean,
+        target,
+        lower,
+        upper,
+        mean(projected),
+        shape$scale,
+        shape$m,
+        shape$n,
+        shape$status,
+        closure_error
     )
 }
 # }}}

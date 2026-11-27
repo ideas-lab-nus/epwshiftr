@@ -1,4 +1,4 @@
-#' @include calendar-subdaily.R weather-solar.R
+#' @include calendar.R epw-physics.R
 NULL
 
 # Shortwave variables used by the published solar-angle temporal allocation.
@@ -27,88 +27,25 @@ solar__source <- function(
     role,
     allowed_variables = SOLAR_RADIATION_VARIABLES
 ) {
-    if (!S7::S7_inherits(input, WeatherInput)) {
-        cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
-    }
-    if (
-        !identical(input@representation, "series") ||
-            !is.data.frame(input@source)
-    ) {
-        cli::cli_abort(
-            "Role {.val {role}} must contain a materialized series input."
-        )
-    }
-    data <- data.table::as.data.table(data.table::copy(input@source))
-    required <- c(
-        BIAS_ADJUSTED_SERIES_COLUMNS,
-        "time",
-        "time_bound_start",
-        "time_bound_end",
-        "lon",
-        "lat"
+    source <- temporal__validate_source_role(
+        input,
+        role,
+        allowed_variables = allowed_variables,
+        extra_columns = c("time_bound_start", "time_bound_end", "lon", "lat"),
+        time_columns = c("time", "time_bound_start", "time_bound_end"),
+        require_utc = TRUE,
+        missing_label = "bounded-radiation",
+        sample_label = "radiation intervals",
+        variable_semantics = "supported shortwave interval-mean semantics"
     )
-    missing <- setdiff(required, names(data))
-    if (length(missing)) {
-        cli::cli_abort(
-            "Role {.val {role}} is missing bounded-radiation column(s): {.val {missing}}."
-        )
-    }
-    if (!nrow(data)) {
-        cli::cli_abort(
-            "Role {.val {role}} must contain sub-daily radiation intervals."
-        )
-    }
-    for (column in c("time", "time_bound_start", "time_bound_end")) {
-        value <- data[[column]]
-        if (
-            !inherits(value, "POSIXt") ||
-                anyNA(value) ||
-                any(!is.finite(as.numeric(value)))
-        ) {
-            cli::cli_abort(
-                "Role {.val {role}} must provide finite POSIX {.field {column}} values."
-            )
-        }
-    }
-    time_zone <- attr(data[["time"]], "tzone")
-    if (
-        is.null(time_zone) ||
-            !length(time_zone) ||
-            !time_zone[[1L]] %in% c("UTC", "GMT")
-    ) {
-        cli::cli_abort(
-            "Role {.val {role}} must express CMIP time coordinates in UTC."
-        )
-    }
-
-    frequencies <- unique(as.character(data[["frequency"]]))
-    unsupported_frequencies <- setdiff(
-        frequencies,
-        names(TEMPORAL_SOURCE_STEPS)
-    )
-    if (length(unsupported_frequencies)) {
-        cli::cli_abort(
-            "Role {.val {role}} contains unsupported source frequency value(s): {.val {unsupported_frequencies}}. Supported values are {.val {names(TEMPORAL_SOURCE_STEPS)}}."
-        )
-    }
-    variables <- unique(as.character(data[["variable_id"]]))
-    unsupported_variables <- setdiff(
-        variables,
-        allowed_variables
-    )
-    if (length(unsupported_variables)) {
-        cli::cli_abort(
-            "Role {.val {role}} contains variable(s) without supported shortwave interval-mean semantics: {.val {unsupported_variables}}."
-        )
-    }
-    values <- as.numeric(data[["value"]])
+    values <- as.numeric(source$data[["value"]])
     if (any(!is.finite(values)) || any(values < 0)) {
         cli::cli_abort(
             "Role {.val {role}} radiation values must be finite and non-negative."
         )
     }
-    longitude <- as.numeric(data[["lon"]])
-    latitude <- as.numeric(data[["lat"]])
+    longitude <- as.numeric(source$data[["lon"]])
+    latitude <- as.numeric(source$data[["lat"]])
     if (
         any(!is.finite(longitude)) ||
             any(longitude < -180 | longitude > 360) ||
@@ -119,13 +56,7 @@ solar__source <- function(
             "Role {.val {role}} must provide finite longitude and latitude within their geographic ranges."
         )
     }
-
-    data.table::set(
-        data,
-        j = "cf_second_of_day",
-        value = temporal__second_of_day(data, role)
-    )
-    list(data = data, frequencies = frequencies)
+    source
 }
 # }}}
 
@@ -458,18 +389,7 @@ solar__group <- function(
     ))
     # Compatibility aliases describe the target coordinate rather than either
     # edge of the hourly averaging interval.
-    aliases <- list(
-        year = as.integer(target$fields$year),
-        month = as.integer(target$fields$month),
-        day = as.integer(target$fields$day),
-        hour = as.integer(target$fields$hour),
-        minute = as.integer(target$fields$minute),
-        second = as.numeric(target$fields$second),
-        datetime = target_time
-    )
-    for (column in intersect(names(aliases), names(data))) {
-        data.table::set(out, j = column, value = aliases[[column]])
-    }
+    temporal__set_time_aliases(out, names(data), target$fields, target_time)
 
     reconstructed <- as.numeric(rowsum(
         value,
@@ -564,10 +484,7 @@ solar__longwave_overlap <- function(
             temporal_interpolation = "constant_interval_mean"
         )
     ))
-    aliases <- c(target$fields, list(datetime = time))
-    for (column in intersect(names(aliases), names(data))) {
-        data.table::set(out, j = column, value = aliases[[column]])
-    }
+    temporal__set_time_aliases(out, names(data), target$fields, time)
     covered <- pmax(
         0,
         pmin(interval$end, max(target_end)) -
@@ -637,23 +554,6 @@ solar__role <- function(input, role, context, longwave = FALSE) {
             }
         )
     })
-    data <- data.table::rbindlist(
-        lapply(results, function(result) result$data),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    output_group_columns <- unique(c(
-        setdiff(group_columns, "frequency"),
-        "source_frequency"
-    ))
-    order_columns <- c(
-        setdiff(output_group_columns, "cf_calendar"),
-        "cf_calendar",
-        "cf_year",
-        "cf_day_of_year",
-        "cf_second_of_day"
-    )
-    data.table::setorderv(data, intersect(order_columns, names(data)))
     interpolation_record <- list(
         method = "solar_radiation_interpolation",
         references = SOLAR_RADIATION_REFERENCES,
@@ -668,9 +568,7 @@ solar__role <- function(input, role, context, longwave = FALSE) {
         interval_policy = "cf_time_bounds",
         conservation_policy = "source_interval_mean",
         solar_geometry = "spencer_positive_zenith_projection",
-        integration_step_seconds = SOLAR_INTEGRATION_STEP_SECONDS,
-        source_group_columns = group_columns,
-        output_group_columns = output_group_columns
+        integration_step_seconds = SOLAR_INTEGRATION_STEP_SECONDS
     )
     if (longwave) {
         interpolation_record$method <- "constant_interval_mean"
@@ -681,47 +579,15 @@ solar__role <- function(input, role, context, longwave = FALSE) {
         interpolation_record$interval_policy <- "cf_time_bounds_clock_hour_overlap"
         interpolation_record$conservation_policy <- "covered_interval_energy"
     }
-    output <- weather__new_input(
+    temporal__finalize_role(
+        input,
         role,
-        data,
-        representation = "series",
-        variables = unique(as.character(data[["variable_id"]])),
-        frequencies = "hour",
-        calendars = unique(as.character(data[["cf_calendar"]])),
-        provenance = utils::modifyList(
-            input@provenance,
-            list(temporal_interpolation = interpolation_record)
-        ),
-        metadata = utils::modifyList(
-            input@metadata,
-            list(
-                group_columns = output_group_columns,
-                time_step_seconds = 3600,
-                interval_bounds = c(
-                    "time_bound_start",
-                    "time_bound_end"
-                )
-            )
+        results,
+        group_columns,
+        interpolation_record,
+        extra_metadata = list(
+            interval_bounds = c("time_bound_start", "time_bound_end")
         )
-    )
-    diagnostics <- data.table::rbindlist(
-        lapply(results, function(result) result$diagnostic),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    data.table::set(
-        diagnostics,
-        j = "role",
-        value = rep.int(role, nrow(diagnostics))
-    )
-    data.table::setcolorder(
-        diagnostics,
-        c("role", setdiff(names(diagnostics), "role"))
-    )
-    list(
-        input = output,
-        diagnostics = diagnostics,
-        provenance = interpolation_record
     )
 }
 # }}}
@@ -730,66 +596,22 @@ solar__role <- function(input, role, context, longwave = FALSE) {
 # roles while preserving template and observational inputs unchanged.
 # solar__apply {{{
 solar__apply <- function(inputs, context, options) {
-    if (!S7::S7_inherits(inputs, WeatherInputs)) {
-        cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
-    }
-    checkmate::assert_list(options, names = "unique")
-    if (length(options)) {
-        cli::cli_abort(
-            "`solar_radiation_interpolation` does not accept component options."
-        )
-    }
-    roles <- c("model_historical", "model_future")
-    results <- lapply(roles, function(role) {
-        solar__role(
-            weather__get_input(inputs, role),
-            role,
-            context
-        )
-    })
-    names(results) <- roles
-    output_inputs <- weather__new_inputs(
-        weather_template = weather__get_input(inputs, "weather_template"),
-        observed_reference = weather__get_input(
-            inputs,
-            "observed_reference"
+    temporal__apply_model_roles(
+        inputs,
+        context,
+        options,
+        component_name = "solar_radiation_interpolation",
+        role_fn = solar__role,
+        diagnostic_name = "solar_radiation_interpolation",
+        extra_provenance = list(
+            references = SOLAR_RADIATION_REFERENCES,
+            published_source_frequency = "3hr",
+            adapted_source_frequencies = "6hr",
+            interval_policy = "cf_time_bounds",
+            conservation_policy = "source_interval_mean",
+            solar_geometry = "spencer_positive_zenith_projection",
+            integration_step_seconds = SOLAR_INTEGRATION_STEP_SECONDS
         ),
-        model_historical = results$model_historical$input,
-        model_future = results$model_future$input
-    )
-    diagnostics <- data.table::rbindlist(
-        lapply(results, function(result) result$diagnostics),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    provenance <- list(
-        method = "solar_radiation_interpolation",
-        references = SOLAR_RADIATION_REFERENCES,
-        roles = roles,
-        source_frequencies = lapply(
-            results,
-            function(result) result$provenance$source_frequencies
-        ),
-        published_source_frequency = "3hr",
-        adapted_source_frequencies = "6hr",
-        source_step_seconds = lapply(
-            results,
-            function(result) result$provenance$source_step_seconds
-        ),
-        target_frequency = "hour",
-        target_step_seconds = 3600,
-        interval_policy = "cf_time_bounds",
-        conservation_policy = "source_interval_mean",
-        solar_geometry = "spencer_positive_zenith_projection",
-        integration_step_seconds = SOLAR_INTEGRATION_STEP_SECONDS
-    )
-    WeatherStageResult(
-        stage = "preprocess",
-        component = "solar_radiation_interpolation",
-        kind = "hourly_role_inputs",
-        value = output_inputs,
-        diagnostics = list(solar_radiation_interpolation = diagnostics),
-        provenance = provenance,
         metadata = list(
             interpolation = "solar_projection",
             interval_conservation = "source_mean"
@@ -802,38 +624,16 @@ solar__apply <- function(inputs, context, options) {
 # coupling it to a complete future-weather recipe.
 # solar__component {{{
 solar__component <- function() {
-    variables <- lapply(SOLAR_RADIATION_VARIABLES, identity)
-    requirement <- function(role) {
-        component__input_requirement(
-            role,
-            representations = "series",
-            frequencies = names(TEMPORAL_SOURCE_STEPS),
-            calendars = CF_TIME_CALENDARS,
-            variable_sets = variables
-        )
-    }
-    component__spec(
+    temporal__preprocess_component(
         name = "solar_radiation_interpolation",
-        stage = "preprocess",
         label = "Solar radiation interpolation",
-        required_inputs = list(
-            model_historical = requirement("model_historical"),
-            model_future = requirement("model_future")
-        ),
-        input_kinds = "role_inputs",
-        output_kinds = "hourly_role_inputs",
-        scopes = "univariate",
-        stochastic = FALSE,
-        operations = list(apply = solar__apply),
+        supported_variables = SOLAR_RADIATION_VARIABLES,
+        apply_fn = solar__apply,
         metadata = list(
             algorithm = "source_interval_mean_scaled_by_solar_projection",
             references = SOLAR_RADIATION_REFERENCES,
-            source_frequencies = names(TEMPORAL_SOURCE_STEPS),
             published_source_frequency = "3hr",
             adapted_source_frequencies = "6hr",
-            target_frequency = "hour",
-            target_step_seconds = 3600,
-            supported_variables = SOLAR_RADIATION_VARIABLES,
             interval_policy = "cf_time_bounds",
             conservation_policy = "source_interval_mean",
             solar_geometry = "spencer_positive_zenith_projection",

@@ -1,5 +1,3 @@
-local_cmip6_test_years <- 2059:2061
-
 # local_cmip6_nc_file {{{
 local_cmip6_nc_file <- function(year, variable_id = "tas") {
     sprintf(
@@ -8,12 +6,6 @@ local_cmip6_nc_file <- function(year, variable_id = "tas") {
         year,
         year
     )
-}
-# }}}
-
-# local_is_leap_year {{{
-local_is_leap_year <- function(year) {
-    (year %% 4L == 0L && year %% 100L != 0L) || year %% 400L == 0L
 }
 # }}}
 
@@ -348,61 +340,6 @@ write_local_cmip6_netcdf_fixture <- local({
         invisible(path)
     }
 })
-# }}}
-
-# write_local_morph_tas_fixture {{{
-write_local_morph_tas_fixture <- function(path, year = 2060L) {
-    datetime <- seq.POSIXt(
-        as.POSIXct(sprintf("%s-01-01 00:00:00", year), tz = "UTC"),
-        as.POSIXct(sprintf("%s-12-31 00:00:00", year), tz = "UTC"),
-        by = "day"
-    )
-    coords <- data.table::CJ(lat = c(1.0, 2.0), lon = c(103.5, 104.0, 104.5))
-    coords[, coord_id := .I]
-    data <- data.table::CJ(datetime = datetime, coord_id = coords$coord_id)
-    data[coords, on = "coord_id", `:=`(lon = i.lon, lat = i.lat)]
-    data[, `:=`(
-        activity_drs = "ScenarioMIP",
-        institution_id = "EC-Earth-Consortium",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        member_id = "r1i1p1f1",
-        table_id = "day",
-        variable = "tas",
-        description = "Near-Surface Air Temperature",
-        units = "K",
-        value = 299 +
-            5 *
-                sin(
-                    2 *
-                        pi *
-                        (as.integer(format(datetime, "%j")) - 1) /
-                        length(datetime)
-                ) +
-            coord_id / 10
-    )]
-    data[, coord_id := NULL]
-    data.table::setcolorder(
-        data,
-        c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "datetime",
-            "variable",
-            "description",
-            "units",
-            "value"
-        )
-    )
-    write_parquet_file(data, path)
-    invisible(path)
-}
 # }}}
 
 # vim: fdm=marker :

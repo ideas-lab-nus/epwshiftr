@@ -1,4 +1,4 @@
-#' @include backend-registry.R epw-morph-context.R epw-physics.R weather-solar.R
+#' @include backend-registry.R epw-morph-context.R epw-physics.R
 NULL
 
 # Original morphing backends
@@ -395,6 +395,106 @@ original_morphing__drop_units <- function(data, vars) {
 }
 # }}}
 
+# Shared EPW calendar and identity column projections for original morphing.
+ORIGINAL_MORPHING_TIME_COLS <- c(
+    "datetime",
+    "year",
+    "month",
+    "day",
+    "hour",
+    "minute"
+)
+ORIGINAL_MORPHING_OUTPUT_COLS <- c(
+    "activity_drs",
+    "institution_id",
+    "source_id",
+    "experiment_id",
+    "member_id",
+    "table_id",
+    "lon",
+    "lat",
+    "interval",
+    ORIGINAL_MORPHING_TIME_COLS
+)
+
+# Project one morphed hourly table to the canonical identity, value, and factor
+# columns while preserving legacy column order.
+# original_morphing__select_output {{{
+original_morphing__select_output <- function(
+    data,
+    vars,
+    extra = character(),
+    intersect_cols = FALSE
+) {
+    cols <- c(ORIGINAL_MORPHING_OUTPUT_COLS, vars, "delta", "alpha", extra)
+    if (isTRUE(intersect_cols)) {
+        cols <- intersect(cols, names(data))
+    }
+    data[, .SD, .SDcols = cols]
+}
+# }}}
+
+# Extract numeric site latitude, longitude, and timezone tuple from an EpwFile.
+# morpher__epw_location {{{
+morpher__epw_location <- function(epw) {
+    list(
+        latitude = morpher__epw_location_numeric(
+            epw,
+            c("latitude", "lat", "N2_latitude")
+        ),
+        longitude = morpher__epw_location_numeric(
+            epw,
+            c("longitude", "lon", "N3_longitude")
+        ),
+        timezone = morpher__epw_location_numeric(
+            epw,
+            c("time_zone", "timezone", "N4_time_zone"),
+            default = 0
+        )
+    )
+}
+# }}}
+
+# Apply a calendar-ordered per-case transform while restoring caller row order.
+# A representative EPW may assemble months from different source years, so
+# sorting by calendar month/day/hour/minute keeps December-January cyclic.
+# original_morphing__by_case {{{
+original_morphing__by_case <- function(data, fn) {
+    data <- data.table::copy(data)
+    data.table::set(data, j = ".case_order", value = seq_len(nrow(data)))
+    case_cols <- morpher__factor_case_columns(data)
+    groups <- if (length(case_cols)) {
+        unique(data[, ..case_cols])
+    } else {
+        data.table::data.table(.case = 1L)
+    }
+    pieces <- vector("list", nrow(groups))
+    for (i in seq_len(nrow(groups))) {
+        rows <- if (length(case_cols)) {
+            keep <- rep(TRUE, nrow(data))
+            for (name in case_cols) {
+                value <- groups[[name]][[i]]
+                keep <- keep &
+                    if (is.na(value)) {
+                        is.na(data[[name]])
+                    } else {
+                        data[[name]] == value
+                    }
+            }
+            data[keep]
+        } else {
+            data.table::copy(data)
+        }
+        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
+        pieces[[i]] <- fn(rows)
+    }
+    out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+    data.table::setorderv(out, ".case_order")
+    data.table::set(out, j = ".case_order", value = NULL)
+    out[]
+}
+# }}}
+
 # original_morphing__day_angle {{{
 original_morphing__day_angle <- function(day_of_year) {
     2.0 * pi * (day_of_year - 1.0) / 365.0
@@ -603,12 +703,7 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
     baseline <- data_epw[,
         .SD,
         .SDcols = c(
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
+            ORIGINAL_MORPHING_TIME_COLS,
             "dry_bulb_temperature",
             "relative_humidity",
             "atmospheric_pressure"
@@ -616,7 +711,7 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
     ]
     hourly[
         baseline,
-        on = c("datetime", "year", "month", "day", "hour", "minute"),
+        on = ORIGINAL_MORPHING_TIME_COLS,
         `:=`(
             baseline_tdb = i.dry_bulb_temperature,
             baseline_rh = i.relative_humidity,
@@ -631,12 +726,7 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
                 "experiment_id",
                 "member_id",
                 "interval",
-                "datetime",
-                "year",
-                "month",
-                "day",
-                "hour",
-                "minute"
+                ORIGINAL_MORPHING_TIME_COLS
             ),
             intersect(names(hourly), names(pressure))
         )
@@ -656,45 +746,11 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
     ]
 
     join_cols <- intersect(
-        c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "interval",
-            "month"
-        ),
+        ORIGINAL_MORPHING_PROJECTED_EXTREME_IDENTITY_COLUMNS,
         intersect(names(hourly), names(future))
     )
     hourly[future, on = join_cols, climate_huss_target := i.huss_target]
-    case_cols <- morpher__factor_case_columns(hourly)
-    hourly[, .humidity_order := .I]
-    groups <- if (length(case_cols)) {
-        unique(hourly[, ..case_cols])
-    } else {
-        data.table::data.table(.case = 1L)
-    }
-    pieces <- vector("list", nrow(groups))
-    for (i in seq_len(nrow(groups))) {
-        rows <- if (length(case_cols)) {
-            keep <- rep(TRUE, nrow(hourly))
-            for (name in case_cols) {
-                value <- groups[[name]][[i]]
-                keep <- keep &
-                    if (is.na(value)) {
-                        is.na(hourly[[name]])
-                    } else {
-                        hourly[[name]] == value
-                    }
-            }
-            hourly[keep]
-        } else {
-            data.table::copy(hourly)
-        }
-        # A representative EPW may assemble months from different source years.
-        # Smooth adjacent calendar months without changing those source labels.
-        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
+    hourly <- original_morphing__by_case(hourly, function(rows) {
         if (external_reference) {
             delta_target <- morpher__monthly_target_vector(
                 rows,
@@ -712,17 +768,16 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
             delta_target[baseline_monthly$month] <-
                 baseline_monthly$target - baseline_monthly$baseline_huss_mean
         }
-        delta <- morpher__constrained_month_series(
+        # Assign via set() rather than `:=` because `rows` inherits column
+        # `delta` (dry-bulb change in degC) from `tdb`.
+        huss_delta <- morpher__constrained_month_series(
             rows$month,
             delta_target,
             context$recipe$options$transition_hours
         )
-        rows[, huss_delta := delta]
-        pieces[[i]] <- rows
-    }
-    hourly <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-    data.table::setorder(hourly, .humidity_order)
-    hourly[, .humidity_order := NULL]
+        data.table::set(rows, j = "huss_delta", value = huss_delta)
+        rows
+    })
 
     hourly[, huss_unclipped := baseline_huss + huss_delta]
     humidity <- epwphys__close_specific_humidity(
@@ -730,11 +785,11 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
         hourly[["future_pressure"]],
         hourly[["huss_unclipped"]]
     )
-    hourly[, saturation_huss := humidity$saturation_specific_humidity]
-    hourly[, future_huss := humidity$specific_humidity]
-    hourly[, relative_humidity := humidity$relative_humidity]
-    hourly[, dew_point_temperature := humidity$dew_point_temperature]
     hourly[, `:=`(
+        saturation_huss = humidity$saturation_specific_humidity,
+        future_huss = humidity$specific_humidity,
+        relative_humidity = humidity$relative_humidity,
+        dew_point_temperature = humidity$dew_point_temperature,
         delta = huss_delta,
         alpha = NA_real_,
         factor_status = data.table::fifelse(
@@ -748,34 +803,19 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
         )
     )]
 
-    identity <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute"
-    )
-    rh_keep <- intersect(
-        c(identity, "relative_humidity", "delta", "alpha", "factor_status"),
-        names(hourly)
-    )
-    dew_keep <- intersect(
-        c(identity, "dew_point_temperature", "delta", "alpha", "factor_status"),
-        names(hourly)
-    )
     list(
-        rh = hourly[, .SD, .SDcols = rh_keep],
-        tdew = hourly[, .SD, .SDcols = dew_keep]
+        rh = original_morphing__select_output(
+            hourly,
+            "relative_humidity",
+            extra = "factor_status",
+            intersect_cols = TRUE
+        ),
+        tdew = original_morphing__select_output(
+            hourly,
+            "dew_point_temperature",
+            extra = "factor_status",
+            intersect_cols = TRUE
+        )
     )
 }
 # }}}
@@ -1130,24 +1170,12 @@ radiation__enhanced_chain <- function(
             illuminance = empty
         ))
     }
-    latitude <- morpher__epw_location_numeric(
-        epw,
-        c("latitude", "lat", "N2_latitude")
-    )
-    longitude <- morpher__epw_location_numeric(
-        epw,
-        c("longitude", "lon", "N3_longitude")
-    )
-    timezone <- morpher__epw_location_numeric(
-        epw,
-        c("time_zone", "timezone", "N4_time_zone"),
-        default = 0
-    )
+    loc <- morpher__epw_location(epw)
     geometry <- solar__epw_interval_geometry(
         glob_rad,
-        latitude = latitude,
-        longitude = longitude,
-        timezone = timezone
+        latitude = loc$latitude,
+        longitude = loc$longitude,
+        timezone = loc$timezone
     )
     ghi <- pmax(0, as.numeric(glob_rad$global_horizontal_radiation))
     if (identical(diffuse_model, "rbl_2010")) {
@@ -1168,52 +1196,25 @@ radiation__enhanced_chain <- function(
         }
         dhi <- radiation__rbl_2010_diffuse(ghi, geometry, day_key, case_key)
     } else {
-        baseline_match <- data_epw[
-            glob_rad,
-            on = c("datetime", "year", "month", "day", "hour", "minute")
-        ]
+        baseline_match <- data_epw[glob_rad, on = ORIGINAL_MORPHING_TIME_COLS]
         dhi <- radiation__preserved_diffuse(baseline_match, ghi)
     }
     closed <- epwphys__close_shortwave(ghi, dhi, geometry)
     glob_rad[, global_horizontal_radiation := closed$ghi]
 
-    identity <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
-        "delta",
-        "alpha"
+    base_cols <- intersect(
+        c(ORIGINAL_MORPHING_OUTPUT_COLS, "delta", "alpha"),
+        names(glob_rad)
     )
-    solar <- data.table::copy(glob_rad)[,
-        .SD,
-        .SDcols = intersect(identity, names(glob_rad))
-    ]
-    solar[, `:=`(
+    clone_base <- function() {
+        data.table::copy(glob_rad[, .SD, .SDcols = base_cols])
+    }
+    solar <- clone_base()[, `:=`(
         extraterrestrial_horizontal_radiation = geometry$extraterrestrial_horizontal_radiation,
         extraterrestrial_direct_normal_radiation = geometry$extraterrestrial_direct_normal_radiation
     )]
-    diff_rad <- data.table::copy(glob_rad)[,
-        .SD,
-        .SDcols = intersect(identity, names(glob_rad))
-    ]
-    diff_rad[, diffuse_horizontal_radiation := closed$dhi]
-    norm_rad <- data.table::copy(glob_rad)[,
-        .SD,
-        .SDcols = intersect(identity, names(glob_rad))
-    ]
-    norm_rad[, direct_normal_radiation := closed$dni]
+    diff_rad <- clone_base()[, diffuse_horizontal_radiation := closed$dhi]
+    norm_rad <- clone_base()[, direct_normal_radiation := closed$dni]
 
     illuminance <- data.table::data.table()
     if (identical(illuminance_model, "perez_1990")) {
@@ -1225,19 +1226,11 @@ radiation__enhanced_chain <- function(
                     "experiment_id",
                     "member_id",
                     "interval",
-                    "datetime",
-                    "year",
-                    "month",
-                    "day",
-                    "hour",
-                    "minute"
+                    ORIGINAL_MORPHING_TIME_COLS
                 ),
                 intersect(names(glob_rad), names(tdew))
             )
-            dew_rows <- data.table::copy(glob_rad)[,
-                .SD,
-                .SDcols = intersect(identity, names(glob_rad))
-            ]
+            dew_rows <- clone_base()
             dew_rows[tdew, on = join_cols, dew_point := i.dew_point_temperature]
             dew_point <- dew_rows$dew_point
         }
@@ -1245,7 +1238,7 @@ radiation__enhanced_chain <- function(
         if (any(missing_dew)) {
             baseline_match <- data_epw[
                 glob_rad,
-                on = c("datetime", "year", "month", "day", "hour", "minute")
+                on = ORIGINAL_MORPHING_TIME_COLS
             ]
             dew_point[missing_dew] <- baseline_match$dew_point_temperature[
                 missing_dew
@@ -1258,12 +1251,9 @@ radiation__enhanced_chain <- function(
             geometry,
             dew_point
         )
-        illuminance <- data.table::copy(glob_rad)[,
-            .SD,
-            .SDcols = intersect(identity, names(glob_rad))
-        ]
+        illuminance <- clone_base()
         for (field in names(values)) {
-            illuminance[, (field) := values[[field]]]
+            data.table::set(illuminance, j = field, value = values[[field]])
         }
     }
     list(
@@ -1313,32 +1303,57 @@ original_morphing__opaque_sky_cover <- function(data_epw, total_sky_cover) {
         ) := NULL
     ]
 
-    data[,
-        .SD,
-        .SDcols = c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "interval",
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            "opaque_sky_cover",
-            "delta",
-            "alpha"
-        )
-    ]
+    original_morphing__select_output(data, "opaque_sky_cover")
 }
 # }}}
 
+# Format and emit the shared legacy missing-extrema fallback warning, returning
+# the unique case-key table whose combined alpha must fall back to zero.
+# original_morphing__extreme_fallback_cases {{{
+original_morphing__extreme_fallback_cases <- function(
+    missing_rows,
+    var,
+    label
+) {
+    if (!nrow(missing_rows)) {
+        return(data.table::data.table())
+    }
+    cols <- c(
+        "activity_drs",
+        "institution_id",
+        "source_id",
+        "experiment_id",
+        "member_id",
+        "table_id"
+    )
+    case_fallback <- unique(missing_rows[, ..cols], by = cols)
+    cases <- case_fallback[, unique(sprintf(
+        "CMIP6.%s.%s.%s.%s.%s.%s",
+        activity_drs,
+        institution_id,
+        source_id,
+        experiment_id,
+        member_id,
+        table_id
+    ))]
+    cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
+    warning(
+        sprintf(
+            "Case(s) below contains %s of '%s' data. ",
+            label,
+            gsub("_", " ", var)
+        ),
+        "'Shift' method will be used for it.\n",
+        paste0(cases, collapse = "\n"),
+        call. = FALSE
+    )
+    case_fallback
+}
+# }}}
+
+# Apply legacy Belcher monthly morphing for either absolute targets (default)
+# or explicit future-minus-reference change factors when `reference_mean` is
+# supplied.
 # original_morphing__from_monthly {{{
 original_morphing__from_monthly <- function(
     var,
@@ -1346,118 +1361,195 @@ original_morphing__from_monthly <- function(
     data_mean,
     data_max = NULL,
     data_min = NULL,
-    type = c("shift", "stretch", "combined")
+    type = c("shift", "stretch", "combined"),
+    reference_mean = NULL,
+    reference_max = NULL,
+    reference_min = NULL,
+    strict = TRUE
 ) {
     type <- match.arg(type)
     if (!nrow(data_mean)) {
         return(data.table::data.table())
     }
+    has_ref <- !is.null(reference_mean)
+    if (has_ref && !nrow(reference_mean)) {
+        if (isTRUE(strict)) {
+            cli::cli_abort(
+                "Change-factor morphing requires reference climate data for {.val {var}}."
+            )
+        }
+        return(data.table::data.table())
+    }
 
-    monthly <- original_morphing__epw_monthly(data_epw, var)
+    # Change-factor combined morphing uses average daily DTR (Belcher eq. 4);
+    # legacy absolute mode retains the historical monthly-extrema summary.
+    use_dtr <- has_ref && identical(type, "combined")
+    monthly <- if (use_dtr) {
+        original_morphing__epw_monthly_dtr(data_epw, var)
+    } else {
+        original_morphing__epw_monthly(data_epw, var)
+    }
     u <- morpher__default_epw_units(var)
-    data_mean <- original_morphing__align_units(data.table::copy(data_mean), u)
+    align <- function(x) original_morphing__align_units(data.table::copy(x), u)
+    data_mean <- align(data_mean)
+    if (has_ref) {
+        reference_mean <- align(reference_mean)
+        data_mean <- original_morphing__attach_reference(
+            data_mean,
+            reference_mean,
+            "reference_value"
+        )
+        data_mean <- original_morphing__handle_missing_reference(
+            data_mean,
+            var,
+            strict = strict
+        )
+    }
 
     case_fallback <- data.table::data.table()
-    if (
-        identical(type, "combined") && !is.null(data_max) && !is.null(data_min)
-    ) {
-        data_max <- original_morphing__align_units(
-            data.table::copy(data_max),
-            u
-        )
-        data_min <- original_morphing__align_units(
-            data.table::copy(data_min),
-            u
-        )
-        join_cols <- c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lat",
-            "lon",
-            "units",
-            "month",
-            "interval"
-        )
-        data_mean[data_max, on = join_cols, value_max := i.value]
-        data_mean[data_min, on = join_cols, value_min := i.value]
-
-        i_max <- data_mean[
-            J(NA_real_),
-            on = "value_max",
-            which = TRUE,
-            nomatch = NULL
-        ]
-        i_min <- data_mean[
-            J(NA_real_),
-            on = "value_min",
-            which = TRUE,
-            nomatch = NULL
-        ]
-        i <- unique(c(i_min, i_max))
-        if (length(i)) {
-            cols <- c(
+    has_extrema <- identical(type, "combined") &&
+        !is.null(data_max) &&
+        !is.null(data_min) &&
+        (!has_ref || (!is.null(reference_max) && !is.null(reference_min)))
+    if (has_extrema) {
+        data_max <- align(data_max)
+        data_min <- align(data_min)
+        if (has_ref) {
+            data_mean <- morpher__attach_extreme_value(
+                data_mean,
+                data_max,
+                "value_max"
+            )
+            data_mean <- morpher__attach_extreme_value(
+                data_mean,
+                data_min,
+                "value_min"
+            )
+            data_mean <- morpher__attach_reference_extreme(
+                data_mean,
+                align(reference_max),
+                "reference_max"
+            )
+            data_mean <- morpher__attach_reference_extreme(
+                data_mean,
+                align(reference_min),
+                "reference_min"
+            )
+            missing_rows <- data_mean[
+                is.na(value_max) |
+                    is.na(value_min) |
+                    is.na(reference_max) |
+                    is.na(reference_min)
+            ]
+            case_fallback <- original_morphing__extreme_fallback_cases(
+                missing_rows,
+                var,
+                "missing target or reference max/min values"
+            )
+        } else {
+            join_cols <- c(
                 "activity_drs",
                 "institution_id",
                 "source_id",
                 "experiment_id",
                 "member_id",
-                "table_id"
+                "table_id",
+                "lat",
+                "lon",
+                "units",
+                "month",
+                "interval"
             )
-            case_fallback <- unique(data_mean[i], by = cols)
-            data.table::set(
-                case_fallback,
-                NULL,
-                setdiff(names(case_fallback), cols),
-                NULL
-            )
-            cases <- case_fallback[, unique(sprintf(
-                "CMIP6.%s.%s.%s.%s.%s.%s",
-                activity_drs,
-                institution_id,
-                source_id,
-                experiment_id,
-                member_id,
-                table_id
-            ))]
-            cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
-            warning(
-                sprintf(
-                    "Case(s) below contains missing values of max or min of '%s' data. ",
-                    gsub("_", " ", var)
-                ),
-                "'Shift' method will be used for it.\n",
-                paste0(cases, collapse = "\n"),
-                call. = FALSE
+            data_mean[data_max, on = join_cols, value_max := i.value]
+            data_mean[data_min, on = join_cols, value_min := i.value]
+            missing_rows <- data_mean[is.na(value_max) | is.na(value_min)]
+            case_fallback <- original_morphing__extreme_fallback_cases(
+                missing_rows,
+                var,
+                "missing values of max or min"
             )
         }
     }
 
-    data_mean[
-        monthly,
-        on = "month",
-        `:=`(
-            delta = value - val_mean,
-            alpha = value / val_mean,
-            epw_mean = i.val_mean,
-            epw_max = i.val_max,
-            epw_min = i.val_min
-        )
-    ]
+    if (use_dtr) {
+        data_mean[
+            monthly,
+            on = "month",
+            `:=`(epw_mean = i.val_mean, epw_dtr = i.val_dtr)
+        ]
+    } else {
+        data_mean[
+            monthly,
+            on = "month",
+            `:=`(
+                epw_mean = i.val_mean,
+                epw_max = i.val_max,
+                epw_min = i.val_min
+            )
+        ]
+    }
+    if (has_ref) {
+        data_mean[, delta := value - reference_value]
+    } else {
+        data_mean[, `:=`(delta = value - epw_mean, alpha = value / epw_mean)]
+    }
 
     data <- data_epw[,
         .SD,
-        .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)
-    ][
-        data_mean,
-        on = "month",
-        allow.cartesian = TRUE
-    ]
+        .SDcols = c(ORIGINAL_MORPHING_TIME_COLS, var)
+    ][data_mean, on = "month", allow.cartesian = TRUE]
 
-    if (
+    if (has_ref) {
+        if (
+            identical(type, "combined") &&
+                all(
+                    c(
+                        "value_min",
+                        "value_max",
+                        "reference_min",
+                        "reference_max"
+                    ) %in%
+                        names(data)
+                )
+        ) {
+            data[,
+                alpha := ((value_max - reference_max) -
+                    (value_min - reference_min)) /
+                    epw_dtr
+            ]
+            if (nrow(case_fallback)) {
+                data[case_fallback, on = names(case_fallback), alpha := 0.0]
+            }
+            data[
+                is.na(alpha) | !is.finite(morpher__drop_units(alpha)),
+                alpha := 0.0
+            ]
+        } else if (identical(type, "stretch")) {
+            ref <- morpher__drop_units(data$reference_value)
+            val <- morpher__drop_units(data$value)
+            data[,
+                alpha := ifelse(
+                    is.finite(ref) & abs(ref) > .Machine$double.eps,
+                    val / ref,
+                    NA_real_
+                )
+            ]
+            missing_alpha <- data[is.na(alpha) | !is.finite(alpha)]
+            if (nrow(missing_alpha)) {
+                message <- sprintf(
+                    "Reference climate data include zero values for %s; cannot compute stretch factors.",
+                    var
+                )
+                if (isTRUE(strict)) {
+                    cli::cli_abort(message)
+                }
+                warning(message, call. = FALSE)
+                data[is.na(alpha) | !is.finite(alpha), alpha := 1.0]
+            }
+        } else {
+            data[, alpha := 0.0]
+        }
+    } else if (
         identical(type, "combined") &&
             all(c("value_min", "value_max") %in% names(data))
     ) {
@@ -1481,15 +1573,33 @@ original_morphing__from_monthly <- function(
             "' is found."
         ))
     }
+    alpha_source <- if (has_ref) data else data_mean
     if (
         type %in%
             c("stretch", "combined") &&
             nrow(
-                abnorm_alpha <- data_mean[
+                abnorm_alpha <- alpha_source[
                     abs(morpher__drop_units(alpha)) > thres_alpha
                 ]
             )
     ) {
+        detail_lines <- if (has_ref) {
+            sprintf(
+                "Month = %s | Future = %s, Reference = %s --> Alpha = %s",
+                format(abnorm_alpha$month),
+                format(abnorm_alpha$value, digits = 3),
+                format(abnorm_alpha$reference_value, digits = 3),
+                format(morpher__drop_units(abnorm_alpha$alpha), digits = 3)
+            )
+        } else {
+            sprintf(
+                "Month = %s | Monthly-mean: EPW = %s, GCM = %s --> Alpha = %s",
+                format(abnorm_alpha$month),
+                format(abnorm_alpha$epw_mean, digits = 3),
+                format(abnorm_alpha$value, digits = 3),
+                format(morpher__drop_units(abnorm_alpha$alpha), digits = 3)
+            )
+        }
         warning(sprintf(
             paste(
                 "The absolute values of monthly-mean fractional change (Alpha) below",
@@ -1502,16 +1612,7 @@ original_morphing__from_monthly <- function(
             gsub("_", " ", var, fixed = TRUE),
             thres_alpha,
             type,
-            paste0(
-                sprintf(
-                    "Month = %s | Monthly-mean: EPW = %s, GCM = %s --> Alpha = %s",
-                    format(abnorm_alpha$month),
-                    format(abnorm_alpha$epw_mean, digits = 3),
-                    format(abnorm_alpha$value, digits = 3),
-                    format(morpher__drop_units(abnorm_alpha$alpha), digits = 3)
-                ),
-                collapse = "\n"
-            )
+            paste0(detail_lines, collapse = "\n")
         ))
         type <- "shift"
     }
@@ -1521,36 +1622,14 @@ original_morphing__from_monthly <- function(
     } else if (identical(type, "stretch")) {
         data[, c(var) := get(var) * alpha]
     } else if (identical(type, "combined")) {
-        if (all(c("value_min", "value_max") %in% names(data))) {
+        if (has_ref || all(c("value_min", "value_max") %in% names(data))) {
             data[, c(var) := get(var) + delta + alpha * (get(var) - epw_mean)]
         } else {
             data[, c(var) := get(var) + delta + alpha * get(var)]
         }
     }
 
-    data[,
-        .SD,
-        .SDcols = c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "interval",
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            var,
-            "delta",
-            "alpha"
-        )
-    ]
+    original_morphing__select_output(data, var)
 }
 # }}}
 
@@ -1739,34 +1818,7 @@ morpher__smooth_enhanced_factors <- function(
     transform,
     transition_hours
 ) {
-    data <- data.table::copy(data)
-    data[, .factor_order := .I]
-    case_cols <- morpher__factor_case_columns(data)
-    groups <- if (length(case_cols)) {
-        unique(data[, ..case_cols])
-    } else {
-        data.table::data.table(.case = 1L)
-    }
-    pieces <- vector("list", nrow(groups))
-    for (i in seq_len(nrow(groups))) {
-        rows <- if (length(case_cols)) {
-            filter <- rep(TRUE, nrow(data))
-            for (name in case_cols) {
-                value <- groups[[name]][[i]]
-                filter <- filter &
-                    if (is.na(value)) {
-                        is.na(data[[name]])
-                    } else {
-                        data[[name]] == value
-                    }
-            }
-            data[filter]
-        } else {
-            data.table::copy(data)
-        }
-        # The source year is provenance, not the order of a representative year.
-        # Calendar sorting also keeps the December-January transition cyclic.
-        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
+    original_morphing__by_case(data, function(rows) {
         month <- rows$month
         # An additive fallback has no multiplicative target. Use the neutral
         # multiplier while blending adjacent valid stretch months, so a missing
@@ -1795,8 +1847,7 @@ morpher__smooth_enhanced_factors <- function(
                     as.numeric(alpha_target)
                 }
             )]
-            pieces[[i]] <- rows
-            next
+            return(rows)
         }
         delta_target <- morpher__monthly_target_vector(rows, "delta_target")
         alpha_target <- morpher__monthly_target_vector(rows, "alpha_target")
@@ -1834,13 +1885,12 @@ morpher__smooth_enhanced_factors <- function(
                 transition_hours
             )
         }
-        rows[, `:=`(delta = delta, alpha = alpha)]
-        pieces[[i]] <- rows
-    }
-    out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-    data.table::setorder(out, .factor_order)
-    out[, .factor_order := NULL]
-    out[]
+        # Assign via set() so any pre-existing `delta` or `alpha` column on
+        # `rows` cannot shadow the newly smoothed local vectors.
+        data.table::set(rows, j = "delta", value = delta)
+        data.table::set(rows, j = "alpha", value = alpha)
+        rows
+    })
 }
 # }}}
 
@@ -1879,9 +1929,9 @@ morpher__enhanced_alpha_threshold <- function() {
 }
 # }}}
 
-# Enhanced absolute-target morphing uses mean daily extrema for the EPW DTR.
-# For combined temperature, alpha = (R_future - R_epw) / R_epw; invalid or
-# nearly flat EPW ranges are represented explicitly as shift fallbacks.
+# Enhanced monthly morphing uses mean daily extrema for the EPW DTR, guarded
+# per-month shift fallbacks, and covariance-compensated cyclic smoothing.
+# Supplying `reference_mean` switches from absolute targets to change factors.
 # original_morphing__from_monthly_enhanced {{{
 original_morphing__from_monthly_enhanced <- function(
     var,
@@ -1890,68 +1940,130 @@ original_morphing__from_monthly_enhanced <- function(
     data_max = NULL,
     data_min = NULL,
     type = c("shift", "stretch", "combined", "auto"),
-    transition_hours = 72L
+    transition_hours = 72L,
+    reference_mean = NULL,
+    reference_max = NULL,
+    reference_min = NULL,
+    strict = TRUE
 ) {
     type <- match.arg(type)
     if (!nrow(data_mean)) {
         return(data.table::data.table())
     }
+    has_ref <- !is.null(reference_mean)
+    if (has_ref && !nrow(reference_mean)) {
+        if (isTRUE(strict)) {
+            cli::cli_abort(
+                "Change-factor morphing requires reference climate data for {.val {var}}."
+            )
+        }
+        return(data.table::data.table())
+    }
+
     units <- morpher__default_epw_units(var)
+    align_optional <- function(data) {
+        if (is.null(data) || !nrow(data)) {
+            return(NULL)
+        }
+        original_morphing__align_units(data.table::copy(data), units)
+    }
     data_mean <- original_morphing__align_units(
         data.table::copy(data_mean),
         units
     )
-    if (!is.null(data_max) && nrow(data_max)) {
-        data_max <- original_morphing__align_units(
-            data.table::copy(data_max),
+    if (has_ref) {
+        reference_mean <- original_morphing__align_units(
+            data.table::copy(reference_mean),
             units
         )
-    }
-    if (!is.null(data_min) && nrow(data_min)) {
-        data_min <- original_morphing__align_units(
-            data.table::copy(data_min),
-            units
+        data_mean <- original_morphing__attach_reference(
+            data_mean,
+            reference_mean,
+            "reference_value"
+        )
+        data_mean <- original_morphing__handle_missing_reference(
+            data_mean,
+            var,
+            strict = strict
         )
     }
-    data_mean <- morpher__attach_extreme_value(data_mean, data_max, "value_max")
-    data_mean <- morpher__attach_extreme_value(data_mean, data_min, "value_min")
+    data_mean <- morpher__attach_extreme_value(
+        data_mean,
+        align_optional(data_max),
+        "value_max"
+    )
+    data_mean <- morpher__attach_extreme_value(
+        data_mean,
+        align_optional(data_min),
+        "value_min"
+    )
+    if (has_ref) {
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            align_optional(reference_max),
+            "reference_max"
+        )
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            align_optional(reference_min),
+            "reference_min"
+        )
+    }
+
     monthly <- original_morphing__epw_monthly_dtr(data_epw, var)
     data_mean[
         monthly,
         on = "month",
-        `:=`(
-            epw_mean = i.val_mean,
-            epw_dtr = i.val_dtr
-        )
+        `:=`(epw_mean = i.val_mean, epw_dtr = i.val_dtr)
     ]
     data_mean[, `:=`(
-        delta_target = as.numeric(value - epw_mean),
+        delta_target = as.numeric(
+            value - if (has_ref) reference_value else epw_mean
+        ),
         alpha_target = 0,
         method_applied = "shift",
         factor_status = "ok"
     )]
 
     if (identical(type, "stretch")) {
-        valid <- is.finite(data_mean$epw_mean) &
-            abs(data_mean$epw_mean) > .Machine$double.eps
+        denom <- as.numeric(
+            if (has_ref) data_mean$reference_value else data_mean$epw_mean
+        )
+        valid <- is.finite(denom) & abs(denom) > .Machine$double.eps
         data_mean[
             valid,
             `:=`(
-                alpha_target = as.numeric(value / epw_mean),
+                alpha_target = as.numeric(value / denom[valid]),
                 method_applied = "stretch"
             )
         ]
-        data_mean[!valid, factor_status := "fallback_shift_zero_epw_mean"]
+        data_mean[
+            !valid,
+            factor_status := if (has_ref) {
+                "fallback_shift_zero_reference"
+            } else {
+                "fallback_shift_zero_epw_mean"
+            }
+        ]
     } else if (type %in% c("combined", "auto")) {
         future_dtr <- as.numeric(data_mean$value_max - data_mean$value_min)
-        valid_extreme <- is.finite(future_dtr)
+        if (has_ref) {
+            baseline_dtr <- as.numeric(
+                data_mean$reference_max - data_mean$reference_min
+            )
+            valid_extreme <- is.finite(future_dtr) & is.finite(baseline_dtr)
+        } else {
+            baseline_dtr <- as.numeric(data_mean$epw_dtr)
+            valid_extreme <- is.finite(future_dtr)
+        }
         valid_denominator <- is.finite(data_mean$epw_dtr) &
             data_mean$epw_dtr > 0.1
         valid <- valid_extreme & valid_denominator
         data_mean[
             valid,
             `:=`(
-                alpha_target = (future_dtr[valid] - epw_dtr) / epw_dtr,
+                alpha_target = (future_dtr[valid] - baseline_dtr[valid]) /
+                    epw_dtr,
                 method_applied = "combined"
             )
         ]
@@ -1978,15 +2090,7 @@ original_morphing__from_monthly_enhanced <- function(
 
     hourly <- data_epw[,
         .SD,
-        .SDcols = c(
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            var
-        )
+        .SDcols = c(ORIGINAL_MORPHING_TIME_COLS, var)
     ][data_mean, on = "month", allow.cartesian = TRUE]
     hourly <- morpher__smooth_enhanced_factors(
         hourly,
@@ -2006,29 +2110,12 @@ original_morphing__from_monthly_enhanced <- function(
         hourly[, (var) := as.numeric(get(var)) + delta]
     }
 
-    keep <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
+    original_morphing__select_output(
+        hourly,
         var,
-        "delta",
-        "alpha",
-        "method_applied",
-        "factor_status"
+        extra = c("method_applied", "factor_status"),
+        intersect_cols = TRUE
     )
-    hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 # }}}
 
@@ -2118,286 +2205,18 @@ original_morphing__from_monthly_change <- function(
     type = c("shift", "stretch", "combined"),
     strict = TRUE
 ) {
-    type <- match.arg(type)
-    if (!nrow(data_mean)) {
-        return(data.table::data.table())
-    }
-    if (!nrow(reference_mean)) {
-        if (isTRUE(strict)) {
-            cli::cli_abort(
-                "Change-factor morphing requires reference climate data for {.val {var}}."
-            )
-        }
-        return(data.table::data.table())
-    }
-
-    # Belcher et al. equation (4) uses the difference between the average daily
-    # maximum and average daily minimum, rather than the two most extreme
-    # individual hours in the month.
-    monthly <- if (identical(type, "combined")) {
-        original_morphing__epw_monthly_dtr(data_epw, var)
-    } else {
-        original_morphing__epw_monthly(data_epw, var)
-    }
-    u <- morpher__default_epw_units(var)
-    data_mean <- original_morphing__align_units(data.table::copy(data_mean), u)
-    reference_mean <- original_morphing__align_units(
-        data.table::copy(reference_mean),
-        u
-    )
-    data_mean <- original_morphing__attach_reference(
-        data_mean,
-        reference_mean,
-        "reference_value"
-    )
-    data_mean <- original_morphing__handle_missing_reference(
-        data_mean,
-        var,
+    original_morphing__from_monthly(
+        var = var,
+        data_epw = data_epw,
+        data_mean = data_mean,
+        data_max = data_max,
+        data_min = data_min,
+        type = type,
+        reference_mean = reference_mean,
+        reference_max = reference_max,
+        reference_min = reference_min,
         strict = strict
     )
-
-    case_fallback <- data.table::data.table()
-    if (
-        identical(type, "combined") &&
-            !is.null(data_max) &&
-            !is.null(data_min) &&
-            !is.null(reference_max) &&
-            !is.null(reference_min)
-    ) {
-        data_max <- original_morphing__align_units(
-            data.table::copy(data_max),
-            u
-        )
-        data_min <- original_morphing__align_units(
-            data.table::copy(data_min),
-            u
-        )
-        reference_max <- original_morphing__align_units(
-            data.table::copy(reference_max),
-            u
-        )
-        reference_min <- original_morphing__align_units(
-            data.table::copy(reference_min),
-            u
-        )
-        # Extrema are separate CMIP variables and may legitimately be selected
-        # from different tables or grids than tas. Align by scientific case and
-        # month instead of treating storage partition metadata as identity.
-        data_mean <- morpher__attach_extreme_value(
-            data_mean,
-            data_max,
-            "value_max"
-        )
-        data_mean <- morpher__attach_extreme_value(
-            data_mean,
-            data_min,
-            "value_min"
-        )
-        data_mean <- morpher__attach_reference_extreme(
-            data_mean,
-            reference_max,
-            "reference_max"
-        )
-        data_mean <- morpher__attach_reference_extreme(
-            data_mean,
-            reference_min,
-            "reference_min"
-        )
-
-        missing_extreme <- data_mean[
-            is.na(value_max) |
-                is.na(value_min) |
-                is.na(reference_max) |
-                is.na(reference_min)
-        ]
-        if (nrow(missing_extreme)) {
-            cols <- c(
-                "activity_drs",
-                "institution_id",
-                "source_id",
-                "experiment_id",
-                "member_id",
-                "table_id"
-            )
-            case_fallback <- unique(missing_extreme[, ..cols], by = cols)
-            cases <- case_fallback[, unique(sprintf(
-                "CMIP6.%s.%s.%s.%s.%s.%s",
-                activity_drs,
-                institution_id,
-                source_id,
-                experiment_id,
-                member_id,
-                table_id
-            ))]
-            cases <- sprintf("[%i] '%s'", seq_along(cases), sort(cases))
-            warning(
-                sprintf(
-                    "Case(s) below contains missing target or reference max/min values of '%s'. ",
-                    gsub("_", " ", var)
-                ),
-                "'Shift' method will be used for it.\n",
-                paste0(cases, collapse = "\n"),
-                call. = FALSE
-            )
-        }
-    }
-
-    if (identical(type, "combined")) {
-        data_mean[
-            monthly,
-            on = "month",
-            `:=`(
-                epw_mean = i.val_mean,
-                epw_dtr = i.val_dtr
-            )
-        ]
-    } else {
-        data_mean[
-            monthly,
-            on = "month",
-            `:=`(
-                epw_mean = i.val_mean,
-                epw_max = i.val_max,
-                epw_min = i.val_min
-            )
-        ]
-    }
-    data_mean[, delta := value - reference_value]
-
-    data <- data_epw[,
-        .SD,
-        .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)
-    ][
-        data_mean,
-        on = "month",
-        allow.cartesian = TRUE
-    ]
-
-    if (
-        identical(type, "combined") &&
-            all(
-                c(
-                    "value_min",
-                    "value_max",
-                    "reference_min",
-                    "reference_max"
-                ) %in%
-                    names(data)
-            )
-    ) {
-        data[,
-            alpha := ((value_max - reference_max) -
-                (value_min - reference_min)) /
-                epw_dtr
-        ]
-        if (nrow(case_fallback)) {
-            data[case_fallback, on = names(case_fallback), alpha := 0.0]
-        }
-        data[
-            is.na(alpha) | !is.finite(morpher__drop_units(alpha)),
-            alpha := 0.0
-        ]
-    } else if (identical(type, "stretch")) {
-        ref <- morpher__drop_units(data$reference_value)
-        val <- morpher__drop_units(data$value)
-        data[,
-            alpha := ifelse(
-                is.finite(ref) & abs(ref) > .Machine$double.eps,
-                val / ref,
-                NA_real_
-            )
-        ]
-        missing_alpha <- data[is.na(alpha) | !is.finite(alpha)]
-        if (nrow(missing_alpha)) {
-            message <- sprintf(
-                "Reference climate data include zero values for %s; cannot compute stretch factors.",
-                var
-            )
-            if (isTRUE(strict)) {
-                cli::cli_abort(message)
-            }
-            warning(message, call. = FALSE)
-            data[is.na(alpha) | !is.finite(alpha), alpha := 1.0]
-        }
-    } else {
-        data[, alpha := 0.0]
-    }
-
-    thres_alpha <- getOption("epwshiftr.threshold_alpha")
-    if (!checkmate::test_number(thres_alpha, lower = 0)) {
-        warning(paste0(
-            "The threshold value for the monthly-mean fractional change (Alpha) ",
-            "should be a positive number, but '",
-            if (is.null(thres_alpha)) "NULL" else thres_alpha,
-            "' is found."
-        ))
-    }
-    if (
-        type %in%
-            c("stretch", "combined") &&
-            nrow(
-                abnorm_alpha <- data[
-                    abs(morpher__drop_units(alpha)) > thres_alpha
-                ]
-            )
-    ) {
-        warning(sprintf(
-            paste(
-                "The absolute values of monthly-mean fractional change (Alpha) below",
-                "for '%s' has exceeded the threshold (%s) set by the option",
-                "'epwshiftr.threshold_alpha'. 'Shift' morphing method will be utilized",
-                "instead of '%s' method to avoid unrealistic values. It is highly",
-                "suggested to further investigate the input data.\n%s",
-                collapse = " "
-            ),
-            gsub("_", " ", var, fixed = TRUE),
-            thres_alpha,
-            type,
-            paste0(
-                sprintf(
-                    "Month = %s | Future = %s, Reference = %s --> Alpha = %s",
-                    format(abnorm_alpha$month),
-                    format(abnorm_alpha$value, digits = 3),
-                    format(abnorm_alpha$reference_value, digits = 3),
-                    format(morpher__drop_units(abnorm_alpha$alpha), digits = 3)
-                ),
-                collapse = "\n"
-            )
-        ))
-        type <- "shift"
-    }
-
-    if (identical(type, "shift")) {
-        data[, c(var) := get(var) + delta]
-    } else if (identical(type, "stretch")) {
-        data[, c(var) := get(var) * alpha]
-    } else if (identical(type, "combined")) {
-        data[, c(var) := get(var) + delta + alpha * (get(var) - epw_mean)]
-    }
-
-    data[,
-        .SD,
-        .SDcols = c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "interval",
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            var,
-            "delta",
-            "alpha"
-        )
-    ]
 }
 # }}}
 
@@ -2415,10 +2234,6 @@ morpher__attach_reference_extreme <- function(target, reference, value_name) {
 }
 # }}}
 
-# Enhanced change-factor morphing applies
-# alpha = (R_future - R_reference) / R_epw to the EPW anomaly. The same guarded
-# per-month fallback and covariance-compensated smoothing used by the absolute
-# path keeps the target monthly mean exact across month boundaries.
 # original_morphing__from_monthly_change_enhanced {{{
 original_morphing__from_monthly_change_enhanced <- function(
     var,
@@ -2433,410 +2248,101 @@ original_morphing__from_monthly_change_enhanced <- function(
     strict = TRUE,
     transition_hours = 72L
 ) {
-    type <- match.arg(type)
+    original_morphing__from_monthly_enhanced(
+        var = var,
+        data_epw = data_epw,
+        data_mean = data_mean,
+        data_max = data_max,
+        data_min = data_min,
+        type = type,
+        transition_hours = transition_hours,
+        reference_mean = reference_mean,
+        reference_max = reference_max,
+        reference_min = reference_min,
+        strict = strict
+    )
+}
+# }}}
+
+# Dispatch one original-morphing EPW field across absolute vs change-factor
+# modes and legacy vs enhanced profiles, with optional extrema and bounds.
+# original_morphing__field {{{
+original_morphing__field <- function(
+    data_epw,
+    context,
+    variable_id,
+    epw_field,
+    type,
+    change_factor = FALSE,
+    max_var = NULL,
+    min_var = NULL,
+    clamp = NULL
+) {
+    read_opt <- function(var, reference = FALSE) {
+        if (is.null(var)) {
+            return(NULL)
+        }
+        dt <- if (isTRUE(reference)) {
+            original_morphing__monthly_reference_variable(context, var)
+        } else {
+            original_morphing__monthly_variable(context, var)
+        }
+        if (nrow(dt)) dt else NULL
+    }
+    data_mean <- original_morphing__monthly_variable(context, variable_id)
     if (!nrow(data_mean)) {
         return(data.table::data.table())
     }
-    if (!nrow(reference_mean)) {
-        if (isTRUE(strict)) {
-            cli::cli_abort(
-                "Change-factor morphing requires reference climate data for {.val {var}}."
-            )
-        }
-        return(data.table::data.table())
-    }
-
-    units <- morpher__default_epw_units(var)
-    data_mean <- original_morphing__align_units(
-        data.table::copy(data_mean),
-        units
-    )
-    reference_mean <- original_morphing__align_units(
-        data.table::copy(reference_mean),
-        units
-    )
-    data_mean <- original_morphing__attach_reference(
-        data_mean,
-        reference_mean,
-        "reference_value"
-    )
-    data_mean <- original_morphing__handle_missing_reference(
-        data_mean,
-        var,
-        strict = strict
-    )
-
-    align_optional <- function(data) {
-        if (is.null(data) || !nrow(data)) {
-            return(NULL)
-        }
-        original_morphing__align_units(data.table::copy(data), units)
-    }
-    data_mean <- morpher__attach_extreme_value(
-        data_mean,
-        align_optional(data_max),
-        "value_max"
-    )
-    data_mean <- morpher__attach_extreme_value(
-        data_mean,
-        align_optional(data_min),
-        "value_min"
-    )
-    data_mean <- morpher__attach_reference_extreme(
-        data_mean,
-        align_optional(reference_max),
-        "reference_max"
-    )
-    data_mean <- morpher__attach_reference_extreme(
-        data_mean,
-        align_optional(reference_min),
-        "reference_min"
-    )
-
-    monthly <- original_morphing__epw_monthly_dtr(data_epw, var)
-    data_mean[
-        monthly,
-        on = "month",
-        `:=`(
-            epw_mean = i.val_mean,
-            epw_dtr = i.val_dtr
-        )
-    ]
-    data_mean[, `:=`(
-        delta_target = as.numeric(value - reference_value),
-        alpha_target = 0,
-        method_applied = "shift",
-        factor_status = "ok"
-    )]
-
-    if (identical(type, "stretch")) {
-        reference_numeric <- as.numeric(data_mean$reference_value)
-        valid <- is.finite(reference_numeric) &
-            abs(reference_numeric) > .Machine$double.eps
-        data_mean[
-            valid,
-            `:=`(
-                alpha_target = as.numeric(value / reference_value),
-                method_applied = "stretch"
-            )
-        ]
-        data_mean[!valid, factor_status := "fallback_shift_zero_reference"]
-    } else if (type %in% c("combined", "auto")) {
-        future_dtr <- as.numeric(data_mean$value_max - data_mean$value_min)
-        reference_dtr <- as.numeric(
-            data_mean$reference_max - data_mean$reference_min
-        )
-        valid_extreme <- is.finite(future_dtr) & is.finite(reference_dtr)
-        valid_denominator <- is.finite(data_mean$epw_dtr) &
-            data_mean$epw_dtr > 0.1
-        valid <- valid_extreme & valid_denominator
-        data_mean[
-            valid,
-            `:=`(
-                alpha_target = (future_dtr[valid] - reference_dtr[valid]) /
-                    epw_dtr,
-                method_applied = "combined"
-            )
-        ]
-        data_mean[
-            !valid_extreme,
-            factor_status := "fallback_shift_missing_extremes"
-        ]
-        data_mean[
-            valid_extreme & !valid_denominator,
-            factor_status := "fallback_shift_flat_epw_dtr"
-        ]
-    }
-
-    threshold <- morpher__enhanced_alpha_threshold()
-    too_large <- abs(data_mean$alpha_target) > threshold
-    data_mean[
-        too_large,
-        `:=`(
-            alpha_target = 0,
-            method_applied = "shift",
-            factor_status = "fallback_shift_alpha_threshold"
-        )
-    ]
-
-    hourly <- data_epw[,
-        .SD,
-        .SDcols = c(
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            var
-        )
-    ][data_mean, on = "month", allow.cartesian = TRUE]
-    hourly <- morpher__smooth_enhanced_factors(
-        hourly,
-        var,
-        transform = type,
-        transition_hours = transition_hours
-    )
-    if (identical(type, "stretch")) {
-        hourly <- morpher__apply_enhanced_stretch(hourly, var)
-    } else if (type %in% c("combined", "auto")) {
-        hourly[,
-            (var) := as.numeric(get(var)) +
-                delta +
-                alpha * (as.numeric(get(var)) - epw_mean)
-        ]
+    data_max <- read_opt(max_var)
+    data_min <- read_opt(min_var)
+    reference_mean <- if (isTRUE(change_factor)) {
+        original_morphing__monthly_reference_variable(context, variable_id)
     } else {
-        hourly[, (var) := as.numeric(get(var)) + delta]
+        NULL
     }
-
-    keep <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
-        var,
-        "delta",
-        "alpha",
-        "method_applied",
-        "factor_status"
-    )
-    hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
-}
-# }}}
-
-# original_morphing__tdb {{{
-original_morphing__tdb <- function(data_epw, context, type) {
-    tas <- original_morphing__monthly_variable(context, "tas")
-    if (!nrow(tas)) {
-        return(data.table::data.table())
+    reference_max <- if (isTRUE(change_factor)) {
+        read_opt(max_var, reference = TRUE)
+    } else {
+        NULL
     }
-    tasmax <- original_morphing__monthly_variable(context, "tasmax")
-    tasmin <- original_morphing__monthly_variable(context, "tasmin")
-    if (identical(context$recipe$profile, "enhanced")) {
-        return(original_morphing__from_monthly_enhanced(
-            "dry_bulb_temperature",
-            data_epw,
-            tas,
-            if (nrow(tasmax)) tasmax else NULL,
-            if (nrow(tasmin)) tasmin else NULL,
-            type = type,
-            transition_hours = context$recipe$options$transition_hours
-        ))
+    reference_min <- if (isTRUE(change_factor)) {
+        read_opt(min_var, reference = TRUE)
+    } else {
+        NULL
     }
-    original_morphing__from_monthly(
-        "dry_bulb_temperature",
-        data_epw,
-        tas,
-        if (nrow(tasmax)) tasmax else NULL,
-        if (nrow(tasmin)) tasmin else NULL,
-        type = type
-    )
-}
-# }}}
-
-# original_morphing__rh {{{
-original_morphing__rh <- function(data_epw, context, type) {
-    hurs <- original_morphing__monthly_variable(context, "hurs")
-    if (!nrow(hurs)) {
-        return(data.table::data.table())
-    }
-    hursmax <- original_morphing__monthly_variable(context, "hursmax")
-    hursmin <- original_morphing__monthly_variable(context, "hursmin")
-    rh <- if (identical(context$recipe$profile, "enhanced")) {
+    out <- if (identical(context$recipe$profile, "enhanced")) {
         original_morphing__from_monthly_enhanced(
-            "relative_humidity",
+            epw_field,
             data_epw,
-            hurs,
-            if (nrow(hursmax)) hursmax else NULL,
-            if (nrow(hursmin)) hursmin else NULL,
+            data_mean,
+            data_max = data_max,
+            data_min = data_min,
             type = type,
-            transition_hours = context$recipe$options$transition_hours
+            transition_hours = context$recipe$options$transition_hours,
+            reference_mean = reference_mean,
+            reference_max = reference_max,
+            reference_min = reference_min,
+            strict = context$strict
         )
     } else {
         original_morphing__from_monthly(
-            "relative_humidity",
+            epw_field,
             data_epw,
-            hurs,
-            if (nrow(hursmax)) hursmax else NULL,
-            if (nrow(hursmin)) hursmin else NULL,
-            type = type
-        )
-    }
-    rh[relative_humidity > 100, relative_humidity := 100]
-    rh[relative_humidity < 0, relative_humidity := 0]
-    rh
-}
-# }}}
-
-# original_morphing__change_tdb {{{
-original_morphing__change_tdb <- function(data_epw, context, type) {
-    tas <- original_morphing__monthly_variable(context, "tas")
-    tas_ref <- original_morphing__monthly_reference_variable(context, "tas")
-    if (!nrow(tas)) {
-        return(data.table::data.table())
-    }
-    tasmax <- original_morphing__monthly_variable(context, "tasmax")
-    tasmin <- original_morphing__monthly_variable(context, "tasmin")
-    tasmax_ref <- original_morphing__monthly_reference_variable(
-        context,
-        "tasmax"
-    )
-    tasmin_ref <- original_morphing__monthly_reference_variable(
-        context,
-        "tasmin"
-    )
-    if (identical(context$recipe$profile, "enhanced")) {
-        return(original_morphing__from_monthly_change_enhanced(
-            "dry_bulb_temperature",
-            data_epw,
-            tas,
-            tas_ref,
-            if (nrow(tasmax)) tasmax else NULL,
-            if (nrow(tasmin)) tasmin else NULL,
-            if (nrow(tasmax_ref)) tasmax_ref else NULL,
-            if (nrow(tasmin_ref)) tasmin_ref else NULL,
+            data_mean,
+            data_max = data_max,
+            data_min = data_min,
             type = type,
-            strict = context$strict,
-            transition_hours = context$recipe$options$transition_hours
-        ))
-    }
-    original_morphing__from_monthly_change(
-        "dry_bulb_temperature",
-        data_epw,
-        tas,
-        tas_ref,
-        if (nrow(tasmax)) tasmax else NULL,
-        if (nrow(tasmin)) tasmin else NULL,
-        if (nrow(tasmax_ref)) tasmax_ref else NULL,
-        if (nrow(tasmin_ref)) tasmin_ref else NULL,
-        type = type,
-        strict = context$strict
-    )
-}
-# }}}
-
-# original_morphing__change_rh {{{
-original_morphing__change_rh <- function(data_epw, context, type) {
-    hurs <- original_morphing__monthly_variable(context, "hurs")
-    hurs_ref <- original_morphing__monthly_reference_variable(context, "hurs")
-    if (!nrow(hurs)) {
-        return(data.table::data.table())
-    }
-    hursmax <- original_morphing__monthly_variable(context, "hursmax")
-    hursmin <- original_morphing__monthly_variable(context, "hursmin")
-    hursmax_ref <- original_morphing__monthly_reference_variable(
-        context,
-        "hursmax"
-    )
-    hursmin_ref <- original_morphing__monthly_reference_variable(
-        context,
-        "hursmin"
-    )
-    rh <- if (identical(context$recipe$profile, "enhanced")) {
-        original_morphing__from_monthly_change_enhanced(
-            "relative_humidity",
-            data_epw,
-            hurs,
-            hurs_ref,
-            if (nrow(hursmax)) hursmax else NULL,
-            if (nrow(hursmin)) hursmin else NULL,
-            if (nrow(hursmax_ref)) hursmax_ref else NULL,
-            if (nrow(hursmin_ref)) hursmin_ref else NULL,
-            type = type,
-            strict = context$strict,
-            transition_hours = context$recipe$options$transition_hours
-        )
-    } else {
-        original_morphing__from_monthly_change(
-            "relative_humidity",
-            data_epw,
-            hurs,
-            hurs_ref,
-            if (nrow(hursmax)) hursmax else NULL,
-            if (nrow(hursmin)) hursmin else NULL,
-            if (nrow(hursmax_ref)) hursmax_ref else NULL,
-            if (nrow(hursmin_ref)) hursmin_ref else NULL,
-            type = type,
+            reference_mean = reference_mean,
+            reference_max = reference_max,
+            reference_min = reference_min,
             strict = context$strict
         )
     }
-    rh[relative_humidity > 100, relative_humidity := 100]
-    rh[relative_humidity < 0, relative_humidity := 0]
-    rh
-}
-# }}}
-
-# original_morphing__monthly_field {{{
-original_morphing__monthly_field <- function(
-    data_epw,
-    context,
-    variable_id,
-    epw_field,
-    type
-) {
-    data <- original_morphing__monthly_variable(context, variable_id)
-    if (!nrow(data)) {
-        return(data.table::data.table())
+    if (!is.null(clamp) && nrow(out)) {
+        out[get(epw_field) > clamp[[2L]], (epw_field) := clamp[[2L]]]
+        out[get(epw_field) < clamp[[1L]], (epw_field) := clamp[[1L]]]
     }
-    if (identical(context$recipe$profile, "enhanced")) {
-        return(original_morphing__from_monthly_enhanced(
-            epw_field,
-            data_epw,
-            data,
-            type = type,
-            transition_hours = context$recipe$options$transition_hours
-        ))
-    }
-    original_morphing__from_monthly(epw_field, data_epw, data, type = type)
-}
-# }}}
-
-# original_morphing__change_monthly_field {{{
-original_morphing__change_monthly_field <- function(
-    data_epw,
-    context,
-    variable_id,
-    epw_field,
-    type
-) {
-    data <- original_morphing__monthly_variable(context, variable_id)
-    reference <- original_morphing__monthly_reference_variable(
-        context,
-        variable_id
-    )
-    if (!nrow(data)) {
-        return(data.table::data.table())
-    }
-    if (identical(context$recipe$profile, "enhanced")) {
-        return(original_morphing__from_monthly_change_enhanced(
-            epw_field,
-            data_epw,
-            data,
-            reference,
-            type = type,
-            strict = context$strict,
-            transition_hours = context$recipe$options$transition_hours
-        ))
-    }
-    original_morphing__from_monthly_change(
-        epw_field,
-        data_epw,
-        data,
-        reference,
-        type = type,
-        strict = context$strict
-    )
+    out
 }
 # }}}
 
@@ -2921,15 +2427,7 @@ original_morphing__total_sky_cover_enhanced <- function(
     )]
     hourly <- data_epw[,
         .SD,
-        .SDcols = c(
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            "total_sky_cover"
-        )
+        .SDcols = c(ORIGINAL_MORPHING_TIME_COLS, "total_sky_cover")
     ][data_mean, on = "month", allow.cartesian = TRUE]
     hourly <- morpher__smooth_enhanced_factors(
         hourly,
@@ -2944,28 +2442,12 @@ original_morphing__total_sky_cover_enhanced <- function(
         )))
     ]
     hourly[, alpha := NA_real_]
-    keep <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
+    original_morphing__select_output(
+        hourly,
         "total_sky_cover",
-        "delta",
-        "alpha",
-        "factor_status"
+        extra = "factor_status",
+        intersect_cols = TRUE
     )
-    hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 # }}}
 
@@ -2978,7 +2460,15 @@ original_morphing__total_sky_cover <- function(
 ) {
     var <- "total_sky_cover"
     if (is.null(data_mean)) {
-        data_mean <- original_morphing__monthly_variable(context, "clt")
+        data_mean <- if (isTRUE(change_factor)) {
+            original_morphing__monthly_change_variable(
+                context,
+                "clt",
+                target_units = "%"
+            )
+        } else {
+            original_morphing__monthly_variable(context, "clt")
+        }
     }
     if (!nrow(data_mean)) {
         return(data.table::data.table())
@@ -2995,7 +2485,7 @@ original_morphing__total_sky_cover <- function(
     data_mean <- data_mean[monthly, on = "month"]
     data <- data_epw[,
         .SD,
-        .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)
+        .SDcols = c(ORIGINAL_MORPHING_TIME_COLS, var)
     ][
         data_mean,
         on = "month",
@@ -3027,45 +2517,7 @@ original_morphing__total_sky_cover <- function(
         total_sky_cover = target_total_sky_cover
     )]
     data[, target_total_sky_cover := NULL]
-    data[,
-        .SD,
-        .SDcols = c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "interval",
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            var,
-            "delta",
-            "alpha"
-        )
-    ]
-}
-# }}}
-
-# original_morphing__change_total_sky_cover {{{
-original_morphing__change_total_sky_cover <- function(data_epw, context) {
-    data_mean <- original_morphing__monthly_change_variable(
-        context,
-        "clt",
-        target_units = "%"
-    )
-    original_morphing__total_sky_cover(
-        data_epw,
-        context,
-        data_mean = data_mean,
-        change_factor = TRUE
-    )
+    original_morphing__select_output(data, var)
 }
 # }}}
 
@@ -3158,55 +2610,18 @@ original_morphing__snow_depth <- function(data_epw, context) {
     )]
     hourly <- data_epw[,
         .SD,
-        .SDcols = c(
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            "snow_depth"
-        )
+        .SDcols = c(ORIGINAL_MORPHING_TIME_COLS, "snow_depth")
     ][future, on = "month", allow.cartesian = TRUE]
-    hourly[, .snow_order := .I]
-    case_cols <- morpher__factor_case_columns(hourly)
-    groups <- if (length(case_cols)) {
-        unique(hourly[, ..case_cols])
-    } else {
-        data.table::data.table(.case = 1L)
-    }
-    pieces <- vector("list", nrow(groups))
-    for (i in seq_len(nrow(groups))) {
-        rows <- if (length(case_cols)) {
-            keep <- rep(TRUE, nrow(hourly))
-            for (name in case_cols) {
-                value <- groups[[name]][[i]]
-                keep <- keep &
-                    if (is.na(value)) {
-                        is.na(hourly[[name]])
-                    } else {
-                        hourly[[name]] == value
-                    }
-            }
-            hourly[keep]
-        } else {
-            data.table::copy(hourly)
-        }
-        # Snow factors use the same representative calendar as other fields,
-        # including EPWs assembled from several historical source years.
-        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
+    hourly <- original_morphing__by_case(hourly, function(rows) {
         alpha_target <- morpher__monthly_target_vector(rows, "alpha_target")
-        alpha <- morpher__constrained_month_series(
+        alpha_vec <- morpher__constrained_month_series(
             rows$month,
             alpha_target,
             context$recipe$options$transition_hours
         )
-        rows[, alpha := alpha]
-        pieces[[i]] <- rows
-    }
-    hourly <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-    data.table::setorder(hourly, .snow_order)
-    hourly[, .snow_order := NULL]
+        data.table::set(rows, j = "alpha", value = alpha_vec)
+        rows
+    })
     baseline_snow <- as.numeric(hourly$snow_depth)
     valid_baseline <- is.finite(baseline_snow) &
         baseline_snow >= 0 &
@@ -3221,30 +2636,13 @@ original_morphing__snow_depth <- function(data_epw, context) {
         delta = delta_target,
         method_applied = "ratio"
     )]
-    keep <- c(
-        "activity_drs",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "lon",
-        "lat",
-        "interval",
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
-        "snow_depth",
-        "delta",
-        "alpha",
-        "method_applied",
-        "factor_status"
-    )
     list(
-        data = hourly[, .SD, .SDcols = intersect(keep, names(hourly))],
+        data = original_morphing__select_output(
+            hourly,
+            "snow_depth",
+            extra = c("method_applied", "factor_status"),
+            intersect_cols = TRUE
+        ),
         diagnostics = morpher__empty_diagnostics()
     )
 }
@@ -3487,15 +2885,7 @@ original_morphing__precip_from_monthly <- function(
         return(data.table::data.table())
     }
     rate_col <- "liquid_precip_rate"
-    keep <- c(
-        "datetime",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
-        "liquid_precip_depth"
-    )
+    keep <- c(ORIGINAL_MORPHING_TIME_COLS, "liquid_precip_depth")
     if (rate_col %in% names(data_epw)) {
         keep <- c(keep, rate_col)
     }
@@ -3638,80 +3028,55 @@ original_morphing__precip_from_monthly <- function(
     data[, liquid_precip_depth := as.numeric(depth)]
     data[, liquid_precip_rate := as.numeric(liquid_precip_rate)]
     data[, .baseline_precip_depth := NULL]
-    data[,
-        .SD,
-        .SDcols = c(
-            "activity_drs",
-            "institution_id",
-            "source_id",
-            "experiment_id",
-            "member_id",
-            "table_id",
-            "lon",
-            "lat",
-            "interval",
-            "datetime",
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            "liquid_precip_depth",
-            "liquid_precip_rate",
-            "delta",
-            "alpha"
-        )
-    ]
+    original_morphing__select_output(
+        data,
+        c("liquid_precip_depth", "liquid_precip_rate")
+    )
 }
 # }}}
 
-# Build absolute-target original-morphing precipitation from future monthly totals.
+# Build original-morphing precipitation from future (and optional reference)
+# monthly water-equivalent totals.
 # original_morphing__precip {{{
-original_morphing__precip <- function(data_epw, context) {
+original_morphing__precip <- function(
+    data_epw,
+    context,
+    change_factor = FALSE
+) {
     pr <- original_morphing__monthly_precip_variable(context, "pr")
-    original_morphing__precip_from_monthly(
-        data_epw,
-        pr,
-        strict = context$strict
-    )
-}
-# }}}
-
-# Build change-factor original-morphing precipitation from future/reference totals.
-# original_morphing__change_precip {{{
-original_morphing__change_precip <- function(data_epw, context) {
-    pr <- original_morphing__monthly_precip_variable(context, "pr")
-    pr_ref <- original_morphing__monthly_precip_variable(
-        context,
-        "pr",
-        reference = TRUE
-    )
     if (!nrow(pr)) {
         return(data.table::data.table())
     }
-    if (!nrow(pr_ref)) {
-        if (isTRUE(context$strict)) {
-            cli::cli_abort(
-                "Change-factor morphing requires reference climate data for {.val pr}."
-            )
-        }
-        warning(
-            "Reference climate data are missing for pr; precipitation is left unchanged.",
-            call. = FALSE
+    if (isTRUE(change_factor)) {
+        pr_ref <- original_morphing__monthly_precip_variable(
+            context,
+            "pr",
+            reference = TRUE
         )
-        return(data.table::data.table())
+        if (!nrow(pr_ref)) {
+            if (isTRUE(context$strict)) {
+                cli::cli_abort(
+                    "Change-factor morphing requires reference climate data for {.val pr}."
+                )
+            }
+            warning(
+                "Reference climate data are missing for pr; precipitation is left unchanged.",
+                call. = FALSE
+            )
+            return(data.table::data.table())
+        }
+        pr <- original_morphing__attach_reference(pr, pr_ref, "reference_value")
+        pr <- original_morphing__handle_missing_reference(
+            pr,
+            "pr",
+            strict = context$strict
+        )
     }
-    pr <- original_morphing__attach_reference(pr, pr_ref, "reference_value")
-    pr <- original_morphing__handle_missing_reference(
-        pr,
-        "pr",
-        strict = context$strict
-    )
     original_morphing__precip_from_monthly(
         data_epw,
         pr,
         strict = context$strict,
-        change_factor = TRUE
+        change_factor = change_factor
     )
 }
 # }}}
@@ -3813,35 +3178,10 @@ morpher__enhanced_factor_metadata <- function(parts) {
 }
 # }}}
 
-# Select the five builders that differ between absolute-target and
-# change-factor original-morphing execution while leaving equations independent.
-# original_morphing__execution_steps {{{
-original_morphing__execution_steps <- function(change_factor = FALSE) {
-    if (isTRUE(change_factor)) {
-        return(list(
-            tdb = original_morphing__change_tdb,
-            monthly_field = original_morphing__change_monthly_field,
-            rh = original_morphing__change_rh,
-            total_cover = original_morphing__change_total_sky_cover,
-            precip = original_morphing__change_precip
-        ))
-    }
-
-    list(
-        tdb = original_morphing__tdb,
-        monthly_field = original_morphing__monthly_field,
-        rh = original_morphing__rh,
-        total_cover = original_morphing__total_sky_cover,
-        precip = original_morphing__precip
-    )
-}
-# }}}
-
 # Execute common original-morphing EPW assembly after the runner has chosen
 # whether fields come from absolute targets or future-minus-reference changes.
 # original_morphing__execute {{{
 original_morphing__execute <- function(context, change_factor = FALSE) {
-    steps <- original_morphing__execution_steps(change_factor)
     methods <- context$recipe$methods
     epw <- context$epw$clone()
     # Belcher calculations use an NA-based view while the cloned EpwFile keeps
@@ -3849,15 +3189,35 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
     data_epw <- epw_file__calculation_weather(
         suppressMessages(epw$add_unit()$data())
     )
+    field <- function(
+        variable_id,
+        epw_field,
+        type,
+        max_var = NULL,
+        min_var = NULL,
+        clamp = NULL
+    ) {
+        original_morphing__field(
+            data_epw,
+            context,
+            variable_id,
+            epw_field,
+            type,
+            change_factor = change_factor,
+            max_var = max_var,
+            min_var = min_var,
+            clamp = clamp
+        )
+    }
 
-    tdb <- steps$tdb(data_epw, context, methods[["tdb"]])
-    p <- steps$monthly_field(
-        data_epw,
-        context,
-        "psl",
-        "atmospheric_pressure",
-        methods[["p"]]
+    tdb <- field(
+        "tas",
+        "dry_bulb_temperature",
+        methods[["tdb"]],
+        max_var = "tasmax",
+        min_var = "tasmin"
     )
+    p <- field("psl", "atmospheric_pressure", methods[["p"]])
 
     # Keep the profile-specific humidity source decision in the shared flow so
     # both execution modes apply identical thermodynamic closure behavior.
@@ -3867,7 +3227,14 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
         rh <- humidity$rh
         tdew <- humidity$tdew
     } else {
-        rh <- steps$rh(data_epw, context, methods[["rh"]])
+        rh <- field(
+            "hurs",
+            "relative_humidity",
+            methods[["rh"]],
+            max_var = "hursmax",
+            min_var = "hursmin",
+            clamp = c(0, 100)
+        )
         tdew <- if (!nrow(tdb) || !nrow(rh)) {
             data.table::data.table()
         } else {
@@ -3880,9 +3247,7 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
             horizontal_infrared_radiation_intensity_from_sky
         )
     ]
-    hor_ir <- steps$monthly_field(
-        data_epw,
-        context,
+    hor_ir <- field(
         "rlds",
         "horizontal_infrared_radiation_intensity_from_sky",
         methods[["hor_ir"]]
@@ -3891,9 +3256,7 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
     data_epw[,
         global_horizontal_radiation := as.numeric(global_horizontal_radiation)
     ]
-    glob_rad <- steps$monthly_field(
-        data_epw,
-        context,
+    glob_rad <- field(
         "rsds",
         "global_horizontal_radiation",
         methods[["glob_rad"]]
@@ -3923,40 +3286,26 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
         } else {
             original_morphing__diffuse_radiation(data_epw, glob_rad)
         }
-        epw_lat <- morpher__epw_location_numeric(
-            epw,
-            c("latitude", "lat", "N2_latitude")
-        )
-        epw_lon <- morpher__epw_location_numeric(
-            epw,
-            c("longitude", "lon", "N3_longitude")
-        )
-        epw_tz <- morpher__epw_location_numeric(
-            epw,
-            c("time_zone", "timezone", "N4_time_zone"),
-            default = 0
-        )
+        loc <- morpher__epw_location(epw)
         norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
             data.table::data.table()
         } else {
             original_morphing__direct_normal_radiation(
                 glob_rad,
                 diff_rad,
-                latitude = epw_lat,
-                longitude = epw_lon,
-                timezone = epw_tz
+                latitude = loc$latitude,
+                longitude = loc$longitude,
+                timezone = loc$timezone
             )
         }
     }
 
-    wind <- steps$monthly_field(
+    wind <- field("sfcWind", "wind_speed", methods[["wind"]])
+    total_cover <- original_morphing__total_sky_cover(
         data_epw,
         context,
-        "sfcWind",
-        "wind_speed",
-        methods[["wind"]]
+        change_factor = change_factor
     )
-    total_cover <- steps$total_cover(data_epw, context)
     opaque_cover <- if (!nrow(total_cover)) {
         data.table::data.table()
     } else {
@@ -3972,7 +3321,11 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
     ) {
         data.table::data.table()
     } else {
-        steps$precip(data_epw, context)
+        original_morphing__precip(
+            data_epw,
+            context,
+            change_factor = change_factor
+        )
     }
     snow <- original_morphing__snow_depth(data_epw, context)
 

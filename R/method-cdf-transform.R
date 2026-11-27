@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R distribution-quantile.R
+#' @include signal-adjustment.R distribution.R
 NULL
 
 # Identify the daily Africa application separately because it supplies the
@@ -29,10 +29,10 @@ CDFT_FAMIEN_VARIABLES <- c(
 # precipitation flux has the numerically equivalent kg m-2 s-1 unit.
 CDFT_PR_SSR_THRESHOLD <- 1e-8
 
-# Construct the complete settings record shared by the Famien et al. daily
+# Construct the tunable settings record shared by the Famien et al. daily
 # profiles. Their Africa application supplies the 17-year fitting window and
-# central 9-year output block; edge truncation is an epwshiftr policy because
-# that application does not specify how to handle missing boundary flanks.
+# central 9-year output block; fixed empirical and edge conventions remain in
+# component metadata and output provenance.
 # cdft__default_settings {{{
 cdft__default_settings <- function(
     bounds,
@@ -41,16 +41,9 @@ cdft__default_settings <- function(
 ) {
     distribution_model <- match.arg(distribution_model)
     list(
-        range_alignment = "additive_mean",
-        seasonal_grouping = "calendar_month",
         future_window_years = 17L,
         output_block_years = 9L,
-        edge_policy = "truncate",
         min_samples = 10L,
-        cdf_method = "empirical_step",
-        inverse_cdf_method = "linear_type_7",
-        tie_method = "left_endpoint",
-        tail_policy = "constant_correction",
         target_grid_points = 1000L,
         tail_development_factor = 2,
         bounds = bounds,
@@ -77,40 +70,32 @@ cdft__profiles <- function() {
         rsds = cdft__default_settings(c(0, Inf)),
         sfcWind = cdft__default_settings(c(0, Inf))
     )
-    lapply(CDFT_FAMIEN_VARIABLES, function(variable) {
-        signal__variable_profile(
-            variable,
-            settings = settings[[variable]],
-            evidence = "published",
-            references = CDFT_REFERENCES,
-            metadata = list(
-                method = "cdf_transform",
-                output_role = "model_future",
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = CDFT_FAMIEN_VARIABLES,
+        references = CDFT_REFERENCES,
+        method = "cdf_transform",
+        output_role = "model_future",
+        evidence_mode = "all_published",
+        metadata_fn = function(variable, published) {
+            list(
                 method_settings_source = "method_literature_and_author_implementation",
                 temporal_window_source = "famien_2018_application",
                 temporal_window_reference = CDFT_FAMIEN_REFERENCE,
                 edge_policy_source = "epwshiftr_implementation"
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
-# Validate every CDF-t numerical convention at the signal-kernel boundary so
-# user overrides cannot silently select an unimplemented empirical variant.
+# Validate all tunable CDF-t settings at the signal-kernel boundary.
 # cdft__settings {{{
 cdft__settings <- function(settings) {
     expected <- c(
-        "range_alignment",
-        "seasonal_grouping",
         "future_window_years",
         "output_block_years",
-        "edge_policy",
         "min_samples",
-        "cdf_method",
-        "inverse_cdf_method",
-        "tie_method",
-        "tail_policy",
         "target_grid_points",
         "tail_development_factor",
         "bounds",
@@ -119,40 +104,7 @@ cdft__settings <- function(settings) {
         "random_seed"
     )
     resolved <- signal__resolve_settings(settings, expected, "CDF-t")
-    if (
-        !identical(resolved$range_alignment, "additive_mean") ||
-            !identical(resolved$seasonal_grouping, "calendar_month") ||
-            !identical(resolved$edge_policy, "truncate") ||
-            !identical(resolved$cdf_method, "empirical_step") ||
-            !identical(resolved$inverse_cdf_method, "linear_type_7") ||
-            !identical(resolved$tie_method, "left_endpoint") ||
-            !identical(resolved$tail_policy, "constant_correction")
-    ) {
-        cli::cli_abort(
-            "CDF-t currently requires additive-mean range alignment, native calendar-month grouping, truncated edge windows, empirical step CDFs, type-7 inverse quantiles, left-endpoint target inversion, and constant-correction tails."
-        )
-    }
-    resolved$future_window_years <- signal__integer_setting(
-        resolved$future_window_years,
-        "future_window_years",
-        lower = 1L
-    )
-    resolved$output_block_years <- signal__integer_setting(
-        resolved$output_block_years,
-        "output_block_years",
-        lower = 1L
-    )
-    if (
-        resolved$output_block_years > resolved$future_window_years ||
-            (resolved$future_window_years -
-                resolved$output_block_years) %%
-                2L !=
-                0L
-    ) {
-        cli::cli_abort(
-            "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
-        )
-    }
+    resolved <- signal__validate_future_block_window(resolved)
     resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
         "min_samples",
@@ -163,14 +115,10 @@ cdft__settings <- function(settings) {
         "target_grid_points",
         lower = 100L
     )
-    checkmate::assert_number(
+    resolved$tail_development_factor <- signal__positive_number(
         resolved$tail_development_factor,
-        lower = 0,
-        finite = TRUE
+        "tail_development_factor"
     )
-    if (resolved$tail_development_factor <= 0) {
-        cli::cli_abort("`tail_development_factor` must be positive.")
-    }
     signal__ordered_bounds(
         resolved$bounds,
         "CDF-t bounds must be ordered from lower to upper."
@@ -202,81 +150,6 @@ cdft__settings <- function(settings) {
     }
     resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
-}
-# }}}
-
-# Validate the three role-addressable daily inputs while retaining every
-# source's native CF calendar and future-model row order.
-# cdft__inputs {{{
-cdft__inputs <- function(inputs, variable, distribution_model) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!identical(sort(names(inputs)), sort(roles))) {
-        cli::cli_abort(
-            "CDF-t requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        bias__daily_table(inputs[[role]], role)
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "CDF-t role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "CDF-t role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "CDF-t inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        identical(distribution_model, "precipitation_ssr") &&
-            any(vapply(
-                series,
-                function(data) any(data[["value"]] < 0),
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "Precipitation CDF-t requires non-negative input values."
-        )
-    }
-    series
-}
-# }}}
-
-# Partition future years into disjoint output blocks and symmetric fitting
-# windows. The Famien et al. defaults use 17/9 years; epwshiftr truncates a
-# missing four-year flank when the requested series starts or ends too soon.
-# cdft__future_blocks {{{
-cdft__future_blocks <- function(
-    year,
-    future_window_years,
-    output_block_years
-) {
-    signal__future_blocks(
-        year,
-        future_window_years,
-        output_block_years,
-        "CDF-t"
-    )
 }
 # }}}
 
@@ -583,56 +456,31 @@ cdft__window_record <- function(
 # each row is written once even though adjacent fitting windows overlap.
 # cdft__adjust_values {{{
 cdft__adjust_values <- function(series, resolved, key, variable) {
-    observed <- series$observed_reference
-    historical <- series$model_historical
-    future <- series$model_future
     prepared <- cdft__prepared_values(
         series,
         resolved,
         key,
         variable
     )
-    blocks <- cdft__future_blocks(
-        future[["cf_year"]],
-        resolved$future_window_years,
-        resolved$output_block_years
-    )
-    adjusted <- rep.int(NA_real_, nrow(future))
-    records <- list()
-    record_index <- 0L
-
-    for (block in blocks) {
-        output_year <- future[["cf_year"]] %in% block$output_years
-        months <- sort(unique(future[["cf_month"]][output_year]))
-        for (month in months) {
-            observed_rows <- observed[["cf_month"]] == month
-            historical_rows <- historical[["cf_month"]] == month
-            future_rows <- future[["cf_month"]] == month &
-                future[["cf_year"]] %in% block$window_years
-            output_rows <- which(
-                future[["cf_month"]] == month & output_year
-            )
-            observed_values <- prepared$values$observed_reference[
-                observed_rows
-            ]
-            historical_values <- prepared$values$model_historical[
-                historical_rows
-            ]
-            future_values <- prepared$values$model_future[future_rows]
-            sample_counts <- c(
-                observed = length(observed_values),
-                historical = length(historical_values),
-                future = length(future_values)
-            )
-            if (any(sample_counts < resolved$min_samples)) {
-                cli::cli_abort(
-                    "CDF-t month {month} and output years {min(block$output_years)}-{max(block$output_years)} have fewer than {resolved$min_samples} observed, historical, or future values."
-                )
-            }
+    run <- signal__run_monthly_blocks(
+        series = series,
+        future_window_years = resolved$future_window_years,
+        output_block_years = resolved$output_block_years,
+        min_samples = resolved$min_samples,
+        bounds = resolved$bounds,
+        method_label = "CDF-t",
+        apply_window = function(
+            month,
+            block,
+            observed_rows,
+            historical_rows,
+            future_rows,
+            output_rows
+        ) {
             transformed <- cdft__map_window(
-                observed_values,
-                historical_values,
-                future_values,
+                prepared$values$observed_reference[observed_rows],
+                prepared$values$model_historical[historical_rows],
+                prepared$values$model_future[future_rows],
                 resolved
             )
             if (!is.null(prepared$precipitation)) {
@@ -641,86 +489,31 @@ cdft__adjust_values <- function(series, resolved, key, variable) {
                 transformed$diagnostics$output_recensored_values <-
                     sum(recensored)
             }
-            future_window_rows <- which(future_rows)
-            output_positions <- match(output_rows, future_window_rows)
-            adjusted[output_rows] <- transformed$value[
-                output_positions
-            ]
-            record_index <- record_index + 1L
-            records[[record_index]] <- cdft__window_record(
-                month,
-                block,
-                length(observed_values),
-                length(historical_values),
-                length(future_values),
-                length(output_rows),
-                transformed$diagnostics
+            list(
+                value = transformed$value,
+                record = cdft__window_record(
+                    month,
+                    block,
+                    length(observed_rows),
+                    length(historical_rows),
+                    length(future_rows),
+                    length(output_rows),
+                    transformed$diagnostics
+                )
             )
         }
-    }
-    if (anyNA(adjusted)) {
-        cli::cli_abort(
-            "CDF-t did not assign every future-model daily row exactly once."
-        )
-    }
-    bounded_result <- signal__bound_values(adjusted, resolved$bounds)
-    bounded <- bounded_result$value
-    observed_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "observed_samples"
     )
-    historical_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "historical_samples"
-    )
-    future_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "future_samples"
-    )
-    diagnostics <- list(
-        window_count = length(records),
-        observed_window_samples = c(
-            minimum = min(observed_samples),
-            median = stats::median(observed_samples),
-            maximum = max(observed_samples)
-        ),
-        historical_window_samples = c(
-            minimum = min(historical_samples),
-            median = stats::median(historical_samples),
-            maximum = max(historical_samples)
-        ),
-        future_window_samples = c(
-            minimum = min(future_samples),
-            median = stats::median(future_samples),
-            maximum = max(future_samples)
-        ),
-        truncated_edge_windows = sum(vapply(
-            records,
-            function(record) {
-                isTRUE(record$truncated_left) ||
-                    isTRUE(record$truncated_right)
-            },
-            logical(1L)
-        )),
-        clipped_values = bounded_result$clipped,
-        windows = records
-    )
+    diagnostics <- run$diagnostics
     if (!is.null(prepared$precipitation)) {
-        prepared$precipitation$output_dry_values <- sum(bounded == 0)
+        prepared$precipitation$output_dry_values <- sum(run$value == 0)
         prepared$precipitation$output_positive_below_threshold_values <-
             sum(
-                bounded > 0 &
-                    bounded < resolved$ssr_threshold
+                run$value > 0 &
+                    run$value < resolved$ssr_threshold
             )
         diagnostics$precipitation <- prepared$precipitation
     }
-    list(value = bounded, diagnostics = diagnostics)
+    list(value = run$value, diagnostics = diagnostics)
 }
 # }}}
 
@@ -730,10 +523,20 @@ cdft__adjust_values <- function(series, resolved, key, variable) {
 cdft__apply_group <- function(inputs, settings, key) {
     resolved <- cdft__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- cdft__inputs(
+    is_ssr <- identical(
+        resolved$distribution_model,
+        "precipitation_ssr"
+    )
+    series <- signal__validate_three_role_inputs(
         inputs,
-        variable,
-        resolved$distribution_model
+        variable = variable,
+        method = "CDF-t",
+        min_value = if (is_ssr) 0 else -Inf,
+        min_value_message = if (is_ssr) {
+            "Precipitation CDF-t requires non-negative input values."
+        } else {
+            NULL
+        }
     )
     mapped <- cdft__adjust_values(
         series,
@@ -751,6 +554,13 @@ cdft__apply_group <- function(inputs, settings, key) {
         settings = resolved,
         provenance = list(
             method = "cdf_transform",
+            range_alignment = "additive_mean",
+            empirical_conventions = list(
+                cdf = "empirical_step",
+                inverse_cdf = "linear_type_7",
+                ties = "left_endpoint",
+                tails = "constant_correction"
+            ),
             references = CDFT_REFERENCES,
             group_key = key,
             output_backbone = "model_future",
@@ -758,7 +568,7 @@ cdft__apply_group <- function(inputs, settings, key) {
                 seasonal_grouping = "calendar_month",
                 future_window_years = resolved$future_window_years,
                 output_block_years = resolved$output_block_years,
-                edge_policy = resolved$edge_policy,
+                edge_policy = "truncate",
                 seasonal_grouping_source = "famien_2018_application",
                 window_source = if (
                     resolved$future_window_years == 17L &&
@@ -784,49 +594,27 @@ cdft__apply_group <- function(inputs, settings, key) {
 }
 # }}}
 
-# Return one explicit diagnostic string when CDF-t violates the package-native
-# future-model output contract.
-# cdft__validate_result {{{
-cdft__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        DailyAdjustedSeries,
-        "DailyAdjustedSeries",
-        "model_future",
-        "CDF-t"
-    )
-}
-# }}}
-
 # Construct the reusable daily CDF-t signal with the six variables used by
 # Famien et al. and the package-native three-role contract.
 # cdft__component {{{
 cdft__component <- function() {
-    alternatives <- as.list(CDFT_FAMIEN_VARIABLES)
-    requirements <- signal__three_role_requirements(
-        alternatives,
-        frequencies = "day"
-    )
-    signal__component(
+    signal__three_role_component(
         name = "cdf_transform_daily",
         label = "Daily CDF-t",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_daily_series",
-        output_kinds = "daily_adjusted_series",
-        scopes = "univariate",
-        stochastic = TRUE,
+        variables = CDFT_FAMIEN_VARIABLES,
         profiles = cdft__profiles(),
         apply_group = cdft__apply_group,
-        operations = list(
-            validate_options = cdft__settings,
-            validate_result = cdft__validate_result
-        ),
+        validate_options = cdft__settings,
+        method_label = "CDF-t",
+        output_role = "model_future",
+        stochastic = TRUE,
         metadata = list(
             method_family = "future_target_distribution_mapping",
             output_contract = "daily_adjusted_series",
             references = CDFT_REFERENCES,
             reference_implementation = "CRAN CDFt",
             stochastic_operation = "precipitation_ssr",
+            range_alignment = "additive_mean",
             empirical_conventions = list(
                 cdf = "empirical_step",
                 inverse_cdf = "linear_type_7",

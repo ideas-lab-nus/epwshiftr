@@ -29,6 +29,35 @@ daily_test__temperature_source <- function(
 }
 # }}}
 
+# Compose the daily temperature climatology and target-change helpers for tests.
+# daily_test__temperature_targets {{{
+daily_test__temperature_targets <- function(
+    future,
+    historical,
+    by = character(),
+    window_days = 31L,
+    target_year_days = 365L
+) {
+    future <- daily__temperature_source(future, "future", by)
+    historical <- daily__temperature_source(historical, "historical", by)
+    daily__temperature_target_changes(
+        daily__temperature_climatology(
+            future,
+            by,
+            window_days,
+            target_year_days
+        ),
+        daily__temperature_climatology(
+            historical,
+            by,
+            window_days,
+            target_year_days
+        ),
+        by
+    )
+}
+# }}}
+
 test_that("daily temperature targets recover mean and DTR changes across calendars", {
     calendar_days <- c(`360_day` = 360L, `365_day` = 365L, `366_day` = 366L)
     historical <- daily_test__temperature_source(calendar_days)
@@ -47,7 +76,7 @@ test_that("daily temperature targets recover mean and DTR changes across calenda
     original_future <- data.table::copy(future)
     original_historical <- data.table::copy(historical)
 
-    targets <- daily__temperature_targets(
+    targets <- daily_test__temperature_targets(
         future,
         historical,
         by = c("calendar", "source")
@@ -88,7 +117,7 @@ test_that("daily temperature targets inherit DTR when extrema are unavailable", 
         include_extrema = FALSE
     )
 
-    targets <- daily__temperature_targets(future, historical)
+    targets <- daily_test__temperature_targets(future, historical)
 
     expect_equal(targets$mean_delta, rep(2.5, 365L), tolerance = 1e-12)
     expect_true(all(is.na(targets$minimum_delta)))

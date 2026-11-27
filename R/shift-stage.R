@@ -1,5 +1,5 @@
 #' @include query.R store.R epw-morpher.R utils.R weather-transform.R
-#' @include source-reanalysis.R source-era5.R source-cds.R
+#' @include source-reanalysis.R
 NULL
 
 # shift diagnostics
@@ -40,12 +40,12 @@ shift_stage__diagnostics_normalize <- function(x = NULL) {
     out <- data.table::copy(data.table::as.data.table(x))
     for (col in SHIFT_DIAGNOSTIC_COLUMNS) {
         if (!col %in% names(out)) {
-            out[[col]] <- rep(NA_character_, nrow(out))
+            data.table::set(out, j = col, value = rep(NA_character_, nrow(out)))
         }
     }
     out <- out[, SHIFT_DIAGNOSTIC_COLUMNS, with = FALSE]
     for (col in SHIFT_DIAGNOSTIC_COLUMNS) {
-        out[[col]] <- as.character(out[[col]])
+        data.table::set(out, j = col, value = as.character(out[[col]]))
     }
     out[]
 }
@@ -141,6 +141,24 @@ shift_stage__prop_number <- function(lower = -Inf, upper = Inf) {
         lower = lower,
         upper = upper,
         finite = TRUE
+    )
+}
+# }}}
+
+# shift_stage__prop_char_vec {{{
+shift_stage__prop_char_vec <- function(
+    null.ok = FALSE,
+    default = if (isTRUE(null.ok)) NULL else character()
+) {
+    checkmate_property(
+        if (isTRUE(null.ok)) S7::class_any else S7::class_character,
+        checkmate::check_character,
+        any.missing = FALSE,
+        min.len = 1L,
+        min.chars = 1L,
+        unique = TRUE,
+        null.ok = null.ok,
+        default = default
     )
 }
 # }}}
@@ -303,14 +321,7 @@ shift_stage__check_mapping <- function(x, null.ok = TRUE) {
 ShiftCmip6Spec <- S7::new_class(
     "ShiftCmip6Spec",
     properties = list(
-        model = checkmate_property(
-            check = checkmate::check_character,
-            any.missing = FALSE,
-            min.len = 1L,
-            min.chars = 1L,
-            unique = TRUE,
-            null.ok = TRUE
-        ),
+        model = shift_stage__prop_char_vec(null.ok = TRUE),
         n_models = checkmate_property(
             check = checkmate::check_integer,
             lower = 1L,
@@ -318,23 +329,8 @@ ShiftCmip6Spec <- S7::new_class(
             any.missing = FALSE,
             null.ok = TRUE
         ),
-        scenarios = checkmate_property(
-            S7::class_character,
-            checkmate::check_character,
-            any.missing = FALSE,
-            min.len = 1L,
-            min.chars = 1L,
-            unique = TRUE,
-            default = character()
-        ),
-        member = checkmate_property(
-            check = checkmate::check_character,
-            any.missing = FALSE,
-            min.len = 1L,
-            min.chars = 1L,
-            unique = TRUE,
-            null.ok = TRUE
-        ),
+        scenarios = shift_stage__prop_char_vec(),
+        member = shift_stage__prop_char_vec(null.ok = TRUE),
         grid = shift_stage__prop_string(null.ok = TRUE, min.chars = 1L),
         frequency = checkmate_property(
             check = shift_stage__check_mapping,
@@ -345,15 +341,7 @@ ShiftCmip6Spec <- S7::new_class(
             null.ok = TRUE
         ),
         activity = shift_stage__prop_string(min.chars = 1L),
-        index_nodes = checkmate_property(
-            S7::class_character,
-            checkmate::check_character,
-            any.missing = FALSE,
-            min.len = 1L,
-            min.chars = 1L,
-            unique = TRUE,
-            default = character()
-        ),
+        index_nodes = shift_stage__prop_char_vec(),
         data_node = shift_stage__prop_string(null.ok = TRUE, min.chars = 1L),
         filters = checkmate_property(
             S7::class_list,
@@ -528,6 +516,43 @@ shift_stage__nested <- function(x, classes = list()) {
 }
 # }}}
 
+# Wrap top-level stage calls in one durable task/reporter boundary; nested
+# calls already own a reporter and dispatch straight to their S7 method.
+# shift_stage__run_if_top {{{
+shift_stage__run_if_top <- function(
+    task,
+    x,
+    fn,
+    args = list(),
+    store = NULL,
+    ui = NULL,
+    spec = args,
+    resumable = TRUE,
+    nonresumable_reason = NULL,
+    auto_complete = FALSE,
+    pass_store = FALSE
+) {
+    shift_run__task_execute(
+        task,
+        x,
+        store = store,
+        ui = ui,
+        spec = spec,
+        resumable = resumable,
+        nonresumable_reason = nonresumable_reason,
+        auto_complete = auto_complete,
+        code = function(reporter, task_store) {
+            call_args <- c(
+                list(x = x),
+                if (isTRUE(pass_store)) list(store = task_store),
+                args
+            )
+            shift_run__with_reporter(reporter, do.call(fn, call_args))
+        }
+    )
+}
+# }}}
+
 # generics
 #' @rdname shift_api
 #' @param x A shift stage object.
@@ -566,40 +591,23 @@ shift_collect <- S7::new_generic(
         ) {
             all <- FALSE
         }
-        reporter <- shift_run__current_reporter()
-        if (is.null(reporter)) {
+        if (is.null(shift_run__current_reporter())) {
             options <- list(...)
-            return(shift_run__task_execute(
+            args <- list(
+                fields = fields,
+                all = all,
+                limit = limit,
+                label = label
+            )
+            return(shift_stage__run_if_top(
                 "collect",
                 x,
+                shift_collect,
+                args = c(args, options),
                 store = store,
                 ui = ui,
-                spec = list(
-                    fields = fields,
-                    all = all,
-                    limit = limit,
-                    label = label,
-                    options = options
-                ),
-                code = function(reporter, task_store) {
-                    shift_run__with_reporter(
-                        reporter,
-                        do.call(
-                            shift_collect,
-                            c(
-                                list(
-                                    x = x,
-                                    store = task_store,
-                                    fields = fields,
-                                    all = all,
-                                    limit = limit,
-                                    label = label
-                                ),
-                                options
-                            )
-                        )
-                    )
-                }
+                spec = c(args, list(options = options)),
+                pass_store = TRUE
             ))
         }
         S7::S7_dispatch()
@@ -616,7 +624,7 @@ shift_collect <- S7::new_generic(
 #'   detached `Rscript` worker. Single plans return a queued `ShiftRun`; batches
 #'   return a queued `ShiftBatch` whose single coordinator shares source reads
 #'   and starts child workflows. Both modes honor the same source-worker limit
-#'   from `options(epwshiftr.mirai_workers = 4L)`. Use [shift_refresh()] or
+#'   from `options(epwshiftr.mirai_workers = 4L)`. Use [shift_status()] or
 #'   [shift_watch()] to follow source reading and newly registered child runs.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
@@ -638,8 +646,10 @@ shift_download <- S7::new_generic(
         ui = NULL,
         ...
     ) {
-        reporter <- shift_run__current_reporter()
-        if (is.null(reporter)) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
+        if (is.null(shift_run__current_reporter())) {
             options <- list(...)
             args <- list(
                 run = run,
@@ -649,29 +659,16 @@ shift_download <- S7::new_generic(
                 session_label = session_label
             )
             reconstructible <- is.null(downloader)
-            return(shift_run__task_execute(
+            return(shift_stage__run_if_top(
                 "download",
                 x,
+                shift_download,
+                args = c(list(downloader = downloader), args, options),
                 ui = ui,
                 spec = c(args, list(options = options)),
                 resumable = reconstructible,
-                nonresumable_reason = if (reconstructible) {
-                    NULL
-                } else {
+                nonresumable_reason = if (!reconstructible) {
                     "A session-local Downloader instance cannot be reconstructed."
-                },
-                code = function(reporter, task_store) {
-                    shift_run__with_reporter(
-                        reporter,
-                        do.call(
-                            shift_download,
-                            c(
-                                list(x = x, downloader = downloader),
-                                args,
-                                options
-                            )
-                        )
-                    )
                 }
             ))
         }
@@ -682,7 +679,7 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
-#'   [shift_epw_future()] and [shift_plan()] also accept a numeric vector of
+#'   [shift_epw_future()] also accepts a numeric vector of
 #'   target years; each year becomes an independently named output period.
 #' @param method Grid extraction method used by [shift_extract()].
 #' @param fallback Extraction fallback policy.
@@ -703,8 +700,10 @@ shift_extract <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
-        reporter <- shift_run__current_reporter()
-        if (is.null(reporter)) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
+        if (is.null(shift_run__current_reporter())) {
             args <- list(
                 site = site,
                 periods = periods,
@@ -716,17 +715,13 @@ shift_extract <- S7::new_generic(
                 overwrite = overwrite,
                 resume = resume
             )
-            return(shift_run__task_execute(
+            return(shift_stage__run_if_top(
                 "extract",
                 x,
+                shift_extract,
+                args = args,
                 ui = ui,
-                spec = shift_persist__extract_spec(args),
-                code = function(reporter, task_store) {
-                    shift_run__with_reporter(
-                        reporter,
-                        do.call(shift_extract, c(list(x = x), args))
-                    )
-                }
+                spec = shift_persist__extract_spec(args)
             ))
         }
         S7::S7_dispatch()
@@ -762,8 +757,10 @@ shift_morph <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
-        reporter <- shift_run__current_reporter()
-        if (is.null(reporter)) {
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
+        if (is.null(shift_run__current_reporter())) {
             transform__validate_execution_inputs(
                 transform,
                 reference,
@@ -782,22 +779,16 @@ shift_morph <- S7::new_generic(
             )
             spec <- shift_persist__morph_spec(args)
             reconstructible <- is.null(baseline) || !is.null(spec$baseline)
-            return(shift_run__task_execute(
+            return(shift_stage__run_if_top(
                 "morph",
                 x,
+                shift_morph,
+                args = args,
                 ui = ui,
                 spec = spec,
                 resumable = reconstructible,
-                nonresumable_reason = if (reconstructible) {
-                    NULL
-                } else {
+                nonresumable_reason = if (!reconstructible) {
                     "The baseline exists only in this R session."
-                },
-                code = function(reporter, task_store) {
-                    shift_run__with_reporter(
-                        reporter,
-                        do.call(shift_morph, c(list(x = x), args))
-                    )
                 }
             ))
         }
@@ -807,8 +798,10 @@ shift_morph <- S7::new_generic(
 
 #' @rdname shift_api
 #' @param dir In [shift_epw_future()], the user-facing delivery directory. In
-#'   [shift_epw_write()], an output directory inside the store root; relative paths
-#'   are resolved under the store root.
+#'   [shift_epw_write()], an output directory inside the store root when writing
+#'   from a `ShiftMorphed` stage (relative paths are resolved under the store
+#'   root), or the user-facing export directory when exporting an existing
+#'   `ShiftOutputs` stage.
 #' @param separate Whether to create separate output directories per morphing case.
 #' @param export_dir Optional directory outside or inside the store where EPW
 #'   files should also be copied for user-facing delivery.
@@ -825,33 +818,35 @@ shift_epw_write <- S7::new_generic(
         resume = TRUE,
         ui = NULL
     ) {
-        reporter <- shift_run__current_reporter()
-        if (is.null(reporter)) {
-            return(shift_run__task_execute(
-                "write_epw",
+        if (S7::S7_inherits(x, ShiftRun)) {
+            return(S7::S7_dispatch())
+        }
+        if (is.null(shift_run__current_reporter())) {
+            is_export <- S7::S7_inherits(x, ShiftOutputs)
+            args <- list(
+                dir = dir,
+                separate = separate,
+                export_dir = export_dir,
+                overwrite = overwrite,
+                resume = resume
+            )
+            spec <- args
+            if (isTRUE(is_export)) {
+                target_dir <- shift_export__resolve_target_dir(dir, export_dir)
+                spec$dir <- normalizePath(
+                    path.expand(target_dir),
+                    winslash = "/",
+                    mustWork = FALSE
+                )
+            }
+            return(shift_stage__run_if_top(
+                if (isTRUE(is_export)) "export_epw" else "write_epw",
                 x,
+                shift_epw_write,
+                args = args,
                 ui = ui,
-                spec = list(
-                    dir = dir,
-                    separate = separate,
-                    export_dir = export_dir,
-                    overwrite = overwrite,
-                    resume = resume
-                ),
-                auto_complete = !is.null(export_dir),
-                code = function(reporter, task_store) {
-                    shift_run__with_reporter(
-                        reporter,
-                        shift_epw_write(
-                            x,
-                            dir = dir,
-                            separate = separate,
-                            export_dir = export_dir,
-                            overwrite = overwrite,
-                            resume = resume
-                        )
-                    )
-                }
+                spec = spec,
+                auto_complete = isTRUE(is_export) || !is.null(export_dir)
             ))
         }
         S7::S7_dispatch()
@@ -873,9 +868,25 @@ shift_check <- S7::new_generic(
         network = FALSE,
         ...
     ) {
+        checkmate::assert_flag(strict)
+        checkmate::assert_flag(network)
         S7::S7_dispatch()
     }
 )
+
+# shift_stage__finish_check {{{
+shift_stage__finish_check <- function(diagnostics, strict, base = NULL) {
+    out <- if (is.null(base)) {
+        shift_stage__diagnostics_normalize(diagnostics)
+    } else {
+        shift_stage__bind_diagnostics(base, diagnostics)
+    }
+    if (isTRUE(strict)) {
+        shift_stage__abort_diagnostics(out)
+    }
+    out
+}
+# }}}
 
 # check methods
 # S7::method(shift_check, ShiftStage) {{{
@@ -885,13 +896,7 @@ S7::method(shift_check, ShiftStage) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_normalize(x@diagnostics)
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(x@diagnostics, strict)
 }
 # }}}
 
@@ -902,11 +907,8 @@ S7::method(shift_check, ShiftRequest) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_empty()
-    if (!identical(x@meta$provider, "esgf")) {
-        diagnostics <- shift_stage__diagnostic(
+    diagnostics <- if (!identical(x@meta$provider, "esgf")) {
+        shift_stage__diagnostic(
             stage = "request",
             severity = "error",
             code = "unsupported_provider",
@@ -916,11 +918,10 @@ S7::method(shift_check, ShiftRequest) <- function(
             ),
             action = "Use provider = 'esgf' or add a provider adapter."
         )
+    } else {
+        shift_stage__diagnostics_empty()
     }
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(diagnostics, strict)
 }
 # }}}
 
@@ -933,8 +934,6 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
     diagnostics <- shift_stage__diagnostics_empty()
     config <- tryCatch(
         cds__config(),
@@ -961,26 +960,17 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
             epwshiftr_cds_request_error = function(error) error
         )
         if (!is.null(remote_error)) {
+            auth_err <- inherits(remote_error, "epwshiftr_cds_auth_error")
             diagnostics <- shift_stage__diagnostic(
                 stage = "source",
                 severity = "error",
-                code = if (
-                    inherits(
-                        remote_error,
-                        "epwshiftr_cds_auth_error"
-                    )
-                ) {
+                code = if (auth_err) {
                     "cds_auth_invalid"
                 } else {
                     "cds_auth_unavailable"
                 },
                 message = conditionMessage(remote_error),
-                action = if (
-                    inherits(
-                        remote_error,
-                        "epwshiftr_cds_auth_error"
-                    )
-                ) {
+                action = if (auth_err) {
                     "Replace the configured CDS personal access token."
                 } else {
                     "Check network access and the CDS service status, then retry."
@@ -988,10 +978,7 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
             )
         }
     }
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(diagnostics, strict)
 }
 # }}}
 
@@ -1002,37 +989,33 @@ S7::method(shift_check, ShiftFiles) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_empty()
-    store <- tryCatch(shift_store(x), error = function(e) NULL)
-    if (is.null(store)) {
-        diagnostics <- shift_stage__diagnostic(
+    diagnostics <- shift_inspect__with_store(
+        x,
+        function(store) {
+            files <- shift_inspect__file_catalog(store, x@ids$query_id)
+            if (!nrow(files)) {
+                return(shift_stage__diagnostic(
+                    "files",
+                    "error",
+                    "missing_file_catalog",
+                    "No file catalog rows were found for this collected file stage.",
+                    query_id = x@ids$query_id,
+                    action = "Run `shift_collect()` again."
+                ))
+            }
+            shift_stage__diagnostics_empty()
+        },
+        allow_error = TRUE,
+        default = shift_stage__diagnostic(
             "files",
             "error",
             "missing_store",
             "The store for this collected file stage cannot be opened.",
             query_id = x@ids$query_id,
-            action = "Check `shift_store(x)` and the stored path."
+            action = "Check that the store directory exists and is accessible."
         )
-    } else {
-        files <- shift_inspect__file_catalog(store, x@ids$query_id)
-        if (!nrow(files)) {
-            diagnostics <- shift_stage__diagnostic(
-                "files",
-                "error",
-                "missing_file_catalog",
-                "No file catalog rows were found for this collected file stage.",
-                query_id = x@ids$query_id,
-                action = "Run `shift_collect()` again."
-            )
-        }
-    }
-    diagnostics <- shift_stage__bind_diagnostics(x@diagnostics, diagnostics)
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    )
+    shift_stage__finish_check(diagnostics, strict, base = x@diagnostics)
 }
 # }}}
 
@@ -1043,45 +1026,35 @@ S7::method(shift_check, ShiftDownload) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_empty()
-    store <- tryCatch(shift_store(x), error = function(e) NULL)
-    if (!is.null(store)) {
-        tasks <- if (!is.null(x@ids$session_id) && !is.na(x@ids$session_id)) {
-            tryCatch(
-                store$download_status(session_id = x@ids$session_id),
-                error = function(e) data.table::data.table()
-            )
-        } else {
-            data.table::data.table()
-        }
-        if (nrow(tasks)) {
-            failed <- tasks[tasks$status %in% c("error", "cancelled")]
-            if (nrow(failed)) {
-                diagnostics <- shift_stage__bind_diagnostics(
-                    diagnostics,
-                    shift_stage__diagnostic(
-                        "download",
-                        "error",
-                        "download_failed",
-                        sprintf(
-                            "%d download task(s) failed or were cancelled.",
-                            nrow(failed)
-                        ),
-                        query_id = x@ids$query_id,
-                        session_id = x@ids$session_id,
-                        action = "Retry `shift_download()` with resume = TRUE."
-                    )
-                )
+    diagnostics <- shift_inspect__with_store(
+        x,
+        function(store) {
+            tasks <- shift_inspect__download_tasks(store, x@ids$session_id)
+            failed <- if (nrow(tasks)) {
+                tasks[tasks$status %in% c("error", "cancelled")]
+            } else {
+                data.table::data.table()
             }
-        }
-    }
-    diagnostics <- shift_stage__bind_diagnostics(x@diagnostics, diagnostics)
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+            if (nrow(failed)) {
+                return(shift_stage__diagnostic(
+                    "download",
+                    "error",
+                    "download_failed",
+                    sprintf(
+                        "%d download task(s) failed or were cancelled.",
+                        nrow(failed)
+                    ),
+                    query_id = x@ids$query_id,
+                    session_id = x@ids$session_id,
+                    action = "Retry `shift_download()` with resume = TRUE."
+                ))
+            }
+            shift_stage__diagnostics_empty()
+        },
+        allow_error = TRUE,
+        default = shift_stage__diagnostics_empty()
+    )
+    shift_stage__finish_check(diagnostics, strict, base = x@diagnostics)
 }
 # }}}
 
@@ -1092,18 +1065,15 @@ S7::method(shift_check, ShiftClimate) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    store <- shift_store(x)
-    coverage <- store$coverage(plan_id = x@ids$plan_id)
-    diagnostics <- shift_stage__bind_diagnostics(
-        x@diagnostics,
-        shift_stage__diagnostics_from_coverage(coverage)
+    coverage <- shift_inspect__with_store(
+        x,
+        function(store) store$coverage(plan_id = x@ids$plan_id)
     )
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(
+        shift_stage__diagnostics_from_coverage(coverage),
+        strict,
+        base = x@diagnostics
+    )
 }
 # }}}
 
@@ -1114,13 +1084,7 @@ S7::method(shift_check, ShiftMorphed) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_normalize(x@diagnostics)
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(x@diagnostics, strict)
 }
 # }}}
 
@@ -1131,24 +1095,21 @@ S7::method(shift_check, ShiftOutputs) <- function(
     network = FALSE,
     ...
 ) {
-    checkmate::assert_flag(strict)
-    checkmate::assert_flag(network)
-    diagnostics <- shift_stage__diagnostics_empty()
-    store <- shift_store(x)
     outputs <- shift_outputs(x)
     path_col <- intersect(
         c("path", "output_path", "relative_path"),
         names(outputs)
     )
-    if (
-        !nrow(outputs) ||
-            !length(path_col) ||
-            !shift_inspect__relative_paths_exist(
+    present <- shift_inspect__with_store(x, function(store) {
+        nrow(outputs) &&
+            length(path_col) &&
+            shift_inspect__relative_paths_exist(
                 store,
                 outputs[[path_col[[1L]]]]
             )
-    ) {
-        diagnostics <- shift_stage__diagnostic(
+    })
+    diagnostics <- if (!isTRUE(present)) {
+        shift_stage__diagnostic(
             "outputs",
             "error",
             "missing_epw_output",
@@ -1156,12 +1117,10 @@ S7::method(shift_check, ShiftOutputs) <- function(
             morph_id = x@ids$morph_id,
             action = "Run `shift_epw_write()` again or check the output directory."
         )
+    } else {
+        shift_stage__diagnostics_empty()
     }
-    diagnostics <- shift_stage__bind_diagnostics(x@diagnostics, diagnostics)
-    if (isTRUE(strict)) {
-        shift_stage__abort_diagnostics(diagnostics)
-    }
-    diagnostics
+    shift_stage__finish_check(diagnostics, strict, base = x@diagnostics)
 }
 # }}}
 
@@ -1202,6 +1161,164 @@ shift_stage__diagnostics_from_coverage <- function(coverage) {
         )
     }
     do.call(shift_stage__bind_diagnostics, diagnostics)
+}
+# }}}
+
+# Resolve and validate the target export directory for ShiftOutputs export.
+# shift_export__resolve_target_dir {{{
+shift_export__resolve_target_dir <- function(dir = NULL, export_dir = NULL) {
+    checkmate::assert_string(dir, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_string(export_dir, min.chars = 1L, null.ok = TRUE)
+    if (is.null(dir) && is.null(export_dir)) {
+        cli::cli_abort(c(
+            "Exporting a {.cls ShiftOutputs} stage with {.fn shift_epw_write} requires a target directory.",
+            "i" = "Supply `dir` or `export_dir`."
+        ))
+    }
+    if (!is.null(dir) && !is.null(export_dir)) {
+        norm_dir <- normalizePath(
+            path.expand(dir),
+            winslash = "/",
+            mustWork = FALSE
+        )
+        norm_export <- normalizePath(
+            path.expand(export_dir),
+            winslash = "/",
+            mustWork = FALSE
+        )
+        if (!identical(norm_dir, norm_export)) {
+            cli::cli_abort(c(
+                "Supply only one of `dir` or `export_dir` when exporting a {.cls ShiftOutputs} stage.",
+                "x" = "`dir` ({.path {dir}}) and `export_dir` ({.path {export_dir}}) differ."
+            ))
+        }
+        return(export_dir)
+    }
+    shift_stage__coalesce(export_dir, dir)
+}
+# }}}
+
+# Compute the user-facing export path for one generated EPW row.
+# shift_export__export_target_path {{{
+shift_export__export_target_path <- function(row, dir, separate = TRUE) {
+    path <- row$path[[1L]]
+    filename <- basename(path)
+    if (isTRUE(separate)) {
+        parts <- unlist(
+            row[,
+                intersect(
+                    c(
+                        "source_id",
+                        "experiment_id",
+                        "variant_label",
+                        "period",
+                        "sequence_id",
+                        "weather_year"
+                    ),
+                    names(row)
+                ),
+                with = FALSE
+            ],
+            use.names = FALSE
+        )
+        parts <- morpher__safe_path(parts[!is.na(parts) & nzchar(parts)])
+        return(do.call(file.path, as.list(c(dir, parts, filename))))
+    }
+    file.path(dir, filename)
+}
+# }}}
+
+# Copy registered EPW outputs to a user-facing directory and annotate the stage
+# with absolute export paths.
+# shift_export__export_outputs {{{
+shift_export__export_outputs <- function(
+    x,
+    dir,
+    separate = TRUE,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    dir <- normalizePath(path.expand(dir), winslash = "/", mustWork = FALSE)
+    outputs <- data.table::copy(shift_outputs(x))
+    if (!nrow(outputs)) {
+        return(x)
+    }
+    store_path <- shift_inspect__with_store(x, function(store) store$path)
+    export_path <- character(nrow(outputs))
+    for (i in seq_len(nrow(outputs))) {
+        if (!is.null(reporter)) {
+            reporter$check_cancel("write_epw")
+            label <- sprintf(
+                "Exporting %s/%s/%s",
+                outputs$experiment_id[[i]],
+                outputs$variant_label[[i]],
+                outputs$period[[i]]
+            )
+            reporter$unit_started(
+                label,
+                current = i,
+                total = nrow(outputs),
+                details = list(
+                    unit_type = "epw_export",
+                    scenario = outputs$experiment_id[[i]],
+                    period = outputs$period[[i]]
+                )
+            )
+        }
+        source <- store_abs_path(outputs$path[[i]], root = store_path)
+        target <- shift_export__export_target_path(
+            outputs[i],
+            dir = dir,
+            separate = separate
+        )
+        if (!file.exists(source)) {
+            cli::cli_abort(
+                "Cannot export missing EPW output: {.path {source}}."
+            )
+        }
+        if (file.exists(target) && !isTRUE(overwrite) && !isTRUE(resume)) {
+            cli::cli_abort("Export target already exists: {.path {target}}.")
+        }
+        reused <- file.exists(target) && !isTRUE(overwrite) && isTRUE(resume)
+        if (!file.exists(target) || isTRUE(overwrite)) {
+            dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+            ok <- file.copy(source, target, overwrite = overwrite)
+            if (!isTRUE(ok)) {
+                cli::cli_abort(
+                    "Failed to export EPW output to {.path {target}}."
+                )
+            }
+        }
+        export_path[[i]] <- normalizePath(
+            target,
+            winslash = "/",
+            mustWork = TRUE
+        )
+        if (!is.null(reporter)) {
+            if (isTRUE(reused)) {
+                reporter$unit_skipped(
+                    sprintf("Reused export %s", basename(target)),
+                    current = i,
+                    total = nrow(outputs),
+                    details = list(export_path = export_path[[i]])
+                )
+            } else {
+                reporter$unit_completed(
+                    sprintf("Exported %s", basename(target)),
+                    current = i,
+                    total = nrow(outputs),
+                    outcome = "completed",
+                    details = list(export_path = export_path[[i]])
+                )
+            }
+        }
+    }
+    data.table::set(outputs, j = "export_path", value = export_path)
+    x@meta$outputs <- outputs
+    x@meta$export_dir <- dir
+    x@meta$paths <- outputs$path
+    x
 }
 # }}}
 

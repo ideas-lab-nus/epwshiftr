@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R calendar-daily.R distribution-parametric.R distribution-quantile.R
+#' @include signal-adjustment.R calendar.R distribution.R
 NULL
 
 # ISIMIP3BASD settings follow the trend-preserving bias-adjustment method and
@@ -36,9 +36,10 @@ ISIMIP_VARIABLES <- c(
 # native CMIP flux unit kg m-2 s-1.
 ISIMIP_PR_THRESHOLD <- 0.1 / 86400
 
-# Construct the complete settings schema shared by every variable profile.
-# Variable-specific arguments select only method choices documented by the
-# ISIMIP3BASD application rather than inventing implicit transformations.
+# Construct the complete tunable settings schema shared by every variable
+# profile. Fixed 3.0.x application conventions (circular running window,
+# 1-day step, no event-likelihood adjustment) are recorded in component
+# metadata and result provenance.
 # isimip__default_settings {{{
 isimip__default_settings <- function(
     mapping_model,
@@ -54,10 +55,7 @@ isimip__default_settings <- function(
     scale_by_upper_bound_cycle = FALSE
 ) {
     list(
-        method_version = "3.0.x",
-        seasonal_grouping = "circular_running_window",
         running_window_days = 31L,
-        running_window_step_days = 1L,
         target_year_days = 365L,
         n_quantiles = 50L,
         mapping_model = mapping_model,
@@ -73,7 +71,6 @@ isimip__default_settings <- function(
         all_missing_fallback = all_missing_fallback,
         scale_by_upper_bound_cycle = scale_by_upper_bound_cycle,
         upper_bound_window_days = 31L,
-        adjust_event_likelihood = FALSE,
         cdf_epsilon = 1e-10,
         max_change_factor = 100,
         max_adjustment_factor = 9,
@@ -91,6 +88,17 @@ isimip__default_settings <- function(
 # be recombined into physically related output variables.
 # isimip__profiles {{{
 isimip__profiles <- function() {
+    normal_additive <- isimip__default_settings(
+        "normal",
+        "additive",
+        detrend = TRUE
+    )
+    weibull_mixed <- isimip__default_settings(
+        "weibull",
+        "mixed",
+        c(0, Inf),
+        0.01
+    )
     settings <- list(
         hurs = isimip__default_settings(
             "empirical",
@@ -107,21 +115,9 @@ isimip__profiles <- function() {
             c(0, Inf),
             ISIMIP_PR_THRESHOLD
         ),
-        ps = isimip__default_settings(
-            "normal",
-            "additive",
-            detrend = TRUE
-        ),
-        psl = isimip__default_settings(
-            "normal",
-            "additive",
-            detrend = TRUE
-        ),
-        rlds = isimip__default_settings(
-            "normal",
-            "additive",
-            detrend = TRUE
-        ),
+        ps = normal_additive,
+        psl = normal_additive,
+        rlds = normal_additive,
         rsds = isimip__default_settings(
             "empirical",
             "bounded",
@@ -130,17 +126,8 @@ isimip__profiles <- function() {
             0.9999,
             scale_by_upper_bound_cycle = TRUE
         ),
-        sfcWind = isimip__default_settings(
-            "weibull",
-            "mixed",
-            c(0, Inf),
-            0.01
-        ),
-        tas = isimip__default_settings(
-            "normal",
-            "additive",
-            detrend = TRUE
-        ),
+        sfcWind = weibull_mixed,
+        tas = normal_additive,
         prsnratio = isimip__default_settings(
             "empirical",
             "bounded",
@@ -150,12 +137,7 @@ isimip__profiles <- function() {
             impute_missing = TRUE,
             all_missing_fallback = 0
         ),
-        tasrange = isimip__default_settings(
-            "weibull",
-            "mixed",
-            c(0, Inf),
-            0.01
-        ),
+        tasrange = weibull_mixed,
         tasskew = isimip__default_settings(
             "empirical",
             "bounded",
@@ -170,17 +152,20 @@ isimip__profiles <- function() {
         tasskew = c("tasmin", "tasmax")
     )
 
-    lapply(ISIMIP_VARIABLES, function(variable) {
-        derived <- variable %in% ISIMIP_DERIVED_VARIABLES
-        signal__variable_profile(
-            variable,
-            settings = settings[[variable]],
-            evidence = "published",
-            references = ISIMIP_REFERENCES,
-            metadata = list(
-                method = "isimip3basd",
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = ISIMIP_VARIABLES,
+        references = ISIMIP_REFERENCES,
+        method = "isimip3basd",
+        output_role = "model_future",
+        evidence_mode = "all_published",
+        metadata_fn = function(variable, published) {
+            derived <- variable %in% ISIMIP_DERIVED_VARIABLES
+            list(
                 method_version = "3.0.x",
-                output_role = "model_future",
+                seasonal_grouping = "circular_running_window",
+                running_window_step_days = 1L,
+                adjust_event_likelihood = FALSE,
                 variable_role = if (derived) "derived_component" else "direct",
                 reconstructed_outputs = reconstructed[[variable]],
                 mapping_domain = if (identical(variable, "rsds")) {
@@ -190,8 +175,8 @@ isimip__profiles <- function() {
                 },
                 spatial_downscaling = "separate_stage"
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
@@ -200,10 +185,7 @@ isimip__profiles <- function() {
 # isimip__settings {{{
 isimip__settings <- function(settings) {
     expected <- c(
-        "method_version",
-        "seasonal_grouping",
         "running_window_days",
-        "running_window_step_days",
         "target_year_days",
         "n_quantiles",
         "mapping_model",
@@ -219,7 +201,6 @@ isimip__settings <- function(settings) {
         "all_missing_fallback",
         "scale_by_upper_bound_cycle",
         "upper_bound_window_days",
-        "adjust_event_likelihood",
         "cdf_epsilon",
         "max_change_factor",
         "max_adjustment_factor",
@@ -234,19 +215,6 @@ isimip__settings <- function(settings) {
         expected,
         "ISIMIP3BASD"
     )
-    if (
-        !identical(resolved$method_version, "3.0.x") ||
-            !identical(
-                resolved$seasonal_grouping,
-                "circular_running_window"
-            ) ||
-            !identical(resolved$running_window_step_days, 1L) ||
-            !identical(resolved$adjust_event_likelihood, FALSE)
-    ) {
-        cli::cli_abort(
-            "ISIMIP3BASD currently implements the 3.0.x one-day circular-window application without event-likelihood adjustment."
-        )
-    }
     resolved$running_window_days <- signal__integer_setting(
         resolved$running_window_days,
         "running_window_days",
@@ -359,20 +327,13 @@ isimip__settings <- function(settings) {
     )) {
         checkmate::assert_flag(resolved[[name]])
     }
-    checkmate::assert_number(
+    resolved$detrend_alpha <- signal__positive_number(
         resolved$detrend_alpha,
-        lower = 0,
+        "detrend_alpha",
         upper = 1,
-        finite = TRUE
+        strict_upper = TRUE,
+        message = "`detrend_alpha` must lie strictly between zero and one."
     )
-    if (
-        resolved$detrend_alpha <= 0 ||
-            resolved$detrend_alpha >= 1
-    ) {
-        cli::cli_abort(
-            "`detrend_alpha` must lie strictly between zero and one."
-        )
-    }
     if (
         !resolved$impute_missing &&
             !is.null(resolved$all_missing_fallback)
@@ -387,22 +348,16 @@ isimip__settings <- function(settings) {
             finite = TRUE
         )
     }
-    for (name in c(
+    resolved$cdf_epsilon <- signal__positive_number(
+        resolved$cdf_epsilon,
         "cdf_epsilon",
+        upper = 0.5,
+        strict_upper = TRUE
+    )
+    resolved$fit_tolerance <- signal__positive_number(
+        resolved$fit_tolerance,
         "fit_tolerance"
-    )) {
-        checkmate::assert_number(
-            resolved[[name]],
-            lower = 0,
-            finite = TRUE
-        )
-        if (resolved[[name]] <= 0) {
-            cli::cli_abort("ISIMIP3BASD {.arg {name}} must be positive.")
-        }
-    }
-    if (resolved$cdf_epsilon >= 0.5) {
-        cli::cli_abort("`cdf_epsilon` must be smaller than 0.5.")
-    }
+    )
     checkmate::assert_number(
         resolved$max_change_factor,
         lower = 1,
@@ -434,116 +389,6 @@ isimip__settings <- function(settings) {
         lower = 1L
     )
     resolved
-}
-# }}}
-
-# Validate one input while temporarily replacing permitted missing values only
-# for the common structural validator. The original missing mask is restored
-# before any method calculation is performed.
-# isimip__input_table {{{
-isimip__input_table <- function(data, role, allow_missing) {
-    if (!is.data.frame(data)) {
-        cli::cli_abort(
-            "ISIMIP3BASD role {.val {role}} must be a canonical daily data frame."
-        )
-    }
-    out <- as.data.frame(data, stringsAsFactors = FALSE)
-    if (!"value" %in% names(out) || !is.numeric(out[["value"]])) {
-        cli::cli_abort(
-            "ISIMIP3BASD role {.val {role}} must contain a numeric `value` column."
-        )
-    }
-    missing <- is.na(out[["value"]])
-    if (any(missing) && !allow_missing) {
-        cli::cli_abort(
-            "ISIMIP3BASD role {.val {role}} contains missing values for a variable without published imputation."
-        )
-    }
-    if (any(!is.finite(out[["value"]][!missing]))) {
-        cli::cli_abort(
-            "ISIMIP3BASD role {.val {role}} contains non-finite values."
-        )
-    }
-    checked <- out
-    checked[["value"]][missing] <- 0
-    checked <- bias__daily_table(checked, role)
-    checked[["value"]][missing] <- NA_real_
-    checked
-}
-# }}}
-
-# Resolve the three role-addressable daily inputs and retain their independent
-# native calendars. Only the snow-ratio component admits missing observations,
-# matching the published imputation step.
-# isimip__inputs {{{
-isimip__inputs <- function(inputs, variable, resolved) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (
-        !is.list(inputs) ||
-            !identical(sort(names(inputs)), sort(roles))
-    ) {
-        cli::cli_abort(
-            "ISIMIP3BASD requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        isimip__input_table(
-            inputs[[role]],
-            role,
-            allow_missing = resolved$impute_missing
-        )
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "ISIMIP3BASD role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "ISIMIP3BASD role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "ISIMIP3BASD inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        is.finite(resolved$bounds[[1L]]) &&
-            any(vapply(
-                series,
-                function(data) {
-                    any(data[["value"]] < resolved$bounds[[1L]], na.rm = TRUE)
-                },
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "ISIMIP3BASD inputs for {.val {variable}} contain values below the declared physical lower bound."
-        )
-    }
-    series
-}
-# }}}
-
-# Map a native-calendar annual phase to the common target day without pairing
-# nominal dates across 360-, 365-, and 366-day source calendars.
-# isimip__target_day {{{
-isimip__target_day <- function(annual_phase, target_year_days) {
-    daily__target_day(annual_phase, target_year_days)
 }
 # }}}
 
@@ -630,7 +475,7 @@ isimip__upper_bound_cycle <- function(
     window_days,
     target_year_days
 ) {
-    target_day <- isimip__target_day(
+    target_day <- daily__target_day(
         data[["annual_phase"]],
         target_year_days
     )
@@ -682,7 +527,7 @@ isimip__scale_upper_bounds <- function(series, resolved) {
     })
     scaled <- Map(
         function(data, cycle) {
-            day <- isimip__target_day(
+            day <- daily__target_day(
                 data[["annual_phase"]],
                 resolved$target_year_days
             )
@@ -1451,6 +1296,20 @@ isimip__target_frequencies <- function(
 }
 # }}}
 
+# Collapse mapped threshold-region values back to their declared physical point
+# masses at either active bound.
+# isimip__snap_thresholds {{{
+isimip__snap_thresholds <- function(values, resolved) {
+    if (!is.null(resolved$lower_threshold)) {
+        values[values <= resolved$lower_threshold] <- resolved$bounds[[1L]]
+    }
+    if (!is.null(resolved$upper_threshold)) {
+        values[values >= resolved$upper_threshold] <- resolved$bounds[[2L]]
+    }
+    values
+}
+# }}}
+
 # Bias-adjust one randomized future window onto its pseudo-observed target.
 # Bound frequencies are set first; parametric fitting falls back explicitly to
 # empirical mapping if either fitted distribution is unsupported.
@@ -1593,14 +1452,7 @@ isimip__map_window <- function(
 
     # Collapse mapped threshold-region values back to their point masses and
     # enforce physical bounds after any empirical tail extrapolation.
-    if (!is.null(resolved$lower_threshold)) {
-        mapped[mapped <= resolved$lower_threshold] <-
-            resolved$bounds[[1L]]
-    }
-    if (!is.null(resolved$upper_threshold)) {
-        mapped[mapped >= resolved$upper_threshold] <-
-            resolved$bounds[[2L]]
-    }
+    mapped <- isimip__snap_thresholds(mapped, resolved)
     bounded_result <- signal__bound_values(mapped, resolved$bounds)
     bounded <- bounded_result$value
     list(
@@ -1769,15 +1621,10 @@ isimip__adjust_window <- function(
         resolved
     )
     restored <- mapped$value + prepared$model_future$trend
-    bounded <- signal__bound_values(restored, resolved$bounds)$value
-    if (!is.null(resolved$lower_threshold)) {
-        bounded[bounded <= resolved$lower_threshold] <-
-            resolved$bounds[[1L]]
-    }
-    if (!is.null(resolved$upper_threshold)) {
-        bounded[bounded >= resolved$upper_threshold] <-
-            resolved$bounds[[2L]]
-    }
+    bounded <- isimip__snap_thresholds(
+        signal__bound_values(restored, resolved$bounds)$value,
+        resolved
+    )
     list(
         value = bounded,
         future_rows = which(rows$model_future),
@@ -1816,7 +1663,7 @@ isimip__adjust_values <- function(
         working <- upper_bound$series
     }
     future <- working$model_future
-    future_target_day <- isimip__target_day(
+    future_target_day <- daily__target_day(
         future[["annual_phase"]],
         resolved$target_year_days
     )
@@ -1886,7 +1733,17 @@ isimip__adjust_values <- function(
 isimip__apply_group <- function(inputs, settings, key) {
     resolved <- isimip__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- isimip__inputs(inputs, variable, resolved)
+    series <- signal__validate_three_role_inputs(
+        inputs,
+        variable = variable,
+        method = "ISIMIP3BASD",
+        allow_missing = resolved$impute_missing,
+        min_value = resolved$bounds[[1L]],
+        min_value_message = sprintf(
+            "ISIMIP3BASD inputs for `%s` contain values below the declared physical lower bound.",
+            variable
+        )
+    )
     mapped <- isimip__adjust_values(
         series,
         resolved,
@@ -1931,6 +1788,9 @@ isimip__apply_group <- function(inputs, settings, key) {
         provenance = list(
             method = "isimip3basd",
             method_version = "3.0.x",
+            seasonal_grouping = "circular_running_window",
+            running_window_step_days = 1L,
+            adjust_event_likelihood = FALSE,
             references = ISIMIP_REFERENCES,
             group_key = key,
             output_backbone = "model_future",
@@ -1951,46 +1811,25 @@ isimip__apply_group <- function(inputs, settings, key) {
 }
 # }}}
 
-# Return an explicit diagnostic if the component violates the package-native
-# future-model result contract.
-# isimip__validate_result {{{
-isimip__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        DailyAdjustedSeries,
-        "DailyAdjustedSeries",
-        "model_future",
-        "ISIMIP3BASD"
-    )
-}
-# }}}
-
 # Construct the package-native signal component for every direct and component
 # variable in the published ISIMIP3BASD application configuration.
 # isimip__component {{{
 isimip__component <- function() {
-    alternatives <- as.list(ISIMIP_VARIABLES)
-    requirements <- signal__three_role_requirements(
-        alternatives,
-        frequencies = "day"
-    )
-    signal__component(
+    signal__three_role_component(
         name = "isimip3basd_daily",
         label = "Daily ISIMIP3BASD",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_daily_series",
-        output_kinds = "daily_adjusted_series",
-        scopes = "univariate",
-        stochastic = TRUE,
+        variables = ISIMIP_VARIABLES,
         profiles = isimip__profiles(),
         apply_group = isimip__apply_group,
-        operations = list(
-            validate_options = isimip__settings,
-            validate_result = isimip__validate_result
-        ),
+        validate_options = isimip__settings,
+        method_label = "ISIMIP3BASD",
+        output_role = "model_future",
+        stochastic = TRUE,
         metadata = list(
             method_family = "trend_preserving_bias_adjustment",
             method_version = "3.0.x",
+            seasonal_grouping = "circular_running_window",
+            adjust_event_likelihood = FALSE,
             output_contract = "daily_adjusted_series",
             references = ISIMIP_REFERENCES,
             published_frequency = "day",

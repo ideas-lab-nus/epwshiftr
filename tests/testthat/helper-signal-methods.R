@@ -118,4 +118,58 @@ bias_adjustment_test__inputs <- function(observed, historical, future) {
 }
 # }}}
 
+# Retrieve one default variable settings record from a profile collection
+# without relying on profile construction order.
+# signal_test__profile_settings {{{
+signal_test__profile_settings <- function(profiles, variable) {
+    indexed <- signal__profiles(profiles)
+    if (!variable %in% names(indexed)) {
+        cli::cli_abort("Unknown profile variable {.val {variable}}.")
+    }
+    indexed[[variable]]@settings
+}
+# }}}
+
+# Execute one three-role signal component through the common apply boundary,
+# merging optional compact test defaults with per-test overrides.
+# signal_test__execute {{{
+signal_test__execute <- function(
+    component,
+    variable,
+    observed,
+    historical,
+    future,
+    overrides = list(),
+    default_overrides = list(),
+    key = list(site = "A"),
+    error_policy = "abort",
+    warn_experimental = FALSE
+) {
+    boundary <- signal_test__execution_inputs(
+        observed,
+        historical,
+        future,
+        key = key
+    )
+    merged <- utils::modifyList(
+        default_overrides,
+        overrides,
+        keep.null = TRUE
+    )
+    component__execute(
+        component,
+        "apply",
+        inputs = boundary$inputs,
+        groups = list(boundary$group),
+        overrides = if (length(merged)) {
+            stats::setNames(list(merged), variable)
+        } else {
+            list()
+        },
+        error_policy = error_policy,
+        warn_experimental = warn_experimental
+    )
+}
+# }}}
+
 # vim: fdm=marker :

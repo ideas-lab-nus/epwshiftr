@@ -296,105 +296,10 @@ ek__daily_temperature_factors <- function(
 }
 # }}}
 
-# Build daily Ek factors directly from two normalized daily temperature sources.
-# ek__daily_temperature_targets {{{
-ek__daily_temperature_targets <- function(
-    future,
-    historical,
-    tolerance = 1e-8
-) {
-    ek__daily_temperature_factors(
-        ek__daily_temperature_climatology(
-            future,
-            "future climate"
-        ),
-        ek__daily_temperature_climatology(
-            historical,
-            "historical climate"
-        ),
-        tolerance
-    )
-}
-# }}}
-
-# Normalize role-addressable inputs and preserve Ek's lack of a smoothing
-# setting before any calendar or climate-signal calculation occurs.
-# ek__preprocess_apply {{{
-ek__preprocess_apply <- function(inputs, context, options) {
-    morpher__validate_context(context)
-    options <- ek__daily_temperature_options(options)
-    temperature__preprocess_inputs(inputs, options)
-}
-# }}}
-
-# Map each native CF year to the shared annual coordinate before averaging the
-# day-of-year baselines described by Ek.
-# ek__calendar_apply {{{
-ek__calendar_apply <- function(data, inputs, context, options) {
-    future <- ek__daily_temperature_climatology(
-        data$future,
-        "future climate"
-    )
-    historical <- ek__daily_temperature_climatology(
-        data$historical,
-        "historical climate"
-    )
-    data.table::set(
-        future,
-        j = "daily_mean_dtr_tolerance",
-        value = rep.int(data$options$tolerance, nrow(future))
-    )
-    data.table::set(
-        historical,
-        j = "daily_mean_dtr_tolerance",
-        value = rep.int(data$options$tolerance, nrow(historical))
-    )
-    list(signal__group(
-        inputs = list(
-            weather_template = data$baseline,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = c("tasmin", "tasmax")
-    ))
-}
-# }}}
-
-# Calculate the Ek mean shift and DTR-relative-change signal after all calendar
-# interpretation has been completed by the preceding component.
-# ek__signal_apply_group {{{
-ek__signal_apply_group <- function(inputs, settings, key) {
-    tolerance <- unique(
-        inputs$model_future[["daily_mean_dtr_tolerance"]]
-    )
-    if (length(tolerance) != 1L || !is.finite(tolerance)) {
-        cli::cli_abort(
-            "Ek calendar output must retain one finite numerical tolerance."
-        )
-    }
-    list(
-        baseline = inputs$weather_template,
-        targets = ek__daily_temperature_factors(
-            inputs$model_future,
-            inputs$model_historical,
-            tolerance
-        )
-    )
-}
-# }}}
-
-# Retain the baseline EPW day order while applying the Ek climate signal and
-# published within-day transformation.
-# ek__sequence_generate {{{
-ek__sequence_generate <- function(data, inputs, context, options) {
-    signal__single_value(data, "Ek")
-}
-# }}}
-
 # Apply Ek equation (5) day by day using relative DTR change as the anomaly
 # multiplier: x = x0 + delta_mean + alpha_dtr * (x0 - daily_mean_x0).
 # ek__hourly_reconstruct {{{
-ek__hourly_reconstruct <- function(data, inputs, context, options) {
+ek__hourly_reconstruct <- function(data, options = NULL) {
     options <- ek__daily_temperature_options(options)
     baseline <- data$baseline
     targets <- data.table::as.data.table(data.table::copy(data$targets))
@@ -560,57 +465,13 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
 # Select paper-faithful humidity preservation or shared humidity closure
 # without changing the preceding Ek signal and hourly transformation.
 # ek__physics_apply {{{
-ek__physics_apply <- function(data, inputs, context, options) {
-    baseline <- data$baseline
+ek__physics_apply <- function(data, context) {
     hourly <- data$hourly
     factors <- data$factors
-    policy <- context$recipe$policy
-    checkmate::assert_choice(
-        policy,
-        c("paper_faithful", "harmonized")
-    )
-    # The shared executor applies either the paper-faithful preservation policy
-    # or the harmonized specific-humidity policy to the same Ek temperature.
-    physical <- epwphys__apply_temperature(
-        template = baseline$weather,
-        temperature = hourly[["temperature_projected"]],
-        policy = epwphys__recipe_policy(context$recipe),
-        adapter = "ek_daily_temperature"
-    )
-    weather <- data.table::copy(physical@weather)
-    moisture <- physical@state$humidity
-
-    diagnostic_values <- list(
-        ek_target_day = hourly[["target_day"]],
-        ek_annual_phase = hourly[["annual_phase"]],
-        ek_temperature_mean_delta = hourly[["mean_delta"]],
-        ek_temperature_dtr_relative_change = hourly[["dtr_relative_change"]],
-        ek_temperature_dtr_ratio = hourly[["dtr_ratio"]],
-        ek_temperature_dtr_status = hourly[["dtr_status"]],
-        ek_temperature_projection_status = hourly[["projection_status"]],
-        ek_temperature_boundary_jump = hourly[["boundary_jump"]],
-        ek_temperature_boundary_jump_change = hourly[["boundary_jump_change"]]
-    )
-    if (identical(policy, "harmonized")) {
-        diagnostic_values <- c(
-            diagnostic_values,
-            list(
-                ek_baseline_specific_humidity = moisture$baseline_specific_humidity,
-                ek_specific_humidity = moisture$specific_humidity,
-                ek_humidity_closure_status = moisture$status
-            )
-        )
-    }
-    data.table::set(
-        weather,
-        j = names(diagnostic_values),
-        value = diagnostic_values
-    )
-
-    diagnostics <- list()
+    extra_diagnostics <- list()
     fallback <- factors[["dtr_status"]] == "inherited_zero_historical_dtr"
     if (any(fallback)) {
-        diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+        extra_diagnostics[[1L]] <- morpher__diagnostic(
             stage = "runtime",
             severity = "warning",
             code = "ek_zero_historical_model_dtr",
@@ -623,48 +484,32 @@ ek__physics_apply <- function(data, inputs, context, options) {
             action = "Inspect ek_temperature_dtr_status."
         )
     }
-    if (identical(policy, "paper_faithful")) {
-        # Reuse the policy-level inconsistency count and preserve the Ek-specific
-        # explanation of the paper-faithful temperature-only state.
-        invalid <- physical@corrections$humidity_inconsistent
-        if (invalid > 0L) {
-            diagnostics[[length(diagnostics) + 1L]] <-
-                morpher__diagnostic(
-                    stage = "runtime",
-                    severity = "warning",
-                    code = "ek_temperature_only_state_not_closed",
-                    message = sprintf(
-                        "The Ek paper-faithful mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
-                        invalid
-                    ),
-                    epw_field = paste(
-                        "dry_bulb_temperature,dew_point_temperature,",
-                        "relative_humidity",
-                        sep = ""
-                    ),
-                    action = paste(
-                        "Treat this as paper-faithful temperature-only",
-                        "output or select the harmonized policy."
-                    )
-                )
-        }
-    } else {
-        clipped <- physical@corrections$humidity_saturation_clipped
-        if (clipped > 0L) {
-            diagnostics[[length(diagnostics) + 1L]] <-
-                morpher__diagnostic(
-                    stage = "runtime",
-                    severity = "info",
-                    code = "ek_humidity_saturation_clipped",
-                    message = sprintf(
-                        "Ek harmonized closure clipped %d hourly moisture state(s) to saturation.",
-                        clipped
-                    ),
-                    epw_field = "dew_point_temperature,relative_humidity",
-                    action = "Inspect ek_humidity_closure_status."
-                )
-        }
-    }
+    closed <- temperature__policy_physics_apply(
+        baseline = data$baseline,
+        temperature = hourly[["temperature_projected"]],
+        policy_recipe = context$recipe,
+        adapter = "ek_daily_temperature",
+        prefix = "ek",
+        label = "Ek",
+        hourly_cols = list(
+            ek_target_day = hourly[["target_day"]],
+            ek_annual_phase = hourly[["annual_phase"]],
+            ek_temperature_mean_delta = hourly[["mean_delta"]],
+            ek_temperature_dtr_relative_change = hourly[[
+                "dtr_relative_change"
+            ]],
+            ek_temperature_dtr_ratio = hourly[["dtr_ratio"]],
+            ek_temperature_dtr_status = hourly[["dtr_status"]],
+            ek_temperature_projection_status = hourly[["projection_status"]],
+            ek_temperature_boundary_jump = hourly[["boundary_jump"]],
+            ek_temperature_boundary_jump_change = hourly[[
+                "boundary_jump_change"
+            ]]
+        ),
+        inconsistent_code = "ek_temperature_only_state_not_closed",
+        inconsistent_message = "The Ek paper-faithful mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
+        extra_diagnostics = extra_diagnostics
+    )
 
     settings <- list(
         climatology = "per-year daily values averaged after 365-phase mapping",
@@ -677,170 +522,57 @@ ek__physics_apply <- function(data, inputs, context, options) {
             "x0 + delta_mean + alpha_dtr *",
             "(x0 - baseline_daily_mean)"
         ),
-        physical_policy = if (identical(policy, "paper_faithful")) {
-            "preserve_baseline_humidity_fields"
-        } else {
-            "specific_humidity_closure"
-        }
+        physical_policy = closed$physical_policy
     )
 
     list(
-        epw = baseline$epw,
-        weather = weather,
+        epw = closed$epw,
+        weather = closed$weather,
         projected = data$projected,
         factors = factors,
-        diagnostics = morpher__bind_diagnostics(diagnostics),
+        diagnostics = closed$diagnostics,
         settings = settings
     )
 }
 # }}}
 
-# Return the common EPW morph result with Ek factors and formula settings
-# retained as separately inspectable parts.
-# ek__output_write {{{
-ek__output_write <- function(data, inputs, context, options, stages) {
+# Execute the Ek daily temperature change-factor workflow directly on a
+# canonical morphing context and return a standard epw_morph_result.
+# ek__run {{{
+ek__run <- function(context, backend = NULL) {
+    morpher__validate_context(context)
+    options <- ek__daily_temperature_options(context$recipe$options)
+    prepared <- temperature__preprocess_inputs(context$inputs, options)
+    future_climatology <- ek__daily_temperature_climatology(
+        prepared$future,
+        "future climate"
+    )
+    historical_climatology <- ek__daily_temperature_climatology(
+        prepared$historical,
+        "historical climate"
+    )
+    targets <- ek__daily_temperature_factors(
+        future_climatology,
+        historical_climatology,
+        options$tolerance
+    )
+    hourly <- ek__hourly_reconstruct(
+        list(baseline = prepared$baseline, targets = targets),
+        options = options
+    )
+    closed <- ek__physics_apply(hourly, context = context)
     epw_morph_result(
         context,
-        epw = data$epw,
-        data = data$weather,
+        epw = closed$epw,
+        data = closed$weather,
         parts = list(
-            temperature = data$projected,
-            factors = data$factors,
-            settings = data$settings
+            temperature = closed$projected,
+            factors = closed$factors,
+            settings = closed$settings
         ),
-        diagnostics = data$diagnostics,
-        factors = data$factors
+        diagnostics = closed$diagnostics,
+        factors = closed$factors
     )
-}
-# }}}
-
-# Define the seven Ek stages so its signal and hourly equation remain
-# independently inspectable and reusable.
-# ek__component_specs {{{
-ek__component_specs <- function() {
-    complete_inputs <- ek__daily_temperature_inputs()
-    template <- complete_inputs$weather_template
-    reference <- paste0(
-        "https://dspace.library.uvic.ca/items/",
-        "5e8e6684-c704-4d2e-8480-2c81bdbafde9"
-    )
-    profiles <- lapply(
-        c("tasmin", "tasmax"),
-        function(variable) {
-            signal__variable_profile(
-                variable,
-                evidence = "published",
-                references = reference,
-                metadata = list(
-                    statistic = "day_of_year_30_year_baseline"
-                )
-            )
-        }
-    )
-
-    list(
-        preprocess = component__spec(
-            name = "daily_extrema_change_inputs",
-            stage = "preprocess",
-            label = "Daily extrema-change input normalization",
-            required_inputs = complete_inputs,
-            input_kinds = "role_inputs",
-            output_kinds = "daily_extrema_change_preprocessed",
-            scopes = "multivariate",
-            operations = list(apply = ek__preprocess_apply)
-        ),
-        calendar = component__spec(
-            name = "daily_extrema_climatology",
-            stage = "calendar",
-            label = "Daily extrema climatology",
-            required_inputs = complete_inputs,
-            input_kinds = "daily_extrema_change_preprocessed",
-            output_kinds = "daily_extrema_climatologies",
-            scopes = "multivariate",
-            operations = list(apply = ek__calendar_apply)
-        ),
-        signal = signal__component(
-            name = "daily_mean_dtr_change_factors",
-            label = "Daily mean/DTR change factors",
-            required_inputs = complete_inputs,
-            input_kinds = "daily_extrema_climatologies",
-            output_kinds = "daily_mean_dtr_targets",
-            scopes = "multivariate",
-            profiles = profiles,
-            apply_group = ek__signal_apply_group
-        ),
-        sequence = component__spec(
-            name = "preserve_daily_mean_dtr_sequence",
-            stage = "sequence",
-            label = "Preserve baseline EPW sequence for daily mean/DTR factors",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_mean_dtr_targets",
-            output_kinds = "daily_mean_dtr_sequence",
-            scopes = "multivariate",
-            operations = list(generate = ek__sequence_generate)
-        ),
-        hourly = component__spec(
-            name = "daily_mean_dtr_shift_stretch",
-            stage = "hourly",
-            label = "Daily mean/DTR shift-and-stretch temperature",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_mean_dtr_sequence",
-            output_kinds = "daily_mean_dtr_hourly",
-            scopes = "multivariate",
-            operations = list(reconstruct = ek__hourly_reconstruct)
-        ),
-        physics = component__spec(
-            name = "daily_mean_dtr_physical_policy",
-            stage = "physics",
-            label = "Daily mean/DTR temperature physical policy",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_mean_dtr_hourly",
-            output_kinds = "daily_mean_dtr_weather",
-            scopes = "multivariate",
-            operations = list(apply = ek__physics_apply),
-            metadata = list(
-                physical_policies = c(
-                    "preserve_humidity_fields",
-                    "preserve_specific_humidity"
-                )
-            )
-        ),
-        output = component__spec(
-            name = "daily_mean_dtr_epw_result",
-            stage = "output",
-            label = "Daily mean/DTR EPW result",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_mean_dtr_weather",
-            output_kinds = "epw_morph_result",
-            scopes = "multivariate",
-            operations = list(write = ek__output_write)
-        )
-    )
-}
-# }}}
-
-# Register the daily mean/DTR components once without replacing process-local
-# implementations already stored under the same stable component keys.
-# ek__register_components {{{
-ek__register_components <- function() {
-    component__register_builtins(ek__component_specs())
-}
-# }}}
-
-# Compose the temperature-focused Ek recipe from method-neutral stages while
-# retaining the publication identity at the complete-recipe boundary.
-# ek__pipeline {{{
-ek__pipeline <- function() {
-    ek__register_components()
-    pipeline__spec(list(
-        preprocess = "daily_extrema_change_inputs",
-        calendar = "daily_extrema_climatology",
-        signal = "daily_mean_dtr_change_factors",
-        sequence = "preserve_daily_mean_dtr_sequence",
-        hourly = "daily_mean_dtr_shift_stretch",
-        physics = "daily_mean_dtr_physical_policy",
-        output = "daily_mean_dtr_epw_result"
-    ))
 }
 # }}}
 

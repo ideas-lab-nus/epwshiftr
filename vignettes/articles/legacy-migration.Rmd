@@ -46,11 +46,12 @@ This naming update does not change the CRAN v0.1.4 API retained on `legacy`.
 | `shift_future_epw()` | `shift_epw_future()` | Run a future-weather batch from baseline EPWs and climate scenarios. |
 | `shift_reference_epw()` | `shift_epw_reanalysis()` | Generate annual ERA5 EPWs from local or downloaded data. |
 | `shift_epw()` | `shift_epw_write()` | Write transformed weather to EPWs in the store. |
-| `shift_export_epw()` | `shift_epw_export()` | Export workflow EPWs, writing them first when given transformed weather. |
+| `shift_export_epw()` / `shift_epw_export()` | `shift_epw_write(..., dir = ...)` | Export workflow EPWs from `ShiftOutputs`, `ShiftMorphed`, or `ShiftRun`. |
+| `shift_reanalysis_data()` | `shift_data_reanalysis()` | Acquire and persist independent hourly ERA5 data. |
 | `shift_reference_plan()` | `shift_reference_from_plan()` | Configure a reference using existing extraction plan IDs. |
 
-`shift_plan()` and `shift_reference_historical()` keep their names. Reference
-constructors configure inputs; EPW entry points execute generation or delivery.
+Use `historical_reference()` and `shift_reference_from_plan()` to configure
+references; EPW entry points execute generation or delivery.
 The CLI command names and persisted workflow stage names are unchanged.
 
 # Concept Map

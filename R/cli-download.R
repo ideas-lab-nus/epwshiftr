@@ -1,3 +1,92 @@
+# cli_download__config_specs {{{
+cli_download__config_specs <- function() {
+    opt <- function(field, type = "count", policy = NULL, positive = TRUE) {
+        list(field = field, type = type, policy = policy, positive = positive)
+    }
+    list(
+        "--workers" = opt("n_workers", positive = FALSE),
+        "--retries" = opt("retries"),
+        "--timeout" = opt("timeout"),
+        "--connect-timeout" = opt("connect_timeout", "count_or_null"),
+        "--proxy" = opt("proxy", "string_or_null"),
+        "--useragent" = opt("useragent", "string_or_null"),
+        "--ssl-verifypeer" = opt("ssl_verifypeer", "bool"),
+        "--chunk-size" = opt("chunk_size", "count_or_null", "transfer_policy"),
+        "--bandwidth-limit" = opt(
+            "bandwidth_limit",
+            "count_or_null",
+            "transfer_policy"
+        ),
+        "--low-speed-limit" = opt(
+            "low_speed_limit",
+            "count_or_null",
+            "transfer_policy"
+        ),
+        "--low-speed-time" = opt(
+            "low_speed_time",
+            "count_or_null",
+            "transfer_policy"
+        ),
+        "--host-concurrency" = opt(
+            "host_concurrency",
+            "count_or_null",
+            "resource_policy"
+        ),
+        "--disk-preflight" = opt("disk_preflight", "bool", "resource_policy"),
+        "--min-free-space" = opt(
+            "min_free_space",
+            "count",
+            "resource_policy",
+            FALSE
+        ),
+        "--cooldown-after-failures" = opt(
+            "cooldown_after_failures",
+            "count",
+            "node_policy"
+        ),
+        "--cooldown-seconds" = opt("cooldown_seconds", "count", "node_policy"),
+        "--history-ttl-seconds" = opt(
+            "history_ttl_seconds",
+            "count",
+            "node_policy"
+        ),
+        "--min-attempts" = opt("min_attempts", "count", "node_policy")
+    )
+}
+# }}}
+
+# cli_download__parse_scope {{{
+cli_download__parse_scope <- function(
+    args,
+    flags = character(),
+    options = character(),
+    tail_default = NULL
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        flags = flags,
+        options = options,
+        no_positionals = TRUE
+    )
+    list(
+        parsed = parsed,
+        query_id = parsed$options[["--query"]],
+        session_id = parsed$options[["--session"]],
+        job_id = parsed$options[["--job"]],
+        task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
+        status = epwshiftr_cli_csv(parsed$options[["--status"]]),
+        tail = if (!is.null(tail_default)) {
+            epwshiftr_cli_count_or_default(
+                parsed$options[["--tail"]],
+                "--tail",
+                tail_default,
+                positive = FALSE
+            )
+        }
+    )
+}
+# }}}
+
 # epwshiftr_cli_download {{{
 epwshiftr_cli_download <- function(
     store,
@@ -22,12 +111,14 @@ epwshiftr_cli_download <- function(
                 "--probe-cache-seconds"
             )
         )
-        query_id <- epwshiftr_cli_required_position(parsed, "query_id")
         return(do.call(
             store$download_preflight,
             c(
                 list(
-                    query_id = query_id,
+                    query_id = epwshiftr_cli_required_position(
+                        parsed,
+                        "query_id"
+                    ),
                     downloader = epwshiftr_cli_downloader(store)
                 ),
                 epwshiftr_cli_download_plan_args(parsed)
@@ -37,17 +128,7 @@ epwshiftr_cli_download <- function(
     if (identical(command, "run")) {
         parsed <- epwshiftr_cli_parse_command(
             args,
-            flags = c(
-                "--probe",
-                "--no-probe",
-                "--overwrite",
-                "--no-resume",
-                "--no-progress",
-                "--background",
-                "--reduced-motion",
-                "--verbose",
-                "--debug"
-            ),
+            flags = c("--probe", "--no-probe", "--background", CLI_RUN_FLAGS),
             options = c(
                 "--replica",
                 "--service",
@@ -59,10 +140,6 @@ epwshiftr_cli_download <- function(
             )
         )
         query_id <- epwshiftr_cli_required_position(parsed, "query_id")
-        mode <- parsed$options[["--mode"]]
-        if (is.null(mode)) {
-            mode <- "process"
-        }
         catalog <- shift_inspect__file_catalog(store, query_id)
         files <- shift_stage__new(
             ShiftFiles,
@@ -86,7 +163,10 @@ epwshiftr_cli_download <- function(
                     overwrite = parsed$flags[["--overwrite"]],
                     resume = !parsed$flags[["--no-resume"]],
                     background = parsed$flags[["--background"]],
-                    mode = mode,
+                    mode = shift_stage__coalesce(
+                        parsed$options[["--mode"]],
+                        "process"
+                    ),
                     ui = epwshiftr_cli_task_ui(
                         parsed,
                         json = json,
@@ -98,63 +178,53 @@ epwshiftr_cli_download <- function(
             )
         )
         result <- if (is.data.frame(download@meta$session)) {
-            data.table::as.data.table(download@meta$session)
+            download@meta$session
         } else {
             data.table::data.table(
-                session_id = as.character(
-                    download@ids$session_id
-                )
+                session_id = as.character(download@ids$session_id)
             )
         }
-        result[, `:=`(
-            run_id = shift_ids(download)$run_id,
-            step_id = shift_ids(download)$step_id
-        )]
-        return(result[])
+        return(cli_morph__attach_ids(result, download))
     }
     if (identical(command, "status")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             options = c("--query", "--session")
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
         return(store$download_status(
-            query_id = parsed$options[["--query"]],
-            session_id = parsed$options[["--session"]],
+            query_id = s$query_id,
+            session_id = s$session_id,
             downloader = epwshiftr_cli_downloader(store)
         ))
     }
     if (identical(command, "sessions")) {
-        parsed <- epwshiftr_cli_parse_command(args)
-        epwshiftr_cli_assert_no_positionals(parsed)
+        epwshiftr_cli_parse_command(args, no_positionals = TRUE)
         return(epwshiftr_cli_downloader(store)$sessions())
     }
     if (identical(command, "tasks")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             options = c("--session", "--job", "--status")
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
         return(epwshiftr_cli_downloader(store)$tasks(
-            session_id = parsed$options[["--session"]],
-            job_id = parsed$options[["--job"]],
-            status = epwshiftr_cli_csv(parsed$options[["--status"]])
+            session_id = s$session_id,
+            job_id = s$job_id,
+            status = s$status
         ))
     }
     if (identical(command, "events")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             options = c("--session", "--job", "--task")
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
         return(epwshiftr_cli_downloader(store)$events(
-            session_id = parsed$options[["--session"]],
-            job_id = parsed$options[["--job"]],
-            task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
+            session_id = s$session_id,
+            job_id = s$job_id,
+            task_id = s$task_id
         ))
     }
     if (identical(command, "watch")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             flags = "--follow",
             options = c(
@@ -166,93 +236,76 @@ epwshiftr_cli_download <- function(
                 "--count"
             )
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
+        p <- s$parsed
         watch_args <- list(
             store = store,
-            query_id = parsed$options[["--query"]],
-            session_id = parsed$options[["--session"]],
-            job_id = parsed$options[["--job"]],
+            query_id = s$query_id,
+            session_id = s$session_id,
+            job_id = s$job_id,
             event_count = epwshiftr_cli_count_or_default(
-                parsed$options[["--events"]],
+                p$options[["--events"]],
                 "--events",
                 10L,
                 positive = FALSE
             )
         )
-        if (isTRUE(parsed$flags[["--follow"]])) {
-            return(do.call(
-                epwshiftr_cli_download_watch_follow,
-                c(
-                    watch_args,
-                    list(
-                        interval = epwshiftr_cli_download_interval(
-                            parsed$options[["--interval"]],
-                            1
-                        ),
-                        count = epwshiftr_cli_count_or_default(
-                            parsed$options[["--count"]],
-                            "--count",
-                            Inf,
-                            positive = FALSE
-                        ),
-                        jsonl = jsonl,
-                        quiet = quiet
-                    )
-                )
-            ))
+        if (!isTRUE(p$flags[["--follow"]])) {
+            return(do.call(epwshiftr_cli_download_watch, watch_args))
         }
-        return(do.call(epwshiftr_cli_download_watch, watch_args))
-    }
-    if (identical(command, "jobs")) {
-        parsed <- epwshiftr_cli_parse_command(args, options = "--status")
-        epwshiftr_cli_assert_no_positionals(parsed)
-        return(epwshiftr_cli_downloader(store)$jobs(
-            status = epwshiftr_cli_csv(parsed$options[["--status"]])
-        ))
-    }
-    if (identical(command, "logs")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            options = c("--session", "--job", "--task", "--tail")
-        )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- epwshiftr_cli_downloader(store)
-        if (!is.null(parsed$options[["--job"]])) {
-            return(downloader$job_logs(
-                job_id = parsed$options[["--job"]],
-                tail = epwshiftr_cli_count_or_default(
-                    parsed$options[["--tail"]],
-                    "--tail",
-                    50L,
-                    positive = FALSE
+        return(do.call(
+            epwshiftr_cli_download_watch_follow,
+            c(
+                watch_args,
+                list(
+                    interval = epwshiftr_cli_download_interval(
+                        p$options[["--interval"]],
+                        1
+                    ),
+                    count = epwshiftr_cli_count_or_default(
+                        p$options[["--count"]],
+                        "--count",
+                        Inf,
+                        positive = FALSE
+                    ),
+                    jsonl = jsonl,
+                    quiet = quiet
                 )
-            ))
-        }
-        return(epwshiftr_cli_download_logs(
-            downloader = downloader,
-            session_id = parsed$options[["--session"]],
-            task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
-            tail = epwshiftr_cli_count_or_default(
-                parsed$options[["--tail"]],
-                "--tail",
-                50L,
-                positive = FALSE
             )
         ))
     }
+    if (identical(command, "jobs")) {
+        s <- cli_download__parse_scope(args, options = "--status")
+        return(epwshiftr_cli_downloader(store)$jobs(status = s$status))
+    }
+    if (identical(command, "logs")) {
+        s <- cli_download__parse_scope(
+            args,
+            options = c("--session", "--job", "--task", "--tail"),
+            tail_default = 50L
+        )
+        dl <- epwshiftr_cli_downloader(store)
+        if (!is.null(s$job_id)) {
+            return(dl$job_logs(job_id = s$job_id, tail = s$tail))
+        }
+        return(epwshiftr_cli_download_logs(
+            downloader = dl,
+            session_id = s$session_id,
+            task_id = s$task_id,
+            tail = s$tail
+        ))
+    }
     if (identical(command, "stop")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             flags = "--force",
             options = "--job"
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        if (is.null(parsed$options[["--job"]])) {
+        if (is.null(s$job_id)) {
             epwshiftr_cli_usage_abort("download stop requires --job.")
         }
         return(epwshiftr_cli_downloader(store)$stop_job(
-            job_id = parsed$options[["--job"]],
-            force = parsed$flags[["--force"]]
+            job_id = s$job_id,
+            force = s$parsed$flags[["--force"]]
         ))
     }
     if (identical(command, "daemon")) {
@@ -263,131 +316,117 @@ epwshiftr_cli_download <- function(
         }
         action <- args[[1L]]
         rest <- args[-1L]
-        downloader <- epwshiftr_cli_downloader(store)
+        dl <- epwshiftr_cli_downloader(store)
         if (identical(action, "start")) {
-            parsed <- epwshiftr_cli_parse_command(
+            p <- epwshiftr_cli_parse_command(
                 rest,
-                options = c("--port", "--heartbeat-interval")
+                options = c("--port", "--heartbeat-interval"),
+                no_positionals = TRUE
             )
-            epwshiftr_cli_assert_no_positionals(parsed)
-            return(downloader$daemon_start(
-                port = epwshiftr_cli_count(
-                    parsed$options[["--port"]],
-                    "--port"
-                ),
+            return(dl$daemon_start(
+                port = epwshiftr_cli_count(p$options[["--port"]], "--port"),
                 heartbeat_interval = epwshiftr_cli_download_interval(
-                    parsed$options[["--heartbeat-interval"]],
+                    p$options[["--heartbeat-interval"]],
                     5
                 )
             ))
         }
         if (identical(action, "status")) {
-            parsed <- epwshiftr_cli_parse_command(rest)
-            epwshiftr_cli_assert_no_positionals(parsed)
-            return(downloader$daemon_status())
+            epwshiftr_cli_parse_command(rest, no_positionals = TRUE)
+            return(dl$daemon_status())
         }
         if (identical(action, "stop")) {
-            parsed <- epwshiftr_cli_parse_command(rest, flags = "--force")
-            epwshiftr_cli_assert_no_positionals(parsed)
-            return(downloader$daemon_stop(force = parsed$flags[["--force"]]))
+            p <- epwshiftr_cli_parse_command(
+                rest,
+                flags = "--force",
+                no_positionals = TRUE
+            )
+            return(dl$daemon_stop(force = p$flags[["--force"]]))
         }
         epwshiftr_cli_usage_abort(sprintf(
             "Unknown download daemon command: %s",
             action
         ))
     }
-    if (identical(command, "resume")) {
-        parsed <- epwshiftr_cli_parse_command(
+    if (command %in% c("resume", "verify", "cancel")) {
+        flags <- if (identical(command, "resume")) {
+            c("--overwrite", "--no-progress")
+        } else {
+            character()
+        }
+        s <- cli_download__parse_scope(
             args,
-            flags = c("--overwrite", "--no-progress"),
+            flags = flags,
             options = c("--session", "--task")
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- epwshiftr_cli_downloader(store)
-        out <- downloader$resume(
-            session_id = parsed$options[["--session"]],
-            task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
-            overwrite = parsed$flags[["--overwrite"]],
-            progress = !parsed$flags[["--no-progress"]] &&
-                !isTRUE(quiet) &&
-                !isTRUE(json) &&
-                !isTRUE(jsonl)
-        )
-        store$sync_downloads(downloader)
+        dl <- epwshiftr_cli_downloader(store)
+        out <- if (identical(command, "resume")) {
+            dl$resume(
+                session_id = s$session_id,
+                task_id = s$task_id,
+                overwrite = s$parsed$flags[["--overwrite"]],
+                progress = !s$parsed$flags[["--no-progress"]] &&
+                    !isTRUE(quiet) &&
+                    !isTRUE(json) &&
+                    !isTRUE(jsonl)
+            )
+        } else {
+            dl[[command]](session_id = s$session_id, task_id = s$task_id)
+        }
+        if (!identical(command, "cancel")) {
+            store$sync_downloads(dl)
+        }
         return(out)
-    }
-    if (identical(command, "verify")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            options = c("--session", "--task")
-        )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- epwshiftr_cli_downloader(store)
-        out <- downloader$verify(
-            session_id = parsed$options[["--session"]],
-            task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
-        )
-        store$sync_downloads(downloader)
-        return(out)
-    }
-    if (identical(command, "cancel")) {
-        parsed <- epwshiftr_cli_parse_command(
-            args,
-            options = c("--session", "--task")
-        )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        return(epwshiftr_cli_downloader(store)$cancel(
-            session_id = parsed$options[["--session"]],
-            task_id = epwshiftr_cli_csv(parsed$options[["--task"]])
-        ))
     }
     if (identical(command, "nodes")) {
-        parsed <- epwshiftr_cli_parse_command(args, options = "--service")
-        epwshiftr_cli_assert_no_positionals(parsed)
+        p <- epwshiftr_cli_parse_command(
+            args,
+            options = "--service",
+            no_positionals = TRUE
+        )
         return(data.table::as.data.table(epwshiftr_cli_downloader(
             store
-        )$data_nodes(service = parsed$options[["--service"]])))
+        )$data_nodes(service = p$options[["--service"]])))
     }
     if (identical(command, "reset-nodes")) {
-        parsed <- epwshiftr_cli_parse_command(
+        p <- epwshiftr_cli_parse_command(
             args,
             flags = "--execute",
-            options = c("--node", "--service")
+            options = c("--node", "--service"),
+            no_positionals = TRUE
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        downloader <- epwshiftr_cli_downloader(store)
-        if (isTRUE(parsed$flags[["--execute"]])) {
-            return(downloader$reset_data_nodes(
-                data_node = parsed$options[["--node"]],
-                service = parsed$options[["--service"]]
+        dl <- epwshiftr_cli_downloader(store)
+        if (isTRUE(p$flags[["--execute"]])) {
+            return(dl$reset_data_nodes(
+                data_node = p$options[["--node"]],
+                service = p$options[["--service"]]
             ))
         }
-        nodes <- data.table::as.data.table(downloader$data_nodes(
-            service = parsed$options[["--service"]]
+        nodes <- data.table::as.data.table(dl$data_nodes(
+            service = p$options[["--service"]]
         ))
-        if (!is.null(parsed$options[["--node"]]) && nrow(nodes)) {
-            nodes <- nodes[nodes[["data_node"]] == parsed$options[["--node"]]]
+        if (!is.null(p$options[["--node"]]) && nrow(nodes)) {
+            nodes <- nodes[nodes[["data_node"]] == p$options[["--node"]]]
         }
-        nodes[, dry_run := TRUE]
+        data.table::set(
+            nodes,
+            j = "dry_run",
+            value = rep_len(TRUE, nrow(nodes))
+        )
         return(nodes[])
     }
     if (identical(command, "retry")) {
-        parsed <- epwshiftr_cli_parse_command(
+        s <- cli_download__parse_scope(
             args,
             flags = "--run",
             options = c("--query", "--session", "--status")
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
-        status <- epwshiftr_cli_csv(parsed$options[["--status"]])
-        if (is.null(status)) {
-            status <- c("error", "cancelled")
-        }
         return(store$retry_downloads(
-            query_id = parsed$options[["--query"]],
-            session_id = parsed$options[["--session"]],
+            query_id = s$query_id,
+            session_id = s$session_id,
             downloader = epwshiftr_cli_downloader(store),
-            status = status,
-            run = parsed$flags[["--run"]]
+            status = shift_stage__coalesce(s$status, c("error", "cancelled")),
+            run = s$parsed$flags[["--run"]]
         ))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown download command: %s", command))
@@ -403,23 +442,18 @@ epwshiftr_cli_download_watch <- function(
     event_count = 10L
 ) {
     downloader <- epwshiftr_cli_downloader(store)
-    tasks <- if (is.null(job_id)) {
-        data.table::as.data.table(store$download_status(
-            query_id = query_id,
-            session_id = session_id,
-            downloader = downloader
-        ))
-    } else {
-        data.table::as.data.table(downloader$tasks(
-            session_id = session_id,
-            job_id = job_id
-        ))
-    }
-    task_id <- if (nrow(tasks) && "task_id" %in% names(tasks)) {
-        tasks$task_id
-    } else {
-        NULL
-    }
+    tasks <- data.table::as.data.table(
+        if (is.null(job_id)) {
+            store$download_status(
+                query_id = query_id,
+                session_id = session_id,
+                downloader = downloader
+            )
+        } else {
+            downloader$tasks(session_id = session_id, job_id = job_id)
+        }
+    )
+    task_id <- if (nrow(tasks) && "task_id" %in% names(tasks)) tasks$task_id
     events <- if (!is.null(query_id) && !nrow(tasks)) {
         data.table::data.table()
     } else {
@@ -431,7 +465,6 @@ epwshiftr_cli_download_watch <- function(
             tail = event_count
         )
     }
-    nodes <- data.table::as.data.table(downloader$data_nodes())
     out <- list(
         summary = epwshiftr_cli_download_watch_summary(
             tasks,
@@ -439,7 +472,7 @@ epwshiftr_cli_download_watch <- function(
             session_id
         ),
         tasks = tasks[],
-        nodes = nodes[],
+        nodes = data.table::as.data.table(downloader$data_nodes())[],
         events = events
     )
     if (!is.null(job_id)) {
@@ -471,20 +504,20 @@ epwshiftr_cli_download_watch_follow <- function(
             job_id = job_id,
             event_count = event_count
         )
-        if (isTRUE(quiet)) {
-            # no output
-        } else if (isTRUE(jsonl)) {
-            epwshiftr_cli_download_emit_jsonl_snapshot(snapshot)
-        } else {
-            cat("\014")
-            epwshiftr_cli_with_theme(epwshiftr_cli_render_download_watch(
-                snapshot
-            ))
+        if (!isTRUE(quiet)) {
+            if (isTRUE(jsonl)) {
+                epwshiftr_cli_download_emit_jsonl_snapshot(snapshot)
+            } else {
+                cat("\014")
+                epwshiftr_cli_with_theme(
+                    epwshiftr_cli_render_download_watch(snapshot)
+                )
+            }
         }
-        if (!is.infinite(count) && i >= count) {
-            break
-        }
-        if (!epwshiftr_cli_download_snapshot_active(snapshot)) {
+        if (
+            (!is.infinite(count) && i >= count) ||
+                !epwshiftr_cli_download_snapshot_active(snapshot)
+        ) {
             break
         }
         Sys.sleep(interval)
@@ -529,29 +562,22 @@ epwshiftr_cli_download_watch_summary <- function(
     )
     counts <- stats::setNames(integer(length(statuses)), statuses)
     if (nrow(tasks) && "status" %in% names(tasks)) {
-        observed <- table(factor(tasks$status, levels = statuses))
-        counts[] <- as.integer(observed)
+        counts[] <- as.integer(table(factor(tasks$status, levels = statuses)))
     }
-    bytes_done <- if (nrow(tasks) && "bytes_done" %in% names(tasks)) {
-        sum(suppressWarnings(as.numeric(tasks$bytes_done)), na.rm = TRUE)
-    } else {
-        0
-    }
-    bytes_total <- if (nrow(tasks) && "size" %in% names(tasks)) {
-        sum(suppressWarnings(as.numeric(tasks$size)), na.rm = TRUE)
-    } else {
-        NA_real_
-    }
-    speed_bps <- if (nrow(tasks) && "speed_bps" %in% names(tasks)) {
-        speed_values <- suppressWarnings(as.numeric(tasks$speed_bps))
-        if (any(!is.na(speed_values))) {
-            sum(speed_values, na.rm = TRUE)
-        } else {
-            NA_real_
+    sum_col <- function(col, default = NA_real_, require_any = FALSE) {
+        if (!nrow(tasks) || !col %in% names(tasks)) {
+            return(default)
         }
-    } else {
-        NA_real_
+        vals <- suppressWarnings(as.numeric(tasks[[col]]))
+        if (require_any && !any(!is.na(vals))) {
+            default
+        } else {
+            sum(vals, na.rm = TRUE)
+        }
     }
+    bytes_done <- sum_col("bytes_done", default = 0)
+    bytes_total <- sum_col("size")
+    speed_bps <- sum_col("speed_bps", require_any = TRUE)
     eta_seconds <- if (
         !is.na(speed_bps) &&
             speed_bps > 0 &&
@@ -567,9 +593,7 @@ epwshiftr_cli_download_watch_summary <- function(
         errors <- tasks$last_error[
             !is.na(tasks$last_error) & nzchar(tasks$last_error)
         ]
-        if (length(errors)) {
-            last_error <- utils::tail(errors, 1L)
-        }
+        if (length(errors)) last_error <- utils::tail(errors, 1L)
     }
     data.frame(
         task_count = as.integer(nrow(tasks)),
@@ -614,9 +638,7 @@ epwshiftr_cli_download_last_session_id <- function(
         sessions <- tasks$session_id[
             !is.na(tasks$session_id) & nzchar(tasks$session_id)
         ]
-        if (length(sessions)) {
-            return(utils::tail(sessions, 1L))
-        }
+        if (length(sessions)) return(utils::tail(sessions, 1L))
     }
     sessions <- data.table::as.data.table(tryCatch(
         downloader$sessions(),
@@ -644,25 +666,16 @@ epwshiftr_cli_download_snapshot_active <- function(snapshot) {
         ))
     }
     tasks <- snapshot$tasks
-    if (is.null(tasks) || !nrow(tasks) || !"status" %in% names(tasks)) {
-        return(FALSE)
-    }
-    any(tasks$status %in% c("queued", "downloading"))
+    !is.null(tasks) &&
+        nrow(tasks) &&
+        "status" %in% names(tasks) &&
+        any(tasks$status %in% c("queued", "downloading"))
 }
 # }}}
 
 # epwshiftr_cli_emit_jsonl {{{
 epwshiftr_cli_emit_jsonl <- function(x) {
-    cat(jsonlite::toJSON(
-        x,
-        dataframe = "rows",
-        POSIXt = "ISO8601",
-        auto_unbox = TRUE,
-        null = "null"
-    ))
-    cat("\n")
-    flush.console()
-    invisible(NULL)
+    cli__write_json(x, pretty = FALSE, flush = TRUE)
 }
 # }}}
 
@@ -670,36 +683,20 @@ epwshiftr_cli_emit_jsonl <- function(x) {
 epwshiftr_cli_download_emit_jsonl_snapshot <- function(snapshot) {
     emitted <- FALSE
     at <- downloader__now()
-    if (!is.null(snapshot$jobs) && nrow(snapshot$jobs)) {
-        for (i in seq_len(nrow(snapshot$jobs))) {
-            epwshiftr_cli_emit_jsonl(list(
-                type = "job",
-                emitted_at = at,
-                job = epwshiftr_cli_row_object(snapshot$jobs, i)
-            ))
-            emitted <- TRUE
+    emit_rows <- function(rows, type, key) {
+        if (is.null(rows) || !nrow(rows)) {
+            return(invisible(NULL))
+        }
+        for (i in seq_len(nrow(rows))) {
+            record <- list(type = type, emitted_at = at)
+            record[[key]] <- epwshiftr_cli_row_object(rows, i)
+            epwshiftr_cli_emit_jsonl(record)
+            emitted <<- TRUE
         }
     }
-    if (!is.null(snapshot$tasks) && nrow(snapshot$tasks)) {
-        for (i in seq_len(nrow(snapshot$tasks))) {
-            epwshiftr_cli_emit_jsonl(list(
-                type = "progress",
-                emitted_at = at,
-                task = epwshiftr_cli_row_object(snapshot$tasks, i)
-            ))
-            emitted <- TRUE
-        }
-    }
-    if (!is.null(snapshot$events) && nrow(snapshot$events)) {
-        for (i in seq_len(nrow(snapshot$events))) {
-            epwshiftr_cli_emit_jsonl(list(
-                type = "event",
-                emitted_at = at,
-                event = epwshiftr_cli_row_object(snapshot$events, i)
-            ))
-            emitted <- TRUE
-        }
-    }
+    emit_rows(snapshot$jobs, "job", "job")
+    emit_rows(snapshot$tasks, "progress", "task")
+    emit_rows(snapshot$events, "event", "event")
     if (!isTRUE(emitted)) {
         epwshiftr_cli_emit_jsonl(list(
             type = "summary",
@@ -720,9 +717,7 @@ epwshiftr_cli_download_emit_jsonl_snapshot <- function(snapshot) {
 # epwshiftr_cli_row_object {{{
 epwshiftr_cli_row_object <- function(x, i) {
     row <- as.data.frame(x[i, , drop = FALSE], stringsAsFactors = FALSE)
-    out <- lapply(row, function(value) value[[1L]])
-    names(out) <- names(row)
-    out
+    stats::setNames(lapply(row, `[[`, 1L), names(row))
 }
 # }}}
 
@@ -754,8 +749,9 @@ epwshiftr_cli_download_plan_args <- function(parsed) {
     args <- list()
     for (name in c("--replica", "--service", "--strategy")) {
         if (!is.null(parsed$options[[name]])) {
-            key <- gsub("-", "_", sub("^--", "", name))
-            args[[key]] <- parsed$options[[name]]
+            args[[gsub("-", "_", sub("^--", "", name))]] <- parsed$options[[
+                name
+            ]]
         }
     }
     if (
@@ -770,17 +766,13 @@ epwshiftr_cli_download_plan_args <- function(parsed) {
     if (isTRUE(parsed$flags[["--no-probe"]])) {
         args$probe <- FALSE
     }
-    if (!is.null(parsed$options[["--probe-concurrency"]])) {
-        args$probe_concurrency <- epwshiftr_cli_count(
-            parsed$options[["--probe-concurrency"]],
-            "--probe-concurrency"
-        )
-    }
-    if (!is.null(parsed$options[["--probe-cache-seconds"]])) {
-        args$probe_cache_seconds <- epwshiftr_cli_count(
-            parsed$options[["--probe-cache-seconds"]],
-            "--probe-cache-seconds"
-        )
+    for (name in c("--probe-concurrency", "--probe-cache-seconds")) {
+        if (!is.null(parsed$options[[name]])) {
+            args[[gsub("-", "_", sub("^--", "", name))]] <- epwshiftr_cli_count(
+                parsed$options[[name]],
+                name
+            )
+        }
     }
     args
 }
@@ -796,54 +788,30 @@ epwshiftr_cli_download_config <- function(store, args) {
     action <- args[[1L]]
     rest <- args[-1L]
     if (identical(action, "show")) {
-        parsed <- epwshiftr_cli_parse_command(rest)
-        epwshiftr_cli_assert_no_positionals(parsed)
+        epwshiftr_cli_parse_command(rest, no_positionals = TRUE)
         return(epwshiftr_cli_downloader_config(epwshiftr_cli_downloader(store)))
     }
     if (identical(action, "set")) {
         parsed <- epwshiftr_cli_parse_command(
             rest,
-            options = c(
-                "--workers",
-                "--retries",
-                "--timeout",
-                "--connect-timeout",
-                "--proxy",
-                "--useragent",
-                "--ssl-verifypeer",
-                "--chunk-size",
-                "--bandwidth-limit",
-                "--low-speed-limit",
-                "--low-speed-time",
-                "--host-concurrency",
-                "--disk-preflight",
-                "--min-free-space",
-                "--cooldown-after-failures",
-                "--cooldown-seconds",
-                "--history-ttl-seconds",
-                "--min-attempts"
-            )
+            options = names(cli_download__config_specs()),
+            no_positionals = TRUE
         )
-        epwshiftr_cli_assert_no_positionals(parsed)
         current <- epwshiftr_cli_downloader(store)
         network <- current$network_policy
-        node_policy <- current$node_policy
-        transfer_policy <- current$transfer_policy
-        resource_policy <- current$resource_policy
-        params <- list(
-            retries = current$max_retries,
-            timeout = current$timeout,
-            ssl_verifypeer = network$ssl_verifypeer,
-            proxy = network$proxy,
-            connect_timeout = network$connect_timeout,
-            useragent = network$useragent,
-            n_workers = current$n_workers,
-            node_policy = node_policy,
-            transfer_policy = transfer_policy,
-            resource_policy = resource_policy
-        )
         params <- epwshiftr_cli_apply_download_config_options(
-            params,
+            list(
+                retries = current$max_retries,
+                timeout = current$timeout,
+                ssl_verifypeer = network$ssl_verifypeer,
+                proxy = network$proxy,
+                connect_timeout = network$connect_timeout,
+                useragent = network$useragent,
+                n_workers = current$n_workers,
+                node_policy = current$node_policy,
+                transfer_policy = current$transfer_policy,
+                resource_policy = current$resource_policy
+            ),
             parsed$options
         )
         paths <- epwshiftr_cli_downloader_paths(store)
@@ -920,102 +888,378 @@ epwshiftr_cli_downloader_config <- function(downloader) {
 
 # epwshiftr_cli_apply_download_config_options {{{
 epwshiftr_cli_apply_download_config_options <- function(params, options) {
-    set_count <- function(option, target, positive = TRUE) {
-        if (!is.null(options[[option]])) {
-            params[[target]] <<- epwshiftr_cli_count(
-                options[[option]],
-                option,
-                positive = positive
-            )
+    specs <- cli_download__config_specs()
+    for (option in names(specs)) {
+        raw <- options[[option]]
+        if (is.null(raw)) {
+            next
         }
-    }
-    set_nullable_count <- function(option, policy, field, positive = TRUE) {
-        if (!is.null(options[[option]])) {
-            params[[policy]][[field]] <<- epwshiftr_cli_count_or_null(
-                options[[option]],
+        spec <- specs[[option]]
+        value <- switch(
+            spec$type,
+            count = epwshiftr_cli_count(raw, option, positive = spec$positive),
+            count_or_null = epwshiftr_cli_count_or_null(
+                raw,
                 option,
-                positive = positive
-            )
+                positive = spec$positive
+            ),
+            string_or_null = epwshiftr_cli_string_or_null(raw),
+            bool = epwshiftr_cli_bool(raw, option)
+        )
+        if (is.null(spec$policy)) {
+            params[[spec$field]] <- value
+        } else {
+            params[[spec$policy]][[spec$field]] <- value
         }
-    }
-    set_count("--workers", "n_workers", positive = FALSE)
-    set_count("--retries", "retries")
-    set_count("--timeout", "timeout")
-    if (!is.null(options[["--connect-timeout"]])) {
-        params$connect_timeout <- epwshiftr_cli_count_or_null(
-            options[["--connect-timeout"]],
-            "--connect-timeout"
-        )
-    }
-    if (!is.null(options[["--proxy"]])) {
-        params$proxy <- epwshiftr_cli_string_or_null(options[["--proxy"]])
-    }
-    if (!is.null(options[["--useragent"]])) {
-        params$useragent <- epwshiftr_cli_string_or_null(options[[
-            "--useragent"
-        ]])
-    }
-    if (!is.null(options[["--ssl-verifypeer"]])) {
-        params$ssl_verifypeer <- epwshiftr_cli_bool(
-            options[["--ssl-verifypeer"]],
-            "--ssl-verifypeer"
-        )
-    }
-    set_nullable_count("--chunk-size", "transfer_policy", "chunk_size")
-    set_nullable_count(
-        "--bandwidth-limit",
-        "transfer_policy",
-        "bandwidth_limit"
-    )
-    set_nullable_count(
-        "--low-speed-limit",
-        "transfer_policy",
-        "low_speed_limit"
-    )
-    set_nullable_count("--low-speed-time", "transfer_policy", "low_speed_time")
-    set_nullable_count(
-        "--host-concurrency",
-        "resource_policy",
-        "host_concurrency"
-    )
-    if (!is.null(options[["--disk-preflight"]])) {
-        params$resource_policy$disk_preflight <- epwshiftr_cli_bool(
-            options[["--disk-preflight"]],
-            "--disk-preflight"
-        )
-    }
-    if (!is.null(options[["--min-free-space"]])) {
-        params$resource_policy$min_free_space <- epwshiftr_cli_count(
-            options[["--min-free-space"]],
-            "--min-free-space",
-            positive = FALSE
-        )
-    }
-    if (!is.null(options[["--cooldown-after-failures"]])) {
-        params$node_policy$cooldown_after_failures <- epwshiftr_cli_count(
-            options[["--cooldown-after-failures"]],
-            "--cooldown-after-failures"
-        )
-    }
-    if (!is.null(options[["--cooldown-seconds"]])) {
-        params$node_policy$cooldown_seconds <- epwshiftr_cli_count(
-            options[["--cooldown-seconds"]],
-            "--cooldown-seconds"
-        )
-    }
-    if (!is.null(options[["--history-ttl-seconds"]])) {
-        params$node_policy$history_ttl_seconds <- epwshiftr_cli_count(
-            options[["--history-ttl-seconds"]],
-            "--history-ttl-seconds"
-        )
-    }
-    if (!is.null(options[["--min-attempts"]])) {
-        params$node_policy$min_attempts <- epwshiftr_cli_count(
-            options[["--min-attempts"]],
-            "--min-attempts"
-        )
     }
     invisible(params)
+}
+# }}}
+
+# epwshiftr_cli_esgf {{{
+epwshiftr_cli_esgf <- function(store, command, args) {
+    if (identical(command, "report")) {
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            options = "--query",
+            no_positionals = TRUE
+        )
+        return(store$workflow_report(
+            query_id = parsed$options[["--query"]],
+            downloader = epwshiftr_cli_downloader(store)
+        ))
+    }
+    epwshiftr_cli_usage_abort(sprintf("Unknown esgf command: %s", command))
+}
+# }}}
+
+# epwshiftr_cli_storage {{{
+epwshiftr_cli_storage <- function(store, command, args) {
+    if (identical(command, "layout")) {
+        if (!length(args)) {
+            epwshiftr_cli_usage_abort(
+                "Missing storage layout command: show or set."
+            )
+        }
+        action <- args[[1L]]
+        rest <- args[-1L]
+        if (identical(action, "show")) {
+            epwshiftr_cli_parse_command(rest, no_positionals = TRUE)
+            return(store$download_layout())
+        }
+        if (identical(action, "set")) {
+            parsed <- epwshiftr_cli_parse_command(
+                rest,
+                options = c(
+                    "--layout",
+                    "--template",
+                    "--include-version",
+                    "--collision",
+                    "--missing"
+                ),
+                no_positionals = TRUE
+            )
+            layout <- parsed$options[["--layout"]]
+            if (is.null(layout)) {
+                epwshiftr_cli_usage_abort(
+                    "storage layout set requires --layout."
+                )
+            }
+            store$set_download_layout(
+                layout = layout,
+                template = parsed$options[["--template"]],
+                include_version = epwshiftr_cli_bool(
+                    parsed$options[["--include-version"]],
+                    "--include-version",
+                    default = TRUE
+                ),
+                collision = shift_stage__coalesce(
+                    parsed$options[["--collision"]],
+                    "error"
+                ),
+                missing = shift_stage__coalesce(
+                    parsed$options[["--missing"]],
+                    "fallback"
+                )
+            )
+            return(store$download_layout())
+        }
+        epwshiftr_cli_usage_abort(sprintf(
+            "Unknown storage layout command: %s",
+            action
+        ))
+    }
+    if (identical(command, "report")) {
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            flags = "--detail",
+            no_positionals = TRUE
+        )
+        return(store$storage_report(detail = parsed$flags[["--detail"]]))
+    }
+    if (identical(command, "validate")) {
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            flags = "--checksum",
+            options = "--query",
+            no_positionals = TRUE
+        )
+        return(store$validate_files(
+            query_id = parsed$options[["--query"]],
+            checksum = parsed$flags[["--checksum"]]
+        ))
+    }
+    if (identical(command, "repair")) {
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            flags = "--execute",
+            no_positionals = TRUE
+        )
+        return(store$repair_files(dry_run = !parsed$flags[["--execute"]]))
+    }
+    if (identical(command, "cleanup")) {
+        parsed <- epwshiftr_cli_parse_command(
+            args,
+            flags = "--execute",
+            options = c("--scope", "--older-than"),
+            no_positionals = TRUE
+        )
+        scope <- shift_stage__coalesce(
+            epwshiftr_cli_csv(parsed$options[["--scope"]]),
+            c("tmp", "orphan_records", "untracked_files", "missing_records")
+        )
+        older_than <- epwshiftr_cli_count(
+            parsed$options[["--older-than"]],
+            "--older-than",
+            positive = FALSE
+        )
+        return(store$cleanup_downloads(
+            scope = scope,
+            dry_run = !parsed$flags[["--execute"]],
+            older_than = older_than
+        ))
+    }
+    epwshiftr_cli_usage_abort(sprintf("Unknown storage command: %s", command))
+}
+# }}}
+
+# epwshiftr_cli_extract {{{
+epwshiftr_cli_extract <- function(
+    store,
+    command,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    if (command %in% c("run", "retry")) {
+        fn <- if (identical(command, "run")) {
+            epwshiftr_cli_extract_run
+        } else {
+            epwshiftr_cli_extract_retry
+        }
+        return(fn(store, args, json = json, jsonl = jsonl, quiet = quiet))
+    }
+    switch(
+        command,
+        plan = epwshiftr_cli_extract_plan(store, args),
+        coverage = epwshiftr_cli_extract_coverage(store, args),
+        artifacts = epwshiftr_cli_extract_artifacts(store, args),
+        epwshiftr_cli_usage_abort(sprintf(
+            "Unknown extract command: %s",
+            command
+        ))
+    )
+}
+# }}}
+
+# cli_extract__run_plans {{{
+cli_extract__run_plans <- function(
+    store,
+    plan_id,
+    fallback,
+    parsed,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    climate <- shift_run__extract_plans_task(
+        store,
+        plan_id = plan_id,
+        fallback = fallback,
+        overwrite = isTRUE(parsed$flags[["--overwrite"]]),
+        resume = !isTRUE(parsed$flags[["--no-resume"]]),
+        ui = epwshiftr_cli_task_ui(
+            parsed,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        )
+    )
+    cli_morph__attach_ids(climate@meta$processed, climate)
+}
+# }}}
+
+# epwshiftr_cli_extract_plan {{{
+epwshiftr_cli_extract_plan <- function(store, args) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = c(
+            "--query",
+            "--site-id",
+            "--lon",
+            "--lat",
+            "--time",
+            "--variable",
+            "--method"
+        ),
+        multi_options = c("--filter"),
+        no_positionals = TRUE
+    )
+    query_id <- epwshiftr_cli_required_single_id(parsed, "--query")
+    site_id <- epwshiftr_cli_required_option(parsed, "--site-id")
+    lon <- epwshiftr_cli_number(
+        epwshiftr_cli_required_option(parsed, "--lon"),
+        "--lon"
+    )
+    lat <- epwshiftr_cli_number(
+        epwshiftr_cli_required_option(parsed, "--lat"),
+        "--lat"
+    )
+    time <- epwshiftr_cli_time_range(epwshiftr_cli_required_option(
+        parsed,
+        "--time"
+    ))
+    store$plan_region(
+        query_id = query_id,
+        site_id = site_id,
+        lon = lon,
+        lat = lat,
+        time = time,
+        variable_id = epwshiftr_cli_csv(parsed$options[["--variable"]]),
+        filters = epwshiftr_cli_key_value_list(parsed$options[["--filter"]]),
+        method = epwshiftr_cli_choice(
+            parsed$options[["--method"]],
+            ESG_GRID_METHOD_CHOICES,
+            "--method",
+            default = "nearest"
+        )
+    )
+}
+# }}}
+
+# epwshiftr_cli_extract_run {{{
+epwshiftr_cli_extract_run <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        flags = CLI_RUN_FLAGS,
+        options = c("--plan", "--fallback"),
+        no_positionals = TRUE
+    )
+    fallback <- epwshiftr_cli_choice(
+        parsed$options[["--fallback"]],
+        c("auto", "error"),
+        "--fallback",
+        default = "auto"
+    )
+    cli_extract__run_plans(
+        store,
+        plan_id = epwshiftr_cli_required_ids(parsed, "--plan"),
+        fallback = fallback,
+        parsed = parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
+}
+# }}}
+
+# epwshiftr_cli_extract_retry {{{
+epwshiftr_cli_extract_retry <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        flags = c("--run", CLI_RUN_FLAGS),
+        options = c("--plan", "--status", "--fallback"),
+        no_positionals = TRUE
+    )
+    statuses <- cli_retry__resolve_statuses(
+        parsed$options[["--status"]],
+        c("pending", "failed", "empty", "done")
+    )
+    fallback <- epwshiftr_cli_choice(
+        parsed$options[["--fallback"]],
+        c("auto", "error"),
+        "--fallback",
+        default = "auto"
+    )
+    candidates <- store$coverage(
+        plan_id = epwshiftr_cli_ids(
+            parsed$options[["--plan"]],
+            "--plan",
+            required = FALSE
+        )
+    )
+    retry <- cli_retry__prepare_candidates(
+        candidates,
+        statuses,
+        parsed$flags[["--run"]]
+    )
+    if (!retry$execute) {
+        return(retry$candidates)
+    }
+    cli_extract__run_plans(
+        store,
+        plan_id = unique(retry$candidates$plan_id),
+        fallback = fallback,
+        parsed = parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
+}
+# }}}
+
+# epwshiftr_cli_extract_coverage {{{
+epwshiftr_cli_extract_coverage <- function(store, args) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--plan",
+        no_positionals = TRUE
+    )
+    store$coverage(
+        plan_id = epwshiftr_cli_ids(
+            parsed$options[["--plan"]],
+            "--plan",
+            required = FALSE
+        )
+    )
+}
+# }}}
+
+# epwshiftr_cli_extract_artifacts {{{
+epwshiftr_cli_extract_artifacts <- function(store, args) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--plan",
+        no_positionals = TRUE
+    )
+    results <- shift_inspect__extraction_result_rows(
+        store,
+        epwshiftr_cli_required_ids(parsed, "--plan")
+    )
+    shift_inspect__artifact_rows(store, results$artifact_id)
 }
 # }}}
 

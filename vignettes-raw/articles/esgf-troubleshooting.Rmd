@@ -26,11 +26,11 @@ to point to the layer that needs attention.
 ```r
 shift_status(epws)
 shift_diagnostics(epws)
-shift_ids(epws)
+shift_history(store = store_dir())
 ```
 
-Use `shift_ids()` only for deeper inspection. Ordinary scripts should rely on
-the stage helpers first.
+Ordinary scripts should rely on the stage helpers first before inspecting
+lower-level manifest records.
 
 # Index Node vs Data Node
 
@@ -121,13 +121,20 @@ When OPeNDAP fails, try:
 - check whether the selected files expose `url_opendap`;
 - inspect data-node history in [Downloader](downloader.html).
 
+When both OPeNDAP and HTTP fallback fail, retain both attempt contexts. Inspect
+the stage, attempted address, and original message for each attempt. A local
+read failure after download includes the actual HTTP producer address when it
+was saved; missing historical addresses are not inferred from catalogue URLs.
+These checks also apply when a persistent source pool performs the read.
+Native subset acquisition remains OPeNDAP-only.
+
 # Download Problems
 
 Downloader state is persistent. Inspect sessions, tasks, jobs, and events before
 re-running a large download.
 
 ```r
-downloader <- shift_store(files_stage)$downloader()
+downloader <- EsgStore$new(store_dir())$downloader()
 
 downloader$sessions()
 downloader$tasks(session_id = session_id)
@@ -143,6 +150,21 @@ downloader$resume(session_id = session_id)
 downloader$verify(session_id = session_id)
 ```
 
+Compare the task's actual `transfer_request_url`, `transfer_final_url`,
+`transfer_sources`, and validator fields with the requested source. Read
+`verify()`'s `integrity_evidence` together with `checksum_ok`: `missing` can
+coexist with the generic existence-based `TRUE`, while `saved_transfer` checks
+original transfer bytes without claiming publisher verification.
+
+A resumable task needs a matching source owner and qualified byte evidence.
+A retained partial with neither a publisher checksum nor a valid original-GET
+strong validator is preserved, and a new transfer starts from zero. Invalid
+`206` ranges do not authorize appending; full `200` responses start from zero
+only with consistent content identity; `416` needs complete-file evidence.
+For `source_changed`, inspect the saved and requested source before retrying.
+Changing a catalogue label cannot certify the retained bytes as a new version.
+Saved range, piece, timeout, and worker settings still apply.
+
 If using the CLI:
 
 ```sh
@@ -157,12 +179,12 @@ Use store validation when local files, manifest records, or download layout look
 inconsistent.
 
 ```r
-store <- shift_store(epws)
+store <- EsgStore$new(store_dir())
 
 store$storage_report(detail = TRUE)
 
 validation <- store$validate_files(
-    query_id = shift_ids(epws)$query_id,
+    query_id = epws@ids$query_id,
     checksum = FALSE,
     layout = TRUE
 )
@@ -171,8 +193,28 @@ validation$summary
 validation$actions
 ```
 
-Repair and cleanup methods are preview-first. Execute only after reviewing
-actions.
+Extraction readback checks source lineage and local integrity for the requested
+plans and files, including native sources, extraction caches, and Parquet
+outputs. Use the affected plan, file, artifact, and path in the diagnostic to
+limit investigation:
+
+| Diagnostic | Meaning and next check |
+| --- | --- |
+| Insufficient source or integrity evidence | The old result lacks the original acquisition or byte evidence needed for reuse. Inspect its source receipt and Downloader session/task; supply verifiable source evidence or recompute the affected extraction. |
+| Source conflict | Saved ownership contradicts the selected catalogue record, endpoint, version, or expected checksum. Check the intended source and its original receipt before replacement. |
+| `source_changed` or retained bytes differ | Source representation evidence changed, or local bytes no longer match their saved hash/size. Keep the rejected bytes and original receipt for inspection. |
+
+Complete saved source and integrity evidence allow offline reuse without
+contacting the original node. Missing evidence while offline cannot be reported
+as verified reuse. After checking the requested source, explicitly rerun the
+affected `store$extract(plan_id = ..., overwrite = TRUE)` to replace rejected
+outputs through the existing conflict workflow. `resume = TRUE` means reuse of
+complete extraction outputs; byte-resume eligibility is checked separately.
+
+Start with the saved source, session, task, and retained artifacts. Deleting
+files, rescanning every artifact, or resetting the Store is not a general repair
+for a source conflict. Repair and cleanup methods are preview-first. Execute
+only after reviewing actions.
 
 ```r
 store$repair_files(validation$actions, dry_run = TRUE)

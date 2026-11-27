@@ -24,6 +24,8 @@ test_data_dir <- function() {
 }
 # }}}
 
+test_epw_cache__env <- new.env(parent = emptyenv())
+
 # get_cache_epw {{{
 get_cache_epw <- function() {
     dir <- test_data_dir()
@@ -33,40 +35,50 @@ get_cache_epw <- function() {
         mustWork = TRUE
     )
     path <- file.path(dir, basename(fixture))
-    # Always refresh the cached copy so tests do not reuse stale weather rows
-    # from an older fixture version.
-    ok <- file.copy(fixture, path, overwrite = TRUE)
-    if (!isTRUE(ok)) {
-        stop(
-            sprintf("Failed to copy EPW fixture to test cache: %s", path),
-            call. = FALSE
-        )
+    if (!identical(test_epw_cache__env$fixture_path, fixture)) {
+        test_epw_cache__env$fixture_path <- fixture
+        test_epw_cache__env$fixture_size <- file.size(fixture)
+        test_epw_cache__env$fixture_md5 <- unname(tools::md5sum(fixture))
+    }
+    # Refresh the cached copy whenever it is missing or differs from the
+    # packaged fixture, while skipping redundant copies on unchanged files.
+    needs_copy <- !file.exists(path) ||
+        !identical(file.size(path), test_epw_cache__env$fixture_size) ||
+        !identical(unname(tools::md5sum(path)), test_epw_cache__env$fixture_md5)
+    if (needs_copy) {
+        ok <- file.copy(fixture, path, overwrite = TRUE)
+        if (!isTRUE(ok)) {
+            stop(
+                sprintf("Failed to copy EPW fixture to test cache: %s", path),
+                call. = FALSE
+            )
+        }
     }
     normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 # }}}
 
-# get_cache_nc {{{
-get_cache_nc <- function(reset = FALSE) {
-    dir <- test_data_dir()
-    paths <- file.path(
-        dir,
-        vapply(local_cmip6_test_years, local_cmip6_nc_file, character(1))
-    )
-
-    if (reset) {
-        unlink(paths, force = TRUE)
+# Memoize reading the packaged EPW fixture once per worker and return a fresh
+# deep copy so mutations in one test cannot corrupt the cached template.
+# get_cached_epw {{{
+get_cached_epw <- function() {
+    path <- get_cache_epw()
+    if (
+        is.null(test_epw_cache__env$epw) ||
+            !identical(test_epw_cache__env$epw_path, path)
+    ) {
+        test_epw_cache__env$epw <- epw_file_read(path)
+        test_epw_cache__env$epw_path <- path
     }
-    unlink(paths[file.exists(paths)], force = TRUE)
-
-    for (i in seq_along(paths)) {
-        write_local_cmip6_netcdf_fixture(
-            paths[[i]],
-            local_cmip6_test_years[[i]]
-        )
+    epw <- test_epw_cache__env$epw$clone(deep = TRUE)
+    private_env <- epw$.__enclos_env__$private
+    if (
+        is.environment(private_env) &&
+            data.table::is.data.table(private_env$weather)
+    ) {
+        private_env$weather <- data.table::copy(private_env$weather)
     }
-
-    normalizePath(dir)
+    epw
 }
 # }}}
 
@@ -85,19 +97,55 @@ read_test_parquet <- function(path) {
 }
 # }}}
 
-# get_cache_parquet {{{
-get_cache_parquet <- function(reset = FALSE) {
-    # The Parquet writer constructs its own rows. Rebuilding NetCDF here would
-    # repeat setup.R's preparation and replace files another reader may hold.
-    dir <- test_data_dir()
-    path <- file.path(dir, "EC-Earth3.ssp585.tas.parquet")
-
-    if (reset && file.exists(path)) {
-        unlink(path)
-    }
-    write_local_morph_tas_fixture(path)
-
-    normalizePath(path)
+# Build a dependency-free stand-in for the public eplusr Epw protocol so input
+# compatibility can be tested without declaring eplusr in Suggests.
+# test_external_epw {{{
+test_external_epw <- function(path) {
+    generator <- R6::R6Class(
+        "Epw",
+        public = list(
+            source_path = NULL,
+            initialize = function(path) {
+                self$source_path <- normalizePath(
+                    path,
+                    winslash = "/",
+                    mustWork = TRUE
+                )
+            },
+            path = function() {
+                self$source_path
+            },
+            location = function() {
+                epw_file_read(self$source_path)$location()
+            },
+            save = function(path, overwrite = FALSE) {
+                if (file.exists(path) && !isTRUE(overwrite)) {
+                    stop("Target exists.")
+                }
+                dir.create(
+                    dirname(path),
+                    recursive = TRUE,
+                    showWarnings = FALSE
+                )
+                if (
+                    !isTRUE(file.copy(
+                        self$source_path,
+                        path,
+                        overwrite = overwrite
+                    ))
+                ) {
+                    stop("Failed to save fake Epw.")
+                }
+                self$source_path <- normalizePath(
+                    path,
+                    winslash = "/",
+                    mustWork = TRUE
+                )
+                invisible(self$source_path)
+            }
+        )
+    )
+    generator$new(path)
 }
 # }}}
 
@@ -122,7 +170,8 @@ local_cache_mode <- function(mode, env = parent.frame()) {
 # @param scope Character. One of:
 #   - "test" (default): ephemeral cache in tempfile(), deleted on exit
 #   - "session": persists within the R session (tempdir()-based), not deleted
-#   - "persist": persists for the testthat run, then is deleted at teardown
+#   - "persist": persists for the calling file/scope in an isolated directory,
+#     restores the prior cache, and deletes the directory on exit
 # @param env The environment for withr::defer cleanup
 # local_test_cache {{{
 local_test_cache <- function(
@@ -135,7 +184,7 @@ local_test_cache <- function(
         scope,
         "test" = tempfile("epwshiftr-test-cache-"),
         "session" = file.path(tempdir(), "epwshiftr-test-cache"),
-        "persist" = file.path(tempdir(), "epwshiftr-persist-cache")
+        "persist" = tempfile("epwshiftr-persist-cache-")
     )
 
     cache <- DiskCache$new(
@@ -145,17 +194,14 @@ local_test_cache <- function(
         max_n = Inf
     )
     old_cache <- cache__set(cache)
-    cleanup_env <- if (identical(scope, "persist")) {
-        testthat::teardown_env()
-    } else {
-        env
-    }
     withr::defer(
         {
             cache__set(old_cache)
-            if (scope %in% c("test", "persist")) unlink(dir, recursive = TRUE)
+            if (scope %in% c("test", "persist")) {
+                unlink(dir, recursive = TRUE, force = TRUE)
+            }
         },
-        envir = cleanup_env
+        envir = env
     )
     cache
 }

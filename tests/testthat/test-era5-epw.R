@@ -47,17 +47,33 @@ reference_test__site <- function() {
     )
 }
 
+reference_test__annual <- function(
+    bundle = reference_test__bundle(),
+    year = 2001,
+    leap_day = "drop",
+    precipitation = "missing",
+    site = reference_test__site(),
+    normalized = NULL
+) {
+    input <- if (is.null(normalized)) era_epw__normalize(bundle) else normalized
+    era_epw__annual(input, era_epw__site(site), year, leap_day, precipitation)
+}
+
+reference_test__run <- function(
+    dir,
+    data = reference_test__bundle(),
+    year = 2001,
+    sites = reference_test__site(),
+    ...
+) {
+    shift_epw_reanalysis(shift_era5(year), sites, dir, data = data, ...)
+}
+
 test_that("reference EPW maps interval end, units, wind and explicit missing fields", {
     input <- reference_test__bundle()
     original <- serialize(input, NULL)
     normalized <- era_epw__normalize(input)
-    annual <- era_epw__annual(
-        normalized,
-        era_epw__site(reference_test__site()),
-        2001,
-        "drop",
-        "missing"
-    )
+    annual <- reference_test__annual(normalized = normalized)
     weather <- annual$weather
     expect_identical(serialize(input, NULL), original)
     expect_equal(nrow(weather), 8760)
@@ -67,11 +83,7 @@ test_that("reference EPW maps interval end, units, wind and explicit missing fie
     )
     expect_equal(
         weather[8760, .(month, day, hour)],
-        data.table::data.table(
-            month = 12L,
-            day = 31L,
-            hour = 24L
-        )
+        data.table::data.table(month = 12L, day = 31L, hour = 24L)
     )
     expect_equal(
         annual$diagnostics$utc_time[[1]],
@@ -115,12 +127,9 @@ test_that("reference EPW maps interval end, units, wind and explicit missing fie
         rep(source_q / (1 - source_q), 8760),
         tolerance = 1e-12
     )
-    liquid <- era_epw__annual(
-        normalized,
-        era_epw__site(reference_test__site()),
-        2001,
-        "drop",
-        "total_water_equivalent"
+    liquid <- reference_test__annual(
+        normalized = normalized,
+        precipitation = "total_water_equivalent"
     )
     expect_equal(liquid$weather$liquid_precip_depth, rep(1, 8760))
     expect_equal(liquid$weather$liquid_precip_rate, rep(1, 8760))
@@ -128,9 +137,12 @@ test_that("reference EPW maps interval end, units, wind and explicit missing fie
 
 test_that("reference leap policy checks omitted hours and preserves them", {
     input <- era_epw__normalize(reference_test__bundle(2000))
-    meta <- era_epw__site(reference_test__site())
-    drop <- era_epw__annual(input, meta, 2000, "drop", "missing")
-    keep <- era_epw__annual(input, meta, 2000, "keep", "missing")
+    drop <- reference_test__annual(normalized = input, year = 2000)
+    keep <- reference_test__annual(
+        normalized = input,
+        year = 2000,
+        leap_day = "keep"
+    )
     expect_equal(nrow(drop$weather), 8760)
     expect_equal(nrow(drop$omitted), 24)
     expect_equal(nrow(keep$weather), 8784)
@@ -139,7 +151,7 @@ test_that("reference leap policy checks omitted hours and preserves them", {
         -which(format(input$data$utc_time, "%m-%d") == "02-29")[[1]]
     ]
     expect_error(
-        era_epw__annual(input, meta, 2000, "drop", "missing"),
+        reference_test__annual(normalized = input, year = 2000),
         "Missing 1 required UTC"
     )
     western <- era_epw__calendar(2001, -8, "keep")
@@ -168,34 +180,29 @@ test_that("reference inputs reject implicit repairs and ambiguous units or times
     bundle <- reference_test__bundle()
     bundle$interval_seconds <- 10800
     expect_error(era_epw__normalize(bundle), "interval_seconds")
-    meta <- era_epw__site(reference_test__site())
     for (field in c("tas", "rlds", "ps")) {
         input <- era_epw__normalize(reference_test__bundle())
         input$data[[field]][1] <- NA_real_
-        expect_error(
-            era_epw__annual(input, meta, 2001, "drop", "missing"),
-            "non-finite"
-        )
+        expect_error(reference_test__annual(normalized = input), "non-finite")
     }
     for (field in c("rsds", "clt", "pr")) {
         input <- era_epw__normalize(reference_test__bundle())
         input$data[[field]][1] <- -1e-9
         expect_error(
-            era_epw__annual(input, meta, 2001, "drop", "missing"),
+            reference_test__annual(normalized = input),
             "physical inconsistency"
         )
     }
     input <- era_epw__normalize(reference_test__bundle())
     input$data$tdps[1] <- input$data$tas[1] + 0.0001
     expect_error(
-        era_epw__annual(input, meta, 2001, "drop", "missing"),
+        reference_test__annual(normalized = input),
         "physical inconsistency"
     )
 })
 
 test_that("reference shortwave conserves horizontal energy and rejects impossible beam", {
     bundle <- reference_test__bundle()
-    meta <- era_epw__site(reference_test__site())
     calendar <- era_epw__calendar(2001, 8, "drop")
     geometry <- solar__epw_interval_geometry(calendar, 23.2, 113.3, 8)
     # Set a noon beam below the extraterrestrial limit. A shared geometry
@@ -203,13 +210,7 @@ test_that("reference shortwave conserves horizontal energy and rejects impossibl
     i <- which(calendar$month == 6 & calendar$day == 21 & calendar$hour == 13)
     bundle$data$rsds[i] <- 400 * 3600
     bundle$data$fdir[i] <- 250 * 3600
-    annual <- era_epw__annual(
-        era_epw__normalize(bundle),
-        meta,
-        2001,
-        "drop",
-        "missing"
-    )
+    annual <- reference_test__annual(bundle)
     expect_equal(annual$weather$diffuse_horizontal_radiation[i], 150)
     expect_equal(
         annual$weather$direct_normal_radiation[i] *
@@ -217,94 +218,40 @@ test_that("reference shortwave conserves horizontal energy and rejects impossibl
         250
     )
     bundle$data$fdir[i] <- 401 * 3600
-    expect_error(
-        era_epw__annual(
-            era_epw__normalize(bundle),
-            meta,
-            2001,
-            "drop",
-            "missing"
-        ),
-        "physical inconsistency"
-    )
+    expect_error(reference_test__annual(bundle), "physical inconsistency")
     bundle$data$fdir[i] <- bundle$data$rsds[i] <- 2000 * 3600
-    expect_error(
-        era_epw__annual(
-            era_epw__normalize(bundle),
-            meta,
-            2001,
-            "drop",
-            "missing"
-        ),
-        "DNI exceeds"
-    )
+    expect_error(reference_test__annual(bundle), "DNI exceeds")
     bundle <- reference_test__bundle()
     bundle$data$fdir[1] <- bundle$data$rsds[1] <- 1
-    expect_error(
-        era_epw__annual(
-            era_epw__normalize(bundle),
-            meta,
-            2001,
-            "drop",
-            "missing"
-        ),
-        "without solar projection"
-    )
+    expect_error(reference_test__annual(bundle), "without solar projection")
 })
 
 test_that("public reference conversion is offline, resumable and failure preserving", {
     local_mocked_bindings(cds__config = function(...) {
         stop("unexpected network")
     })
-    dir <- tempfile()
-    withr::defer(unlink(dir, recursive = TRUE))
+    dir <- withr::local_tempdir()
     input <- reference_test__bundle()
-    one <- shift_epw_reanalysis(
-        shift_era5(2001),
-        reference_test__site(),
-        dir,
-        data = input
-    )
+    one <- reference_test__run(dir, data = input)
     expect_identical(one$status, "complete")
     expect_false(one$reused)
     expect_true(file.exists(one$epw))
     expect_equal(EpwFile$new(one$epw)$header("GROUND TEMPERATURES"), "0")
-    two <- shift_epw_reanalysis(
-        shift_era5(2001),
-        reference_test__site(),
-        dir,
-        data = input
-    )
+    two <- reference_test__run(dir, data = input)
     expect_true(two$reused)
     expect_identical(two$epw, one$epw)
     # A damaged output must not be accepted on a subsequent run.
     cat("\ncorrupt\n", file = one$epw, append = TRUE)
-    three <- shift_epw_reanalysis(
-        shift_era5(2001),
-        reference_test__site(),
-        dir,
-        data = input
-    )
+    three <- reference_test__run(dir, data = input)
     expect_false(three$reused)
     expect_true(file.exists(one$epw))
     expect_false(identical(one$epw, three$epw))
     hash <- checksum_file(three$epw)
-    four <- shift_epw_reanalysis(
-        shift_era5(2001),
-        reference_test__site(),
-        dir,
-        data = input,
-        resume = FALSE
-    )
+    four <- reference_test__run(dir, data = input, resume = FALSE)
     expect_identical(checksum_file(four$epw), hash)
     input$data$tdps[1] <- input$data$tas[1] + 1
     expect_warning(
-        failed <- shift_epw_reanalysis(
-            shift_era5(2001),
-            reference_test__site(),
-            dir,
-            data = input
-        ),
+        failed <- reference_test__run(dir, data = input),
         "1 reference EPW job"
     )
     expect_identical(failed$status, "failed")
@@ -320,13 +267,16 @@ test_that("public reference conversion is offline, resumable and failure preserv
         ),
         "single_levels"
     )
+    # Provider identity must be checked even if a caller supplies a structurally
+    # valid future reanalysis descriptor with the same product name.
+    other_provider <- shift_era5(2001)
+    other_provider@dataset <- "era6"
+    expect_error(
+        shift_epw_reanalysis(other_provider, reference_test__site(), dir),
+        "requires"
+    )
     no_height <- shift_site("point", 113, 23, metadata = list(timezone = 8))
-    expect_error(shift_epw_reanalysis(
-        shift_era5(2001),
-        no_height,
-        dir,
-        data = input
-    ))
+    expect_error(reference_test__run(dir, data = input, sites = no_height))
 })
 
 test_that("monthly CDS requests respect requested years and retain boundary days", {
@@ -338,9 +288,7 @@ test_that("monthly CDS requests respect requested years and retain boundary days
     expect_length(request[["2001-02-instant"]]$variable, 6)
     expect_length(request[["2001-02-accumulated"]]$variable, 4)
     expect_equal(request[[1]]$area, c(23.325, 113.175, 23.075, 113.425))
-    dir <- tempfile()
-    dir.create(dir)
-    withr::defer(unlink(dir, recursive = TRUE))
+    dir <- withr::local_tempdir()
     input_hash <- era_epw__hash(list(
         dataset = era5__dataset_id("single_levels", "cds"),
         request = request[[1]]
@@ -385,27 +333,34 @@ reference_test__netcdf <- function(path) {
     RNetCDF::var.put.nc(handle, "t2m", array(271:278, dim = c(2, 2, 2)))
 }
 
-test_that("reference NetCDF extraction selects a bounded nearest point", {
-    path <- tempfile(fileext = ".nc")
-    withr::defer(unlink(path))
+test_that("reference NetCDF extraction selects bounded nearest point and unpacks scale/offset", {
+    path <- withr::local_tempfile(fileext = ".nc")
     reference_test__netcdf(path)
     handle <- RNetCDF::open.nc(path)
-    withr::defer(RNetCDF::close.nc(handle))
-    field <- era_epw__read_field(handle, "tas", reference_test__site())
+    field <- tryCatch(
+        era_epw__read_field(handle, "tas", reference_test__site()),
+        finally = RNetCDF::close.nc(handle)
+    )
     expect_equal(field$data$value, c(274, 278))
     expect_equal(field$grid, c(latitude = 23.25, longitude = 113.25))
     expect_equal(as.numeric(diff(field$data$utc_time), units = "secs"), 3600)
     expect_identical(field$units, "K")
+
+    # Packed CF storage must be decoded before temperatures reach weather conversion.
+    handle <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.put.nc(handle, "t2m", "scale_factor", "NC_DOUBLE", 0.1)
+    RNetCDF::att.put.nc(handle, "t2m", "add_offset", "NC_DOUBLE", 250)
+    RNetCDF::close.nc(handle)
+    handle <- RNetCDF::open.nc(path)
+    withr::defer(RNetCDF::close.nc(handle))
+    packed <- era_epw__read_field(handle, "tas", reference_test__site())
+    expect_equal(packed$data$value, c(277.4, 277.8))
 })
 
 test_that("CDS interruption resumes the original job and validates cached bytes", {
-    dir <- tempfile()
-    dir.create(dir)
-    withr::defer(unlink(dir, recursive = TRUE))
+    dir <- withr::local_tempdir()
     request <- list(variable = "test")
-    submitted <- 0L
-    downloaded <- 0L
-    waits <- 0L
+    submitted <- downloaded <- waits <- 0L
     local_mocked_bindings(
         cds__config = function() list(key = "private-test-key"),
         cds__submit = function(...) {
@@ -451,21 +406,11 @@ test_that("CDS interruption resumes the original job and validates cached bytes"
 })
 
 test_that("batch results retain absent years and lock ownership is respected", {
-    dir <- tempfile()
-    dir.create(dir)
-    withr::defer(unlink(dir, recursive = TRUE))
+    dir <- withr::local_tempdir()
     lock <- file.path(dir, ".reference-lock")
     dir.create(lock)
     writeLines("active test owner", file.path(lock, "owner.json"))
-    expect_error(
-        shift_epw_reanalysis(
-            shift_era5(2001),
-            reference_test__site(),
-            dir,
-            data = reference_test__bundle()
-        ),
-        "locked"
-    )
+    expect_error(reference_test__run(dir), "locked")
     expect_true(file.exists(file.path(lock, "owner.json")))
     unlink(lock, recursive = TRUE)
     sites <- list(
@@ -478,10 +423,10 @@ test_that("batch results retain absent years and lock ownership is respected", {
         )
     )
     expect_warning(
-        result <- shift_epw_reanalysis(
-            shift_era5(2001:2002),
-            sites,
+        result <- reference_test__run(
             dir,
+            year = 2001:2002,
+            sites = sites,
             data = list(
                 point = reference_test__bundle(),
                 other = reference_test__bundle()
@@ -522,16 +467,20 @@ reference_test__netcdf_year <- function(path, bundle) {
     }
 }
 
-test_that("a complete native NetCDF converts without contacting CDS", {
+test_that("complete native NetCDF converts offline and missing per-site input stays offline", {
     skip_on_cran()
-    path <- tempfile(fileext = ".nc")
-    dir <- tempfile()
-    withr::defer(unlink(c(path, dir), recursive = TRUE))
+    path <- withr::local_tempfile(fileext = ".nc")
+    dir <- withr::local_tempdir()
     bundle <- reference_test__bundle()
     reference_test__netcdf_year(path, bundle)
-    local_mocked_bindings(cds__config = function(...) {
-        stop("unexpected network")
-    })
+    downloads <- 0L
+    local_mocked_bindings(
+        cds__config = function(...) stop("unexpected network"),
+        era_epw__download = function(...) {
+            downloads <<- downloads + 1L
+            stop("unexpected download")
+        }
+    )
     read <- era_epw__read_files(path, reference_test__site())
     expect_equal(
         as.numeric(read$data$utc_time),
@@ -539,53 +488,15 @@ test_that("a complete native NetCDF converts without contacting CDS", {
     )
     expect_equal(read$data$rlds, bundle$data$rlds)
     expect_identical(read$provenance$files$sha256, checksum_file(path))
-    result <- shift_epw_reanalysis(
-        shift_era5(2001),
-        reference_test__site(),
-        dir,
-        data = path
-    )
+    result <- reference_test__run(dir, data = path)
     expect_identical(result$status, "complete")
     expect_equal(nrow(EpwFile$new(result$epw)$data()), 8760)
     expect_error(
         era_epw__read_files(c(path, path), reference_test__site()),
         "duplicated"
     )
-})
 
-# Provider identity must be checked even if a caller supplies a structurally
-# valid future reanalysis descriptor with the same product name.
-test_that("reference EPW rejects a different reanalysis provider", {
-    source <- shift_era5(2001)
-    source@dataset <- "era6"
-    expect_error(
-        shift_epw_reanalysis(source, reference_test__site(), tempfile()),
-        "requires"
-    )
-})
-
-# Packed CF storage must be decoded before temperatures reach weather conversion.
-test_that("reference NetCDF extraction unpacks scale and offset", {
-    path <- tempfile(fileext = ".nc")
-    withr::defer(unlink(path))
-    reference_test__netcdf(path)
-    handle <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::att.put.nc(handle, "t2m", "scale_factor", "NC_DOUBLE", 0.1)
-    RNetCDF::att.put.nc(handle, "t2m", "add_offset", "NC_DOUBLE", 250)
-    RNetCDF::close.nc(handle)
-    handle <- RNetCDF::open.nc(path)
-    withr::defer(RNetCDF::close.nc(handle))
-    field <- era_epw__read_field(handle, "tas", reference_test__site())
-    expect_equal(field$data$value, c(277.4, 277.8))
-})
-
-# An explicit local-data map cannot authorize a remote fallback for missing data.
-test_that("missing per-site local input remains offline", {
-    downloads <- 0L
-    local_mocked_bindings(era_epw__download = function(...) {
-        downloads <<- downloads + 1L
-        stop("unexpected download")
-    })
+    # An explicit local-data map cannot authorize a remote fallback for missing data.
     missing <- shift_site(
         "missing",
         113.3,
@@ -593,17 +504,16 @@ test_that("missing per-site local input remains offline", {
         metadata = list(timezone = 8, elevation = 41)
     )
     expect_warning(
-        result <- shift_epw_reanalysis(
-            shift_era5(2001),
-            list(reference_test__site(), missing),
+        res_miss <- reference_test__run(
             withr::local_tempdir(),
-            data = list(point = reference_test__bundle(), missing = NULL)
+            sites = list(reference_test__site(), missing),
+            data = list(point = bundle, missing = NULL)
         ),
         "1 reference EPW job"
     )
     expect_identical(downloads, 0L)
-    expect_identical(result$status, c("complete", "failed"))
-    expect_match(result$error[[2L]], "Local input is missing")
+    expect_identical(res_miss$status, c("complete", "failed"))
+    expect_match(res_miss$error[[2L]], "Local input is missing")
 })
 
 # A complete native UTC leap year plus padding, with independently calculable
@@ -615,36 +525,31 @@ fractional_test__bundle <- function() {
         by = "hour"
     )
     even <- (as.numeric(time) / 3600) %% 2 == 0
-    list(
-        data = data.table::data.table(
-            utc_time = time,
-            tas = 280 + as.integer(even),
-            tdps = 270,
-            ps = 101325,
-            uas = 3,
-            vas = 4,
-            rsds = 0,
-            fdir = 0,
-            rlds = data.table::fifelse(even, 200, 400),
-            clt = 0.5,
-            pr = data.table::fifelse(even, 1, 3)
-        ),
-        units = c(
-            tas = "K",
-            tdps = "K",
-            ps = "Pa",
-            uas = "m/s",
-            vas = "m/s",
-            rsds = "Wh/m2",
-            fdir = "Wh/m2",
-            rlds = "Wh/m2",
-            clt = "1",
-            pr = "mm"
-        ),
-        grid = list(latitude = -12.5, longitude = 131),
-        interval_seconds = 3600,
-        provenance = list(source = "synthetic fractional-offset test")
+    bundle <- reference_test__bundle()
+    bundle$data <- data.table::data.table(
+        utc_time = time,
+        tas = 280 + as.integer(even),
+        tdps = 270,
+        ps = 101325,
+        uas = 3,
+        vas = 4,
+        rsds = 0,
+        fdir = 0,
+        rlds = data.table::fifelse(even, 200, 400),
+        clt = 0.5,
+        pr = data.table::fifelse(even, 1, 3)
     )
+    bundle$units[c("uas", "vas", "rsds", "fdir", "rlds", "pr")] <- c(
+        "m/s",
+        "m/s",
+        "Wh/m2",
+        "Wh/m2",
+        "Wh/m2",
+        "mm"
+    )
+    bundle$grid <- list(latitude = -12.5, longitude = 131)
+    bundle$provenance <- list(source = "synthetic fractional-offset test")
+    bundle
 }
 
 test_that("fractional reference calendars preserve overlap energy and leap hours", {
@@ -655,14 +560,13 @@ test_that("fractional reference calendars preserve overlap energy and leap hours
         lon = 130.877,
         metadata = list(timezone = 9.5, elevation = 31.4)
     )
-    metadata <- era_epw__site(site)
     original <- serialize(input, NULL)
-    annual <- era_epw__annual(
-        input,
-        metadata,
-        2000,
-        "keep",
-        "total_water_equivalent"
+    annual <- reference_test__annual(
+        normalized = input,
+        year = 2000,
+        leap_day = "keep",
+        precipitation = "total_water_equivalent",
+        site = site
     )
     expect_equal(nrow(annual$weather), 8784)
     expect_equal(annual$weather$dry_bulb_temperature, rep(280.5 - 273.15, 8784))
@@ -682,12 +586,11 @@ test_that("fractional reference calendars preserve overlap energy and leap hours
         as.POSIXct("1999-12-31 16:00:00", tz = "UTC")
     )
     expect_equal(annual$alignment$upper_weight, rep(0.5, 8784))
-    dropped <- era_epw__annual(
-        input,
-        metadata,
-        2000,
-        "drop",
-        "total_water_equivalent"
+    dropped <- reference_test__annual(
+        normalized = input,
+        year = 2000,
+        precipitation = "total_water_equivalent",
+        site = site
     )
     expect_equal(nrow(dropped$weather), 8760)
     expect_equal(nrow(dropped$omitted), 24)
@@ -701,15 +604,14 @@ test_that("fractional reference calendars preserve overlap energy and leap hours
         -which(gap$data$utc_time == annual$alignment$source_utc_lower[1])
     ]
     expect_error(
-        era_epw__annual(gap, metadata, 2000, "drop", "missing"),
+        reference_test__annual(normalized = gap, year = 2000, site = site),
         "Missing"
     )
-    directory <- tempfile()
-    withr::defer(unlink(directory, recursive = TRUE))
-    result <- shift_epw_reanalysis(
-        shift_era5(2000),
-        site,
+    directory <- withr::local_tempdir()
+    result <- reference_test__run(
         directory,
+        year = 2000,
+        sites = site,
         data = fractional_test__bundle(),
         leap_day = "keep"
     )
@@ -718,10 +620,10 @@ test_that("fractional reference calendars preserve overlap energy and leap hours
     mapping <- file.path(dirname(result$epw), "time-alignment.csv")
     expect_true(file.exists(mapping))
     expect_equal(nrow(data.table::fread(mapping)), 8784)
-    reused <- shift_epw_reanalysis(
-        shift_era5(2000),
-        site,
+    reused <- reference_test__run(
         directory,
+        year = 2000,
+        sites = site,
         data = fractional_test__bundle(),
         leap_day = "keep"
     )
@@ -847,20 +749,35 @@ era_spatial_test__site <- function(lon = 0, lat = 0.0625) {
     )
 }
 
+era_spatial_test__run <- function(
+    directory,
+    data,
+    site = era_spatial_test__site(),
+    method = "bilinear"
+) {
+    reference_test__run(
+        directory,
+        sites = site,
+        data = data,
+        extraction_method = method
+    )
+}
+
+era_spatial_test__expect_tdb <- function(res, expected) {
+    expect_identical(res$status, "complete")
+    expect_equal(
+        EpwFile$new(res$epw)$data()$dry_bulb_temperature,
+        rep(expected, 8760)
+    )
+}
+
 test_that("local ERA5 spatial methods produce traceable annual weather and distinct caches", {
-    path <- tempfile(fileext = ".nc")
-    directory <- tempfile()
-    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    path <- withr::local_tempfile(fileext = ".nc")
+    directory <- withr::local_tempdir()
     era_spatial_test__file(path)
     site <- era_spatial_test__site()
     results <- lapply(c("nearest", "bilinear", "mean"), function(method) {
-        result <- shift_epw_reanalysis(
-            shift_era5(2001),
-            site,
-            directory,
-            data = path,
-            extraction_method = method
-        )
+        result <- era_spatial_test__run(directory, path, site, method)
         expect_identical(result$status, "complete")
         expect_false(result$reused)
         result
@@ -875,9 +792,8 @@ test_that("local ERA5 spatial methods produce traceable annual weather and disti
         numeric(1L)
     )
     expect_equal(temperatures, c(10, 14, 16))
-    interpolated <- EpwFile$new(results[[2L]]$epw)$data()
     # Averaging wind speed first would retain sqrt(13), rather than 3 m/s.
-    expect_equal(interpolated$wind_speed, rep(3, 8760))
+    expect_equal(EpwFile$new(results[[2L]]$epw)$data()$wind_speed, rep(3, 8760))
     receipt <- jsonlite::read_json(results[[2L]]$receipt, simplifyVector = TRUE)
     expect_identical(receipt$options$extraction_method, "bilinear")
     expect_equal(
@@ -891,76 +807,47 @@ test_that("local ERA5 spatial methods produce traceable annual weather and disti
         c(0, 0, 0.25, 0.25)
     )
     expect_true(all(is.finite(receipt$provenance$spatial$sources$grid_dist_km)))
-    expect_length(
-        unique(vapply(results, function(x) x$receipt, character(1L))),
-        3
-    )
-    again <- shift_epw_reanalysis(
-        shift_era5(2001),
-        site,
-        directory,
-        data = path,
-        extraction_method = "bilinear"
-    )
+    expect_length(unique(vapply(results, `[[`, character(1L), "receipt")), 3)
+    again <- era_spatial_test__run(directory, path, site, "bilinear")
     expect_true(again$reused)
     expect_identical(again$epw, results[[2L]]$epw)
-    idw <- shift_epw_reanalysis(
-        shift_era5(2001),
-        era_spatial_test__site(-0.125, 0),
+    idw <- era_spatial_test__run(
         directory,
-        data = path,
-        extraction_method = "idw"
+        path,
+        era_spatial_test__site(-0.125, 0),
+        "idw"
     )
-    expect_identical(idw$status, "complete")
-    expect_equal(
-        EpwFile$new(idw$epw)$data()$dry_bulb_temperature,
-        rep(10, 8760)
-    )
+    era_spatial_test__expect_tdb(idw, 10)
     idw_receipt <- jsonlite::read_json(idw$receipt, simplifyVector = TRUE)
     expect_equal(idw_receipt$provenance$spatial$sources$weight, c(1, 0, 0, 0))
 })
 
 test_that("ERA5 interpolation respects descending axes, dateline and regional edges", {
-    path <- tempfile(fileext = ".nc")
-    directory <- tempfile()
-    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    path <- withr::local_tempfile(fileext = ".nc")
+    directory <- withr::local_tempdir()
     era_spatial_test__file(
         path,
         reverse_lat = TRUE,
         longitude = c(179.875, -179.875)
     )
-    result <- shift_epw_reanalysis(
-        shift_era5(2001),
-        era_spatial_test__site(180),
-        directory,
-        data = path,
-        extraction_method = "bilinear"
-    )
-    expect_identical(result$status, "complete")
-    expect_equal(
-        EpwFile$new(result$epw)$data()$dry_bulb_temperature,
-        rep(14, 8760)
+    era_spatial_test__expect_tdb(
+        era_spatial_test__run(directory, path, era_spatial_test__site(180)),
+        14
     )
     # An exact eastern endpoint remains a valid cell boundary.
-    edge <- shift_epw_reanalysis(
-        shift_era5(2001),
-        era_spatial_test__site(-179.875, 0.25),
-        directory,
-        data = path,
-        extraction_method = "bilinear"
-    )
-    expect_identical(edge$status, "complete")
-    expect_equal(
-        EpwFile$new(edge$epw)$data()$dry_bulb_temperature,
-        rep(22, 8760)
+    era_spatial_test__expect_tdb(
+        era_spatial_test__run(
+            directory,
+            path,
+            era_spatial_test__site(-179.875, 0.25)
+        ),
+        22
     )
     expect_warning(
-        outside <- shift_epw_reanalysis(
-            shift_era5(2001),
-            era_spatial_test__site(179.5),
+        outside <- era_spatial_test__run(
             directory,
-            data = path,
-            extraction_method = "bilinear"
+            path,
+            era_spatial_test__site(179.5)
         ),
         "failed"
     )
@@ -969,41 +856,220 @@ test_that("ERA5 interpolation respects descending axes, dateline and regional ed
 })
 
 test_that("ERA5 interpolation cannot silently drop missing sources or fetch point data", {
-    path <- tempfile(fileext = ".nc")
-    directory <- tempfile()
-    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    path <- withr::local_tempfile(fileext = ".nc")
+    directory <- withr::local_tempdir()
     era_spatial_test__file(path, missing_corner = TRUE)
     expect_warning(
-        result <- shift_epw_reanalysis(
-            shift_era5(2001),
-            era_spatial_test__site(-0.125, 0),
+        result <- era_spatial_test__run(
             directory,
-            data = path,
-            extraction_method = "idw"
+            path,
+            era_spatial_test__site(-0.125, 0),
+            "idw"
         ),
         "failed"
     )
     expect_identical(result$status, "failed")
     expect_match(result$error, "finite")
     expect_error(
-        shift_epw_reanalysis(
-            shift_era5(2001),
-            era_spatial_test__site(),
-            tempfile(),
-            extraction_method = "bilinear"
-        ),
+        era_spatial_test__run(withr::local_tempdir(), NULL),
         "local NetCDF"
     )
     expect_error(
-        shift_epw_reanalysis(
-            shift_era5(2001),
-            era_spatial_test__site(),
-            tempfile(),
-            data = list(data = data.frame(x = 1)),
-            extraction_method = "mean"
+        era_spatial_test__run(
+            withr::local_tempdir(),
+            list(data = data.frame(x = 1)),
+            method = "mean"
         ),
         "local NetCDF"
     )
 })
+
+# ERA5 diffuse shortwave and longwave contracts {{{
+# Build matched hourly horizontal accumulations with a known diffuse residual.
+longwave_test__era <- function() {
+    time <- as.POSIXct("2001-01-01", tz = "UTC") + 0:3 * 3600
+    make <- function(value) {
+        list(
+            units = "J m-2",
+            data = data.table::data.table(
+                utc_time = time,
+                value = value * 3600,
+                grid_lat = 23,
+                grid_lon = 113,
+                grid_dist_km = 0
+            )
+        )
+    }
+    list(rsds = make(c(0, 100, 300, 0)), fdir = make(c(0, 40, 250, 0)))
+}
+
+test_that("ERA5 diffuse uses matched horizontal fluxes and ARCO access", {
+    raw <- longwave_test__era()
+    expect_equal(
+        era__canonical_hourly(raw, "rsdsdiff")$data$rsdsdiff,
+        c(0, 60, 50, 0)
+    )
+    expect_equal(
+        era__canonical_hourly(raw, "rsdsdiff")$data$utc_time,
+        raw$rsds$data$utc_time - 3600
+    )
+    expect_identical(era5__source_variables("rsdsdiff"), c("rsds", "fdir"))
+    expect_identical(era5__resolve_access(shift_era5(2001), "rsdsdiff"), "arco")
+    expect_identical(
+        era5__resolve_access(shift_era5(2001, access = "cds"), "rsdsdiff"),
+        "cds"
+    )
+    expect_error(era5__source_variables("rsdsdiff", "land"), "does not provide")
+    raw$fdir$data <- raw$fdir$data[-2]
+    expect_error(
+        era__canonical_hourly(raw, "rsdsdiff"),
+        "identical complete hourly"
+    )
+    raw <- longwave_test__era()
+    raw$fdir$data$value[2] <- 101 * 3600
+    expect_error(era__canonical_hourly(raw, "rsdsdiff"), "FDIR exceeds SSRD")
+    raw <- longwave_test__era()
+    raw$fdir$units <- "K"
+    expect_error(era__canonical_hourly(raw, "rsdsdiff"), "units")
+})
+
+test_that("longwave opt-in extends all roles without changing default contracts", {
+    base <- hourly_transform("kernel_qdm")
+    disabled <- hourly_transform("kernel_qdm", include_longwave = FALSE)
+    enabled <- hourly_transform("kernel_qdm", include_longwave = TRUE)
+    expect_identical(base@options, disabled@options)
+    original <- transform__recipe(base)
+    recipe <- transform__recipe(enabled)
+    expect_true(recipe$options$include_longwave)
+    restored <- transform__from_spec(transform__spec_value(enabled))
+    expect_identical(restored@options, enabled@options)
+    expect_false(identical(
+        transform__spec_value(base),
+        transform__spec_value(enabled)
+    ))
+    expect_true("rlds" %in% morpher__input_variables(recipe))
+    expect_false("rlds" %in% morpher__input_variables(original))
+    expect_true(
+        "rlds" %in% reanalysis__variables(shift_era5(1995:2014), recipe)
+    )
+    expect_equal(morpher__recipe_required_frequency(recipe)[["rlds"]], "3hr")
+    expect_error(
+        hourly_transform("kernel_qdm", include_longwave = "yes"),
+        "flag"
+    )
+})
+
+# Unit conversions must preserve interval identity before the two radiation
+# series are joined; a mixed-unit input previously shifted only one series.
+test_that("ERA5 diffuse aligns mixed flux and energy units without changing inputs", {
+    raw <- longwave_test__era()
+    raw$fdir$units <- "W m-2"
+    data.table::set(
+        raw$fdir$data,
+        j = "value",
+        value = raw$fdir$data$value / 3600
+    )
+    original <- data.table::copy(raw$fdir$data)
+    result <- era__canonical_hourly(raw, "rsdsdiff")$data
+    expect_equal(result$rsdsdiff, c(0, 60, 50, 0))
+    expect_equal(result$utc_time, original$utc_time - 3600)
+    expect_identical(raw$fdir$data, original)
+    raw$rsds$data <- raw$rsds$data[0]
+    raw$fdir$data <- raw$fdir$data[0]
+    expect_error(era__canonical_hourly(raw, "rsdsdiff"), "complete hourly")
+})
+
+# Public longwave options must reach the existing per-signal validator and IDs.
+test_that("public longwave settings are validated and persisted", {
+    enabled <- hourly_transform(
+        "kernel_qdm",
+        include_longwave = TRUE,
+        rlds = list(grid_points = 128L, min_samples = 3L)
+    )
+    expect_identical(enabled@options$signal_overrides$rlds$grid_points, 128L)
+    expect_identical(enabled@options$signal_overrides$rlds$min_samples, 3L)
+    restored <- transform__from_spec(transform__spec_value(enabled))
+    expect_identical(restored@options, enabled@options)
+    expect_error(
+        hourly_transform("kernel_qdm", rlds = list(grid_points = 128L)),
+        "Unknown transformation variable"
+    )
+    expect_error(
+        hourly_transform(
+            "kernel_qdm",
+            include_longwave = TRUE,
+            rlds = list(grid_points = 1L)
+        ),
+        "grid_points"
+    )
+})
+# }}}
+
+# Live ERA5 workflow {{{
+# Skip the real ERA5 workflow unless a developer has deliberately enabled it.
+# Once enabled, missing credentials are a test failure rather than a skip so a
+# scheduled workflow cannot appear healthy without exercising CDS.
+# era5_live__skip_unless_enabled {{{
+era5_live__skip_unless_enabled <- function() {
+    run <- tolower(Sys.getenv("EPWSHIFTR_RUN_LIVE_ERA5", "false"))
+    testthat::skip_if_not(
+        run %in% c("1", "true", "yes"),
+        "Set EPWSHIFTR_RUN_LIVE_ERA5=true to run the live ERA5 test."
+    )
+    skip_on_cran()
+    skip_if_offline()
+    cds__config()
+    invisible(TRUE)
+}
+# }}}
+
+test_that("ERA5 can be retrieved, normalized, persisted, and reused", {
+    era5_live__skip_unless_enabled()
+    store_path <- tempfile("era5-live-store-")
+    store <- EsgStore$new(store_path)
+    store$close()
+    site <- shift_site(epw = get_cache_epw(), id = "SIN")
+    stage <- shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store_path
+    )
+    recipe <- transform__recipe(daily_transform("isimip3basd"))
+    source <- shift_era5(
+        years = 2000,
+        variables = "tas",
+        frequency = "day",
+        access = "arco",
+        timeout = 1800,
+        poll_interval = 2
+    )
+
+    climate <- reanalysis__materialize(stage, recipe, site, source)
+    files <- list.files(
+        file.path(store_path, "sources", "reanalysis", "era5"),
+        pattern = "[.]nc$",
+        recursive = TRUE,
+        full.names = TRUE
+    )
+
+    expect_true(S7::S7_inherits(climate, ShiftClimate))
+    expect_true(all(shift_coverage(climate)$complete))
+    expect_length(files, 1L)
+    expect_gt(file.info(files)$size, 0)
+
+    reused <- reanalysis__materialize(stage, recipe, site, source)
+    expect_true(S7::S7_inherits(reused, ShiftClimate))
+    expect_true(reused@meta$reused)
+    expect_identical(
+        files,
+        list.files(
+            file.path(store_path, "sources", "reanalysis", "era5"),
+            pattern = "[.]nc$",
+            recursive = TRUE,
+            full.names = TRUE
+        )
+    )
+})
+# }}}
 
 # vim: fdm=marker :

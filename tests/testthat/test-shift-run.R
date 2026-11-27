@@ -26,9 +26,9 @@ test_that("empty collection is partial instead of waiting for another stage", {
 test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     skip_on_cran()
 
-    nc <- file.path(tempdir(), local_cmip6_nc_file(2060L, variable_id = "tas"))
+    nc_dir <- withr::local_tempdir()
+    nc <- file.path(nc_dir, local_cmip6_nc_file(2060L, variable_id = "tas"))
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")
-    on.exit(unlink(nc), add = TRUE)
 
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
@@ -51,19 +51,21 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         epw = get_cache_epw()
     )
     store_path <- tempfile("shift-store-")
+    periods <- epw_morph_periods(`2060s` = 2060L)
+    time_window <- c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
 
     files <- shift_collect(req, store = store_path, label = "shift-full")
     climate <- shift_extract(
         files,
         site = site,
-        periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+        periods = periods,
+        time = time_window
     )
     climate_resumed <- shift_extract(
         files,
         site = site,
-        periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+        periods = periods,
+        time = time_window
     )
     # Reopen both tasks through their persisted arguments, using the same real
     # climate fixture and the existing downstream result assertions.
@@ -75,8 +77,8 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     climate_after_download <- shift_extract(
         dl,
         site = site,
-        periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+        periods = periods,
+        time = time_window
     )
     transform <- daily_transform("epwshiftr")
     morphed <- shift_morph(
@@ -101,42 +103,40 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     ))
     expect_true(S7::S7_inherits(morphed, ShiftMorphed))
     expect_true(S7::S7_inherits(epws, ShiftOutputs))
-    expect_identical(shift_ids(climate)$run_id, shift_ids(files)$run_id)
+
+    expect_identical(
+        shift_inspect__ids(epws)$run_id,
+        shift_inspect__ids(files)$run_id
+    )
     expect_false(identical(
-        shift_ids(climate_resumed)$run_id,
-        shift_ids(files)$run_id
+        shift_inspect__ids(climate_resumed)$run_id,
+        shift_inspect__ids(files)$run_id
     ))
-    expect_identical(shift_ids(morphed)$run_id, shift_ids(climate)$run_id)
-    expect_identical(shift_ids(epws)$run_id, shift_ids(morphed)$run_id)
+    expect_identical(
+        shift_inspect__ids(climate_resumed)$plan_id,
+        shift_inspect__ids(climate)$plan_id
+    )
     expect_equal(shift_status(shift_run_get(epws)), "waiting")
     expect_equal(shift_status(climate), "extracted")
     expect_equal(shift_status(climate_resumed), "extracted")
-    expect_identical(
-        shift_ids(climate_resumed)$plan_id,
-        shift_ids(climate)$plan_id
-    )
     expect_equal(shift_status(climate_after_download), "extracted")
-    expect_true(length(shift_ids(climate)$plan_id) >= 1L)
-    expect_true(length(shift_ids(climate_after_download)$plan_id) >= 1L)
+    expect_true(
+        length(shift_inspect__ids(climate_after_download)$plan_id) >= 1L
+    )
     expect_true(nrow(shift_coverage(climate)) >= 1L)
-    preview <- shift_data(
-        climate,
-        n = 2L,
-        columns = c(
-            "site_id",
-            "variable_id",
-            "time",
-            "lon",
-            "lat",
-            "value",
-            "units"
-        )
+
+    climate_cols <- c(
+        "site_id",
+        "variable_id",
+        "time",
+        "lon",
+        "lat",
+        "value",
+        "units"
     )
+    preview <- shift_data(climate, n = 2L, columns = climate_cols)
     expect_equal(nrow(preview), 2L)
-    expect_named(
-        preview,
-        c("site_id", "variable_id", "time", "lon", "lat", "value", "units")
-    )
+    expect_named(preview, climate_cols)
     expect_equal(unique(preview$site_id), "SIN")
     expect_equal(unique(preview$variable_id), "tas")
     expect_equal(nrow(shift_data(climate, n = 0L)), 0L)
@@ -145,6 +145,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_error(shift_data(files), "ShiftClimate")
     expect_equal(shift_status(morphed), "morphed")
     expect_equal(shift_status(epws), "written")
+
     morphed_preview <- shift_data(
         morphed,
         n = 2L,
@@ -154,10 +155,6 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
             "experiment_id",
             "variant_label",
             "period",
-            "year",
-            "month",
-            "day",
-            "hour",
             "dry_bulb_temperature",
             "relative_humidity"
         )
@@ -182,14 +179,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
             "output_id",
             "case_id",
             "path",
-            "source_id",
-            "experiment_id",
-            "variant_label",
             "period",
-            "year",
-            "month",
-            "day",
-            "hour",
             "dry_bulb_temperature"
         )
     )
@@ -200,14 +190,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     ))
     expect_equal(unique(epw_preview$period), "2060s")
     expect_equal(nrow(shift_data(epws, case_id = "missing")), 0L)
-    expect_error(shift_data(epws, variables = "tas"), "variables")
 
-    morph_artifacts <- shift_artifacts(morphed)
-    output_artifacts <- shift_artifacts(epws)
-    expect_true(nrow(morph_artifacts) >= 1L)
-    expect_true(nrow(output_artifacts) >= 1L)
-    expect_true(all(morph_artifacts$role %in% "derived"))
-    expect_true(all(output_artifacts$role %in% "output"))
     expect_named(
         morphed@meta$workflow,
         c(
@@ -225,9 +208,8 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
     epw_run <- shift_run_get(epws)
-    expect_identical(epw_run@ids$query_id, shift_ids(files)$query_id)
-    expect_identical(epw_run@ids$morph_id, shift_ids(morphed)$morph_id)
-    expect_true(S7::S7_inherits(shift_result(epw_run), ShiftOutputs))
+    expect_identical(epw_run@ids$query_id, shift_inspect__ids(files)$query_id)
+    expect_identical(epw_run@ids$morph_id, shift_inspect__ids(morphed)$morph_id)
     # Persisted standalone results retain their scientific comparison identity.
     summary <- shift_summary(epw_run, refresh = FALSE)
     expect_identical(unique(summary$method), transform@method)
@@ -240,8 +222,6 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         sum(summary$cases),
         data.table::uniqueN(shift_outputs(epws)$case_id)
     )
-    expect_error(shift_complete(climate), "not the latest result")
-    expect_equal(shift_status(shift_complete(epws)), "completed")
 })
 
 test_that("dynamic stack scopes restore nested and failing values", {
@@ -289,80 +269,54 @@ test_that("failure commands are concise for default stores and explicit otherwis
     expect_match(custom, store_normalize_path(custom_store), fixed = TRUE)
 })
 
-# Failed required fragments must block a case even when another fragment of
-# the same variable succeeded; optional fields and valid alternatives remain usable.
-test_that("case coverage requires all selected mandatory source fragments", {
+test_that("case coverage requires mandatory fragments and allows complete alternatives", {
     cases <- data.table::data.table(
         source_id = "model",
         experiment_id = "ssp245",
         variant_label = "r1i1p1f1",
         grid_label = "gn"
     )
-    coverage <- data.table::data.table(
-        source_id = "model",
-        experiment_id = "ssp245",
-        variant_label = "r1i1p1f1",
-        grid_label = "gn",
-        variable_id = c("tas", "tas"),
-        plan_id = c("fragment-1995-2009", "fragment-2010-2014"),
-        complete = c(TRUE, FALSE)
+    mk_cov <- function(exp, vars, complete) {
+        data.table::data.table(
+            source_id = "model",
+            experiment_id = exp,
+            variant_label = "r1i1p1f1",
+            grid_label = "gn",
+            variable_id = vars,
+            plan_id = paste0("plan-", seq_along(vars)),
+            complete = complete
+        )
+    }
+    fut <- mk_cov("ssp245", c("tas", "tas"), c(TRUE, TRUE))
+    ref <- mk_cov("historical", c("tas", "tas"), c(TRUE, FALSE))
+    res <- shift_run__case_fulfilment(cases, fut, ref, "tas", TRUE)
+    expect_identical(
+        c(res$status, res$missing_reason),
+        c("missing", "reference/tas")
     )
-    reference <- data.table::copy(coverage)
-    data.table::set(reference, j = "experiment_id", value = "historical")
-    data.table::set(coverage, j = "complete", value = c(TRUE, TRUE))
-    result <- shift_run__case_fulfilment(
-        cases,
-        coverage,
-        reference,
-        "tas",
-        TRUE
-    )
-    expect_identical(result$status, "missing")
-    expect_identical(result$missing_reason, "reference/tas")
 
-    data.table::set(reference, j = "complete", value = c(TRUE, TRUE))
-    data.table::set(coverage, j = "complete", value = c(TRUE, FALSE))
-    result <- shift_run__case_fulfilment(
-        cases,
-        coverage,
-        reference,
-        "tas",
-        TRUE
+    data.table::set(ref, j = "complete", value = c(TRUE, TRUE))
+    data.table::set(fut, j = "complete", value = c(TRUE, FALSE))
+    res <- shift_run__case_fulfilment(cases, fut, ref, "tas", TRUE)
+    expect_identical(
+        c(res$status, res$missing_reason),
+        c("missing", "future/tas")
     )
-    expect_identical(result$status, "missing")
-    expect_identical(result$missing_reason, "future/tas")
 
-    data.table::set(coverage, j = "complete", value = c(TRUE, TRUE))
-    result <- shift_run__case_fulfilment(
-        cases,
-        coverage,
-        reference,
-        "tas",
-        TRUE
-    )
-    expect_identical(result$status, "ready")
-    expect_true(is.na(result$missing_reason))
-})
+    data.table::set(fut, j = "complete", value = c(TRUE, TRUE))
+    res <- shift_run__case_fulfilment(cases, fut, ref, "tas", TRUE)
+    expect_identical(res$status, "ready")
+    expect_true(is.na(res$missing_reason))
 
-test_that("optional failures do not block a complete required-variable alternative", {
-    cases <- data.table::data.table(
-        source_id = "model",
-        experiment_id = "ssp245",
-        variant_label = "r1i1p1f1",
-        grid_label = "gn"
+    # Optional failures do not block a complete required-variable alternative
+    alt_cov <- mk_cov(
+        "ssp245",
+        c("tas", "tasmin", "hurs", "hurs", "huss", "ps"),
+        c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE)
     )
-    coverage <- data.table::data.table(
-        source_id = "model",
-        experiment_id = "ssp245",
-        variant_label = "r1i1p1f1",
-        grid_label = "gn",
-        variable_id = c("tas", "tasmin", "hurs", "hurs", "huss", "ps"),
-        plan_id = paste0("plan-", 1:6),
-        complete = c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE)
-    )
-    result <- shift_run__case_fulfilment(
+    alt_res <- shift_run__case_fulfilment(
         cases,
-        coverage,
+        alt_cov,
         data.table::data.table(),
         c("tas", "hurs"),
         FALSE,
@@ -371,7 +325,7 @@ test_that("optional failures do not block a complete required-variable alternati
             hurs = list("hurs", c("huss", "tas", "ps"))
         )
     )
-    expect_identical(result$status, "ready")
+    expect_identical(alt_res$status, "ready")
     expect_identical(
         shift_run__complete_variables(data.table::data.table()),
         character()

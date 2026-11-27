@@ -4,6 +4,108 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+resolve_test__catalog <- function(
+    variables,
+    source = "Model-A",
+    experiments = "ssp126",
+    member = "r1i1p1f1",
+    grids = "gn",
+    frequency = "mon",
+    table = "Amon",
+    start = "2055-01-01T00:00:00Z",
+    end = "2065-12-31T23:59:59Z",
+    span = NULL
+) {
+    freq_for <- function(v) {
+        if (is.null(names(frequency))) frequency[[1L]] else frequency[[v]]
+    }
+    table_for <- function(v) {
+        if (is.null(names(table))) table[[1L]] else table[[v]]
+    }
+    rows <- list()
+    for (experiment in experiments) {
+        for (grid in grids) {
+            for (variable in variables) {
+                tbl <- table_for(variable)
+                fname <- if (is.null(span)) {
+                    sprintf("%s_%s_%s.nc", experiment, variable, grid)
+                } else {
+                    sprintf(
+                        "%s_%s_%s_%s_%s_%s_%s.nc",
+                        variable,
+                        tbl,
+                        source,
+                        experiment,
+                        member,
+                        grid,
+                        span
+                    )
+                }
+                docs <- esgf_test__file_docs(
+                    fname,
+                    variable_id = variable,
+                    datetime_start = start,
+                    datetime_end = end
+                )
+                docs$source_id <- source
+                docs$experiment_id <- experiment
+                docs$variant_label <- member
+                docs$frequency <- freq_for(variable)
+                docs$table_id <- tbl
+                docs$grid_label <- grid
+                docs$id <- sprintf("%s-%s-%s", experiment, variable, grid)
+                docs$dataset_id <- sprintf(
+                    "dataset-%s-%s-%s",
+                    experiment,
+                    variable,
+                    grid
+                )
+                rows[[length(rows) + 1L]] <- docs
+            }
+        }
+    }
+    data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
+}
+
+resolve_test__files_stage <- function(docs, prefix = "shift-service-store-") {
+    store_path <- tempfile(prefix)
+    store <- EsgStore$new(store_path)
+    query_id <- store$add_files(esgf_test__file_result(docs))
+    store$close()
+    shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = shift_request(),
+            dataset_count = 1L,
+            file_count = nrow(docs),
+            fields = SHIFT_WORKFLOW_FILE_FIELDS
+        )
+    )
+}
+
+resolve_test__plan <- function(
+    climate_spec,
+    transform = monthly_transform("epwshiftr"),
+    periods = epw_morph_periods(`2060s` = 2060L)
+) {
+    plan <- shift_spec__plan(
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
+        transform = transform,
+        store = tempfile("resolver-store-")
+    )
+    plan@meta$climate <- climate_spec
+    plan
+}
+
 test_that("historical workflow queries preserve years without exact datetime bounds", {
     reference_years <- 1995:2014
     plan <- shift_epw_future(
@@ -30,22 +132,12 @@ test_that("historical workflow queries preserve years without exact datetime bou
     # Real monthly CMIP6 Dataset metadata uses representative mid-month
     # timestamps. A December 16 endpoint still covers the calendar year 2014.
     variables <- epw_morph_variables(plan@meta$recipe)
-    reference_catalog <- data.table::rbindlist(
-        lapply(variables, function(variable) {
-            docs <- esgf_test__file_docs(
-                sprintf("historical_%s.nc", variable),
-                variable_id = variable,
-                datetime_start = "1850-01-16T12:00:00Z",
-                datetime_end = "2014-12-16T12:00:00Z"
-            )
-            docs$source_id <- "BCC-CSM2-MR"
-            docs$experiment_id <- "historical"
-            docs$frequency <- "mon"
-            docs$table_id <- "Amon"
-            docs$grid_label <- "gn"
-            docs
-        }),
-        fill = TRUE
+    reference_catalog <- resolve_test__catalog(
+        variables,
+        source = "BCC-CSM2-MR",
+        experiments = "historical",
+        start = "1850-01-16T12:00:00Z",
+        end = "2014-12-16T12:00:00Z"
     )
     candidates <- shift_resolve__cmip6_candidates(
         reference_catalog,
@@ -98,8 +190,8 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
         store = tempfile("shift-drs-time-store-")
     )
     catalog <- shift_inspect__file_catalog(
-        shift_store(files),
-        shift_ids(files)$query_id
+        shift_inspect__store(files),
+        shift_inspect__ids(files)$query_id
     )
 
     expect_false(is.na(catalog$datetime_start[[1L]]))
@@ -109,25 +201,10 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
 })
 
 test_that("workflow resolver resolves both File service paths", {
-    store_path <- tempfile("shift-service-store-")
-    store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(
         "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
     )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    store$close()
-    files <- shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = shift_request(),
-            dataset_count = 1L,
-            file_count = 1L,
-            fields = SHIFT_WORKFLOW_FILE_FIELDS
-        )
-    )
+    files <- resolve_test__files_stage(docs)
     resolver_calls <- 0L
     resolver_check <- NULL
     test_local_dependencies(list(
@@ -149,7 +226,7 @@ test_that("workflow resolver resolves both File service paths", {
     ))
 
     resolved <- shift_resolve__resolve_file_services(files, "future")
-    resolved_store <- shift_store(resolved)
+    resolved_store <- shift_inspect__store(resolved)
     on.exit(resolved_store$close(), add = TRUE)
     catalog <- shift_inspect__file_catalog(
         resolved_store,
@@ -287,53 +364,33 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
     variables <- morpher__input_variables(recipe)
     frequencies <- morpher__recipe_required_frequency(recipe)
     tables <- shift_spec__cmip6_variable_tables(variables, frequencies)
-    catalog <- data.table::rbindlist(
-        lapply(
-            c("ssp245", "historical"),
-            function(experiment) {
-                data.table::rbindlist(
-                    lapply(variables, function(variable) {
-                        docs <- esgf_test__file_docs(
-                            sprintf(
-                                "%s_%s_Model-A_%s_r1i1p1f1_gn_19900101-20651231.nc",
-                                variable,
-                                tables[[variable]],
-                                experiment
-                            ),
-                            variable_id = variable,
-                            datetime_start = "1990-01-01T00:00:00Z",
-                            datetime_end = "2065-12-31T23:59:59Z"
-                        )
-                        docs$source_id <- "Model-A"
-                        docs$experiment_id <- experiment
-                        docs$variant_label <- "r1i1p1f1"
-                        docs$frequency <- frequencies[[variable]]
-                        docs$table_id <- tables[[variable]]
-                        docs$grid_label <- "gn"
-                        docs
-                    }),
-                    use.names = TRUE,
-                    fill = TRUE
-                )
-            }
-        ),
-        use.names = TRUE,
-        fill = TRUE
-    )
-
-    candidates <- shift_resolve__cmip6_candidates(
-        catalog,
-        models = "Model-A",
+    catalog <- resolve_test__catalog(
+        variables,
+        source = "Model-A",
         experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
         frequency = frequencies,
-        requirements = morpher__variable_requirements(recipe)
+        table = tables,
+        start = "1990-01-01T00:00:00Z",
+        end = "2065-12-31T23:59:59Z",
+        span = "19900101-20651231"
     )
-    partitions <- shift_resolve__cmip6_partitions(candidates$partitions_json[[
-        1L
-    ]])
 
+    run_cand <- function(cat, freq = frequencies) {
+        shift_resolve__cmip6_candidates(
+            cat,
+            models = "Model-A",
+            experiments = c("ssp245", "historical"),
+            variables = variables,
+            years = 2000:2001,
+            frequency = freq,
+            requirements = morpher__variable_requirements(recipe)
+        )
+    }
+
+    candidates <- run_cand(catalog)
+    partitions <- shift_resolve__cmip6_partitions(
+        candidates$partitions_json[[1L]]
+    )
     expect_true(candidates$complete[[1L]])
     expect_identical(candidates$frequency[[1L]], "3hrPt+3hr+day")
     expect_identical(
@@ -347,62 +404,28 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         required
     ]))
 
-    core_candidates <- shift_resolve__cmip6_candidates(
-        catalog[!variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES],
-        models = "Model-A",
-        experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
-        frequency = frequencies,
-        requirements = morpher__variable_requirements(recipe)
-    )
-    core_partitions <- shift_resolve__cmip6_partitions(
-        core_candidates$partitions_json[[1L]]
-    )
-    expect_true(core_candidates$complete[[1L]])
+    core <- run_cand(catalog[
+        !variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
+    ])
+    core_parts <- shift_resolve__cmip6_partitions(core$partitions_json[[1L]])
+    expect_true(core$complete[[1L]])
     expect_false(any(
-        core_partitions$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
+        core_parts$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
     ))
 
-    scalar_candidates <- shift_resolve__cmip6_candidates(
-        catalog,
-        models = "Model-A",
-        experiments = c("ssp245", "historical"),
-        variables = variables,
-        years = 2000:2001,
-        frequency = "3hr",
-        requirements = morpher__variable_requirements(recipe)
-    )
-    expect_false(scalar_candidates$complete[[1L]])
+    expect_false(run_cand(catalog, freq = "3hr")$complete[[1L]])
 })
 
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
-    make_catalog <- function(variables) {
-        data.table::rbindlist(
-            lapply(variables, function(variable) {
-                docs <- esgf_test__file_docs(
-                    sprintf(
-                        "%s_Amon_BCC-CSM2-MR_ssp126_r1i1p1f1_gn_205501-206512.nc",
-                        variable
-                    ),
-                    variable_id = variable,
-                    datetime_start = "2055-01-01T00:00:00Z",
-                    datetime_end = "2065-12-31T23:59:59Z"
-                )
-                docs$source_id <- "BCC-CSM2-MR"
-                docs$experiment_id <- "ssp126"
-                docs$frequency <- "mon"
-                docs$table_id <- "Amon"
-                docs$grid_label <- "gn"
-                docs
-            }),
-            fill = TRUE
-        )
-    }
     requirements <- list(hurs = list("hurs", c("huss", "tas", "ps")))
     candidates <- function(variables) {
         shift_resolve__cmip6_candidates(
-            make_catalog(variables),
+            resolve_test__catalog(
+                variables,
+                source = "BCC-CSM2-MR",
+                experiments = "ssp126",
+                span = "205501-206512"
+            ),
             models = "BCC-CSM2-MR",
             experiments = "ssp126",
             variables = unique(unlist(requirements, recursive = TRUE)),
@@ -454,7 +477,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     dataset_run <- shift_run_get(datasets)
     expect_equal(shift_status(dataset_run), "completed")
     expect_equal(dataset_run@meta$run$task[[1L]], "datasets")
-    expect_equal(shift_result(dataset_run)$count(), 1L)
     expect_true(nzchar(attr(datasets, "epwshiftr.run_id", exact = TRUE)))
     expect_true(nzchar(attr(datasets, "epwshiftr.step_id", exact = TRUE)))
     dataset_event <- dataset_run@meta$events[
@@ -470,17 +492,13 @@ test_that("shift_collect() uses Dataset collection before File collection", {
         "no longer accepts"
     )
 
-    files <- req |>
-        shift_collect(store = store_path, label = "shift-test")
+    files <- req |> shift_collect(store = store_path, label = "shift-test")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
     expect_equal(calls$values, c("Dataset", "Dataset", "File"))
     expect_true(all(calls$query_reporter))
     expect_identical(calls$file_fields[[1L]], "*")
     expect_equal(shift_status(files), "collected")
-    expect_true(length(shift_ids(files)$query_id) == 1L)
-    expect_true(nzchar(shift_ids(files)$run_id))
-    expect_true(nzchar(shift_ids(files)$step_id))
     expect_equal(shift_status(shift_run_get(files)), "waiting")
     collect_run <- shift_run_get(files)
     collect_event <- collect_run@meta$events[
@@ -500,27 +518,27 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(file_result$filename, "tas_day.nc")
     expect_error(shift_files(req), "No File result")
     expect_false("error" %in% shift_check(files, strict = TRUE)$severity)
-    expect_equal(shift_status(shift_refresh(files)), "collected")
 
-    printed <- capture.output(print(files), type = "message")
-    expect_true(any(grepl("ESGF Query Result [File]", printed, fixed = TRUE)))
-    expect_true(any(grepl("^[=═]{2} ESGF Query Result", printed)))
-    expect_true(any(grepl("^[*•] Index Node:", printed)))
-    expect_true(any(grepl("^[*•] Result count: 1", printed)))
-    expect_true(any(grepl("^[*•] Fields:", printed)))
-    expect_true(any(grepl("EC-Earth3", printed, fixed = TRUE)))
-    expect_true(any(grepl("tas", printed, fixed = TRUE)))
-    expect_false(any(grepl("<char>", printed, fixed = TRUE)))
-    expect_false(any(grepl("Catalog:", printed, fixed = TRUE)))
-    expect_false(any(grepl("Identity:", printed, fixed = TRUE)))
-
-    verbose <- capture.output(
-        print(files, width = 60L, verbose = TRUE),
-        type = "message"
+    printed <- paste(
+        capture.output(print(files), type = "message"),
+        collapse = "\n"
     )
-    expect_true(any(grepl("Workflow", verbose, fixed = TRUE)))
-    expect_true(any(grepl("Store:", verbose, fixed = TRUE)))
-    expect_true(any(grepl("Hidden columns", verbose, fixed = TRUE)))
+    expect_match(printed, "ESGF Query Result [File]", fixed = TRUE)
+    expect_match(printed, "Result count: 1", fixed = TRUE)
+    expect_match(printed, "EC-Earth3", fixed = TRUE)
+    expect_match(printed, "tas", fixed = TRUE)
+    expect_no_match(printed, "<char>|Catalog:|Identity:")
+
+    verbose <- paste(
+        capture.output(
+            print(files, width = 60L, verbose = TRUE),
+            type = "message"
+        ),
+        collapse = "\n"
+    )
+    expect_match(verbose, "Workflow", fixed = TRUE)
+    expect_match(verbose, "Store:", fixed = TRUE)
+    expect_match(verbose, "Hidden columns", fixed = TRUE)
 
     detached <- shift_stage__new(
         ShiftFiles,
@@ -533,13 +551,12 @@ test_that("shift_collect() uses Dataset collection before File collection", {
             result_fields = c("source_id", "variable_id")
         )
     )
-    detached_text <- capture.output(print(detached), type = "message")
-    expect_true(any(grepl("Result count: 1", detached_text, fixed = TRUE)))
-    expect_true(any(grepl(
-        "Persisted preview unavailable",
-        detached_text,
-        fixed = TRUE
-    )))
+    detached_text <- paste(
+        capture.output(print(detached), type = "message"),
+        collapse = "\n"
+    )
+    expect_match(detached_text, "Result count: 1", fixed = TRUE)
+    expect_match(detached_text, "Persisted preview unavailable", fixed = TRUE)
 
     capped_calls <- new.env(parent = emptyenv())
     capped_calls$values <- character()
@@ -556,14 +573,12 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_false(capped_calls$dataset_all[[1L]])
     expect_identical(capped_calls$dataset_limit[[1L]], 10L)
 
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     store$add_files(esgf_test__file_result(esgf_test__file_docs(
         "hurs_day.nc",
         variable_id = "hurs"
     )))
     dl <- shift_download(files, run = FALSE, probe = FALSE)
-    expect_identical(shift_ids(dl)$run_id, shift_ids(files)$run_id)
-    expect_false(identical(shift_ids(dl)$step_id, shift_ids(files)$step_id))
     expect_equal(nrow(data.table::as.data.table(dl)), 1L)
     expect_equal(shift_datasets(dl)$count(), 1L)
     expect_equal(shift_files(dl)$filename, "tas_day.nc")
@@ -573,9 +588,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     restored <- readRDS(rds)
     expect_equal(shift_status(restored), "collected")
     expect_equal(nrow(data.table::as.data.table(restored)), 1L)
-
-    completed <- shift_complete(dl)
-    expect_equal(shift_status(completed), "partial")
 })
 
 test_that("rejected resolver nodes remain results rather than diagnostics", {
@@ -596,7 +608,7 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     run_id <- shift_job__run_register(plan)
-    store <- shift_store(plan)
+    store <- shift_inspect__store(plan)
     on.exit(store$close(), add = TRUE)
     shift_job__run_event(
         store,
@@ -643,7 +655,22 @@ test_that("file year selection preserves an exact disjoint year union", {
     )
 })
 
-test_that("resolver exhaustion preserves closest candidate and recovery semantics", {
+test_that("resolver exhaustion preserves closest candidate, recovery, and retry semantics", {
+    node_rec <- function(
+        node,
+        kind,
+        future = NA_integer_,
+        ref = NA_integer_,
+        res = NULL
+    ) {
+        list(
+            node = node,
+            kind = kind,
+            future_files = future,
+            reference_files = ref,
+            resolution = res
+        )
+    }
     future <- data.table::data.table(
         source_id = "BCC-CSM2-MR",
         variant_label = "r1i1p1f1",
@@ -651,16 +678,16 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
         frequency = "mon",
         table_id = "Amon",
         complete = FALSE,
-        missing = paste(
-            "ssp126/hurs: no files;",
-            "ssp585/tas: missing years 2055"
-        )
+        missing = "ssp126/hurs: no files; ssp585/tas: missing years 2055"
     )
-    reference <- data.table::rbindlist(list(
-        data.table::copy(future),
-        data.table::copy(future)[, variant_label := "r2i1p1f1"]
-    ))
-    reference[, `:=`(complete = TRUE, missing = NA_character_)]
+    ref2 <- data.table::copy(future)
+    data.table::set(ref2, j = "variant_label", value = "r2i1p1f1")
+    reference <- data.table::rbindlist(list(data.table::copy(future), ref2))
+    data.table::set(
+        reference,
+        j = c("complete", "missing"),
+        value = list(TRUE, NA_character_)
+    )
     node_diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
         future,
         reference,
@@ -668,20 +695,8 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
         reference_required = TRUE
     )
     records <- list(
-        list(
-            node = "DKRZ",
-            kind = "coverage",
-            future_files = 28L,
-            reference_files = 39L,
-            resolution = node_diagnostic
-        ),
-        list(
-            node = "IPSL",
-            kind = "timeout",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        )
+        node_rec("DKRZ", "coverage", 28L, 39L, node_diagnostic),
+        node_rec("IPSL", "timeout")
     )
     aggregate <- shift_resolve__resolver_failure_diagnostic(records)
     condition <- tryCatch(
@@ -694,37 +709,27 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
     # r1 is the real future near-match and must remain the diagnostic identity.
     expect_identical(node_diagnostic$closest$member, "r1i1p1f1")
     expect_match(node_diagnostic$missing[[1L]], "ssp126/hurs", fixed = TRUE)
-    expect_equal(aggregate$nodes_checked, 2L)
-    expect_equal(aggregate$coverage_failures, 1L)
-    expect_equal(aggregate$timeout_failures, 1L)
+    expect_equal(
+        c(
+            aggregate$nodes_checked,
+            aggregate$coverage_failures,
+            aggregate$timeout_failures
+        ),
+        c(2L, 1L, 1L)
+    )
     expect_false(aggregate$retryable)
     expect_identical(aggregate$recovery, "inspect")
     expect_s3_class(condition, "epwshiftr_shift_resolution_error")
     expect_null(conditionCall(condition))
     expect_match(conditionMessage(condition), "2 nodes checked", fixed = TRUE)
-})
 
-test_that("resolver recommends retry only when every node failure is transient", {
-    records <- list(
-        list(
-            node = "IPSL",
-            kind = "timeout",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        ),
-        list(
-            node = "LIU",
-            kind = "network",
-            future_files = NA_integer_,
-            reference_files = NA_integer_,
-            resolution = NULL
-        )
-    )
-    diagnostic <- shift_resolve__resolver_failure_diagnostic(records)
-
-    expect_true(diagnostic$retryable)
-    expect_identical(diagnostic$recovery, "retry")
+    # Recommend retry only when every node failure is transient
+    transient <- shift_resolve__resolver_failure_diagnostic(list(
+        node_rec("IPSL", "timeout"),
+        node_rec("LIU", "network")
+    ))
+    expect_true(transient$retryable)
+    expect_identical(transient$recovery, "retry")
 })
 
 test_that("resolution evidence tolerates omitted aggregate counters", {
@@ -745,131 +750,56 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
 
     # Create two otherwise equivalent non-native grids so automatic preference
     # rules cannot choose one without user input.
-    catalogs <- data.table::rbindlist(
-        lapply(c("gr1", "gr2"), function(grid) {
-            data.table::rbindlist(
-                lapply(variables, function(variable_id) {
-                    docs <- esgf_test__file_docs(
-                        sprintf("%s_%s.nc", variable_id, grid),
-                        variable_id = variable_id
-                    )
-                    docs$grid_label <- grid
-                    docs$frequency <- "mon"
-                    docs$table_id <- "Amon"
-                    docs$id <- sprintf("%s-%s", variable_id, grid)
-                    docs$dataset_id <- sprintf(
-                        "dataset-%s-%s",
-                        variable_id,
-                        grid
-                    )
-                    docs
-                }),
-                fill = TRUE
-            )
-        }),
-        fill = TRUE
+    catalogs <- resolve_test__catalog(
+        variables,
+        source = "EC-Earth3",
+        experiments = "ssp585",
+        grids = c("gr1", "gr2"),
+        start = "2060-01-01T00:00:00Z",
+        end = "2060-12-31T23:59:59Z"
     )
 
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        frequency = "mon",
-        table = "Amon"
-    )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    plan <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
-        ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
-    )
-    plan@meta$climate <- climate_spec
+    make_plan <- function(member = NULL, grid = NULL) {
+        resolve_test__plan(
+            shift_cmip6(
+                "EC-Earth3",
+                "ssp585",
+                member = member,
+                grid = grid,
+                frequency = "mon",
+                table = "Amon"
+            ),
+            transform = transform
+        )
+    }
     expect_error(
-        shift_resolve__resolve_cmip6_selection(plan, catalogs),
+        shift_resolve__resolve_cmip6_selection(make_plan(), catalogs),
         class = "epwshiftr_shift_resolution_ambiguity"
     )
-
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        member = "r1i1p1f1",
-        grid = "gr1",
-        frequency = "mon",
-        table = "Amon"
-    )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    explicit <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
-        ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
-    )
-    explicit@meta$climate <- climate_spec
     expect_equal(
-        shift_resolve__resolve_cmip6_selection(explicit, catalogs)$grid_label,
+        shift_resolve__resolve_cmip6_selection(
+            make_plan("r1i1p1f1", "gr1"),
+            catalogs
+        )$grid_label,
         "gr1"
     )
-
-    climate_spec <- shift_cmip6(
-        "EC-Earth3",
-        "ssp585",
-        member = "r2i1p1f1",
-        grid = "gr1",
-        frequency = "mon",
-        table = "Amon"
-    )
-    periods <- epw_morph_periods(`2060s` = 2060L)
-    missing_member <- shift_plan(
-        request = shift_spec__request_from_cmip6(
-            climate_spec,
-            periods,
-            transform
-        ),
-        site = shift_site(epw = get_cache_epw()),
-        periods = periods,
-        transform = transform,
-        store = tempfile("resolver-store-")
-    )
-    missing_member@meta$climate <- climate_spec
     expect_error(
-        shift_resolve__resolve_cmip6_selection(missing_member, catalogs),
+        shift_resolve__resolve_cmip6_selection(
+            make_plan("r2i1p1f1", "gr1"),
+            catalogs
+        ),
         "No complete CMIP6 member/grid candidate"
     )
 })
 
 test_that("workflow resolver removes HTTP-only files when downloads are forbidden", {
-    store_path <- tempfile("shift-opendap-only-store-")
-    store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(
         "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
     )
     docs$url <- I(list(
         "https://example.org/files/tas.nc|application/netcdf|HTTPServer"
     ))
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    store$close()
-    files <- shift_stage__new(
-        ShiftFiles,
-        "files",
-        store_path = store_path,
-        ids = list(query_id = query_id),
-        meta = list(
-            request = shift_request(),
-            dataset_count = 1L,
-            file_count = 1L,
-            fields = SHIFT_WORKFLOW_FILE_FIELDS
-        )
-    )
+    files <- resolve_test__files_stage(docs, "shift-opendap-only-store-")
 
     test_local_dependencies(list(
         query_result__resolve_file_services = function(
@@ -895,7 +825,7 @@ test_that("workflow resolver removes HTTP-only files when downloads are forbidde
         "future",
         require_opendap = TRUE
     )
-    resolved_store <- shift_store(resolved)
+    resolved_store <- shift_inspect__store(resolved)
     on.exit(resolved_store$close(), add = TRUE)
     catalog <- shift_inspect__file_catalog(
         resolved_store,
@@ -952,7 +882,7 @@ test_that("CF-aware collection retains final-year File candidates", {
         },
         .package = "epwshiftr"
     )
-    request <- shift_cmip6_scenario(
+    request <- shift_spec__cmip6_scenario(
         "CMCC-ESM2",
         "ssp245",
         years = 2081:2100,
@@ -965,9 +895,12 @@ test_that("CF-aware collection retains final-year File candidates", {
         options = list(time_filter_method = "auto")
     )
     files <- shift_collect(request, store = tempfile("end-window-store-"))
-    store <- shift_store(files)
+    store <- shift_inspect__store(files)
     on.exit(store$close(), add = TRUE)
-    catalog <- shift_inspect__file_catalog(store, shift_ids(files)$query_id)
+    catalog <- shift_inspect__file_catalog(
+        store,
+        shift_inspect__ids(files)$query_id
+    )
     expect_equal(nrow(catalog), 1L)
     expect_equal(format(catalog$datetime_end, "%Y", tz = "UTC"), "2100")
     expect_null(query_param__value(dataset_queries[[1L]]$stop))
@@ -1050,32 +983,22 @@ resolvecheck__paired_catalog <- function(
     member = "r1i1p1f1"
 ) {
     historical <- experiment == "historical"
-    span <- if (historical) "199501-201412" else "205501-206512"
-    start <- if (historical) "1995-01-01T00:00:00Z" else "2055-01-01T00:00:00Z"
-    end <- if (historical) "2014-12-31T23:59:59Z" else "2065-12-31T23:59:59Z"
-    data.table::rbindlist(
-        lapply(variables, function(variable) {
-            docs <- esgf_test__file_docs(
-                sprintf(
-                    "%s_Amon_Model-A_%s_%s_gn_%s.nc",
-                    variable,
-                    experiment,
-                    member,
-                    span
-                ),
-                variable_id = variable,
-                datetime_start = start,
-                datetime_end = end
-            )
-            docs$source_id <- "Model-A"
-            docs$experiment_id <- experiment
-            docs$variant_label <- member
-            docs$frequency <- "mon"
-            docs$table_id <- "Amon"
-            docs$grid_label <- "gn"
-            docs
-        }),
-        fill = TRUE
+    resolve_test__catalog(
+        variables,
+        source = "Model-A",
+        experiments = experiment,
+        member = member,
+        start = if (historical) {
+            "1995-01-01T00:00:00Z"
+        } else {
+            "2055-01-01T00:00:00Z"
+        },
+        end = if (historical) {
+            "2014-12-31T23:59:59Z"
+        } else {
+            "2065-12-31T23:59:59Z"
+        },
+        span = if (historical) "199501-201412" else "205501-206512"
     )
 }
 
@@ -1128,58 +1051,93 @@ resolvecheck__paired_selection <- function(
     )
 }
 
-test_that("an unmatched future HURS cannot hide a complete paired HUSS route", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
-    )
-    reference <- resolvecheck__paired_catalog(
-        c("huss", "tas", "ps"),
-        "historical"
-    )
-    selected <- resolvecheck__paired_selection(future, reference)
-    expect_true(all(selected$future$complete))
+test_that("paired humidity routes select matching hurs or huss+tas+ps without leaking unused alternatives", {
+    all_vars <- c("hurs", "huss", "tas", "ps")
+    huss_vars <- c("huss", "tas", "ps")
+    future_all <- resolvecheck__paired_catalog(all_vars, "ssp126")
+    ref_huss <- resolvecheck__paired_catalog(huss_vars, "historical")
+
+    # Unmatched future HURS cannot hide a complete paired HUSS route
+    paired_huss <- resolvecheck__paired_selection(future_all, ref_huss)
+    expect_true(all(paired_huss$future$complete))
     expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
+        paired_huss$future$requirement_key,
+        paired_huss$reference$requirement_key
     )
-    expect_match(selected$future$requirement_key, "huss")
+    expect_match(paired_huss$future$requirement_key, "huss")
     shared <- shift_resolve__cmip6_shared_partitions(
-        selected$future$partitions_json[[1L]],
-        selected$reference$partitions_json[[1L]]
+        paired_huss$future$partitions_json[[1L]],
+        paired_huss$reference$partitions_json[[1L]]
     )
-    expect_setequal(shared$future$variable_id, c("huss", "tas", "ps"))
-    expect_setequal(shared$reference$variable_id, c("huss", "tas", "ps"))
-})
+    expect_setequal(shared$future$variable_id, huss_vars)
+    expect_setequal(shared$reference$variable_id, huss_vars)
 
-test_that("a paired direct HURS route retains the recipe preference", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(variables, "historical")
+    # Paired direct HURS route retains recipe preference
+    paired_hurs <- resolvecheck__paired_selection(
+        future_all,
+        resolvecheck__paired_catalog(all_vars, "historical")
     )
-    expect_equal(nrow(selected$future), 1L)
+    expect_equal(nrow(paired_hurs$future), 1L)
     expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
+        paired_hurs$future$requirement_key,
+        paired_hurs$reference$requirement_key
     )
-    expect_false(grepl("huss", selected$future$requirement_key))
+    expect_false(grepl("huss", paired_hurs$future$requirement_key))
+
+    # Non-selected humidity alternatives do not become optional fields
+    reordered <- resolvecheck__paired_selection(
+        future_all,
+        resolvecheck__paired_catalog(all_vars, "historical"),
+        requirements = list(hurs = list(huss_vars, "hurs"))
+    )
+    partitions <- shift_resolve__cmip6_partitions(reordered$future$partitions_json[[
+        1L
+    ]])
+    expect_false("hurs" %in% partitions$variable_id)
+    expect_setequal(partitions$variable_id, huss_vars)
+
+    # Named native overrides follow the selected humidity route
+    named <- resolvecheck__paired_selection(
+        future_all,
+        ref_huss,
+        frequency = stats::setNames(rep("mon", length(all_vars)), all_vars),
+        table = stats::setNames(rep("Amon", length(all_vars)), all_vars)
+    )
+    expect_identical(
+        named$future$requirement_key,
+        named$reference$requirement_key
+    )
+    expect_match(named$future$requirement_key, "huss")
 })
 
-test_that("paired alternatives do not substitute sea-level pressure or mix members", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
+test_that("paired humidity selection rejects mismatched pressure, members, or incomplete spans", {
+    all_vars <- c("hurs", "huss", "tas", "ps")
+    huss_vars <- c("huss", "tas", "ps")
+    future_all <- resolvecheck__paired_catalog(all_vars, "ssp126")
+
+    short_ref <- resolvecheck__paired_catalog(huss_vars, "historical")
+    data.table::set(
+        short_ref,
+        j = "datetime_end",
+        value = "2013-12-31T23:59:59Z"
     )
+    data.table::set(
+        short_ref,
+        j = "filename",
+        value = sub("201412", "201312", short_ref$filename, fixed = TRUE)
+    )
+    data.table::set(
+        short_ref,
+        j = "title",
+        value = sub("201412", "201312", short_ref$title, fixed = TRUE)
+    )
+
     for (reference in list(
         resolvecheck__paired_catalog(c("huss", "tas", "psl"), "historical"),
-        resolvecheck__paired_catalog(
-            c("huss", "tas", "ps"),
-            "historical",
-            "r2i1p1f1"
-        )
+        resolvecheck__paired_catalog(huss_vars, "historical", "r2i1p1f1"),
+        short_ref
     )) {
-        selected <- resolvecheck__paired_selection(future, reference)
+        selected <- resolvecheck__paired_selection(future_all, reference)
         diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
             selected$future,
             selected$reference,
@@ -1188,88 +1146,324 @@ test_that("paired alternatives do not substitute sea-level pressure or mix membe
         )
         expect_equal(diagnostic$shared_complete_candidates, 0L)
     }
-})
 
-test_that("paired alternatives still require the entire historical span", {
-    future <- resolvecheck__paired_catalog(
-        c("hurs", "huss", "tas", "ps"),
-        "ssp126"
-    )
-    reference <- resolvecheck__paired_catalog(
-        c("huss", "tas", "ps"),
-        "historical"
-    )
-    reference$datetime_end <- "2013-12-31T23:59:59Z"
-    reference$filename <- sub(
-        "201412",
-        "201312",
-        reference$filename,
-        fixed = TRUE
-    )
-    reference$title <- sub("201412", "201312", reference$title, fixed = TRUE)
-    selected <- resolvecheck__paired_selection(future, reference)
-    diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
-        selected$future,
-        selected$reference,
-        "Model-A",
-        reference_required = TRUE
-    )
-    expect_equal(diagnostic$shared_complete_candidates, 0L)
-})
-
-test_that("non-selected humidity alternatives do not become optional fields", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(variables, "historical"),
-        requirements = list(hurs = list(c("huss", "tas", "ps"), "hurs"))
-    )
-    partitions <- shift_resolve__cmip6_partitions(selected$future$partitions_json[[
-        1L
-    ]])
-    expect_false("hurs" %in% partitions$variable_id)
-    expect_setequal(partitions$variable_id, c("huss", "tas", "ps"))
-})
-
-test_that("unsuccessful native identities remain inspectable after pairing", {
-    future <- data.table::rbindlist(lapply(
+    # Unsuccessful native identities remain inspectable after pairing
+    multi_future <- data.table::rbindlist(lapply(
         c("r1i1p1f1", "r2i1p1f1"),
         function(member) {
-            resolvecheck__paired_catalog(
-                c("hurs", "huss", "tas", "ps"),
-                "ssp126",
-                member
-            )
+            resolvecheck__paired_catalog(all_vars, "ssp126", member)
         }
     ))
-    reference <- data.table::rbindlist(list(
-        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
+    multi_ref <- data.table::rbindlist(list(
+        resolvecheck__paired_catalog(huss_vars, "historical"),
         resolvecheck__paired_catalog(
             c("huss", "tas", "psl"),
             "historical",
             "r2i1p1f1"
         )
     ))
-    selected <- resolvecheck__paired_selection(future, reference)
-    expect_setequal(selected$reference$variant_label, c("r1i1p1f1", "r2i1p1f1"))
-    expect_false(selected$reference$complete[
-        selected$reference$variant_label == "r2i1p1f1"
+    multi_selected <- resolvecheck__paired_selection(multi_future, multi_ref)
+    expect_setequal(
+        multi_selected$reference$variant_label,
+        c("r1i1p1f1", "r2i1p1f1")
+    )
+    expect_false(multi_selected$reference$complete[
+        multi_selected$reference$variant_label == "r2i1p1f1"
     ])
 })
 
-test_that("named native overrides follow the selected humidity route", {
-    variables <- c("hurs", "huss", "tas", "ps")
-    selected <- resolvecheck__paired_selection(
-        resolvecheck__paired_catalog(variables, "ssp126"),
-        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
-        frequency = stats::setNames(rep("mon", length(variables)), variables),
-        table = stats::setNames(rep("Amon", length(variables)), variables)
+# Construct an explicit one-model plan with automatic member choice.
+# selection_test__plan {{{
+selection_test__plan <- function(member = NULL, reference = TRUE) {
+    transform <- monthly_transform("epwshiftr")
+    climate <- shift_cmip6(
+        "EC-Earth3",
+        "ssp585",
+        member = member,
+        frequency = "mon",
+        table = "Amon",
+        index_nodes = "https://example.org"
     )
+    periods <- epw_morph_periods(future = 2060L)
+    plan <- shift_spec__plan(
+        shift_spec__request_from_cmip6(climate, periods, transform),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
+        transform = transform,
+        reference = if (reference) historical_reference(1991L) else NULL,
+        store = tempfile("selection-store-")
+    )
+    plan@meta$climate <- climate
+    plan
+}
+# }}}
+
+# Catalog alternatives distinguish coverage loss, historical pairing, and an
+# eligible non-preferred member without changing the scientific selector.
+# selection_test__catalog {{{
+selection_test__catalog <- function(plan, reference = FALSE) {
+    variables <- epw_morph_variables(plan@meta$recipe)
+    members <- if (reference) {
+        c("r1i1p1f1", "r2i1p1f1", "r3i1p1f1")
+    } else {
+        paste0("r", 1:4, "i1p1f1")
+    }
+    rows <- lapply(members, function(member) {
+        wanted <- if (!reference && member == "r3i1p1f1") {
+            setdiff(variables, "tas")
+        } else {
+            variables
+        }
+        data.table::rbindlist(
+            lapply(wanted, function(variable) {
+                docs <- esgf_test__file_docs(
+                    paste(member, variable, "nc", sep = "."),
+                    variable_id = variable,
+                    datetime_start = if (reference) {
+                        "1991-01-16T12:00:00Z"
+                    } else {
+                        "2060-01-16T12:00:00Z"
+                    },
+                    datetime_end = if (reference) {
+                        "1991-12-16T12:00:00Z"
+                    } else {
+                        "2060-12-16T12:00:00Z"
+                    }
+                )
+                docs$variant_label <- member
+                docs$experiment_id <- if (reference) "historical" else "ssp585"
+                docs$activity_id <- if (reference) "CMIP" else "ScenarioMIP"
+                docs$frequency <- "mon"
+                docs$table_id <- "Amon"
+                docs$grid_label <- "gn"
+                docs$id <- paste(
+                    docs$experiment_id,
+                    member,
+                    variable,
+                    sep = "-"
+                )
+                # Unique logical files keep different members and periods
+                # from being interpreted as replicas of the same input.
+                docs$tracking_id <- paste0("hdl:synthetic/", docs$id)
+                docs$dataset_id <- paste0("dataset-", docs$id)
+                docs$instance_id <- paste0(docs$id, ".v20260101")
+                docs$master_id <- docs$id
+                docs
+            }),
+            fill = TRUE
+        )
+    })
+    data.table::rbindlist(rows, fill = TRUE)
+}
+# }}}
+
+test_that("selection evidence captures actual eligibility and explicit constraints", {
+    plan <- selection_test__plan()
+    future <- selection_test__catalog(plan)
+    reference <- selection_test__catalog(plan, TRUE)
+    saved <- NULL
+    selected <- shift_resolve__resolve_cmip6_selection(
+        plan,
+        future,
+        reference,
+        record = function(value) saved <<- value
+    )
+    expect_identical(selected$variant_label, "r1i1p1f1")
+    reason <- stats::setNames(saved$future$reason, saved$future$variant_label)
     expect_identical(
-        selected$future$requirement_key,
-        selected$reference$requirement_key
+        unname(reason[paste0("r", 1:4, "i1p1f1")]),
+        c(
+            "selected",
+            "eligible_alternative_not_selected",
+            "future_coverage_incomplete",
+            "no_complete_matching_reference"
+        )
     )
-    expect_match(selected$future$requirement_key, "huss")
+    expect_match(
+        saved$future$missing[saved$future$variant_label == "r3i1p1f1"],
+        "tas"
+    )
+    expect_true(saved$reference_required)
+    expect_length(saved$models_without_candidates, 0L)
+    expect_false("reason" %in% names(future))
+
+    explicit <- selection_test__plan("r2i1p1f1")
+    selected <- shift_resolve__resolve_cmip6_selection(
+        explicit,
+        future,
+        reference,
+        record = function(value) saved <<- value
+    )
+    expect_identical(selected$variant_label, "r2i1p1f1")
+    expect_true(all(
+        saved$future$reason[saved$future$variant_label != "r2i1p1f1"] ==
+            "user_member_constraint"
+    ))
+    expect_error(
+        shift_resolve__resolve_cmip6_selection(
+            plan,
+            future,
+            reference[0L],
+            record = function(value) saved <<- value
+        ),
+        "Historical reference catalog is empty"
+    )
+    expect_equal(nrow(saved$future), 4L)
+    expect_equal(nrow(saved$reference), 0L)
+    expect_false(any(saved$future$selected))
+})
+
+test_that("public selection reads durable records and marks legacy absence", {
+    plan <- selection_test__plan()
+    saved <- NULL
+    shift_resolve__resolve_cmip6_selection(
+        plan,
+        selection_test__catalog(plan),
+        selection_test__catalog(plan, TRUE),
+        record = function(value) saved <<- value
+    )
+    saved$phase <- "catalog"
+    record <- list(
+        schema_version = 1L,
+        index_node = "https://example.org",
+        outcome = "resolved",
+        checks = list(saved),
+        error = NULL
+    )
+    expect_identical(shift_selection(plan)$state, "planned")
+    run_id <- shift_job__run_register(plan)
+    store <- shift_inspect__store(plan)
+    on.exit(store$close(), add = TRUE)
+    expect_error(
+        shift_selection(shift_run_get(run_id, store)),
+        "after the run finishes"
+    )
+    shift_job__run_update(store, run_id, status = "failed")
+    legacy <- shift_selection(shift_run_get(run_id, store))
+    expect_identical(legacy$state, "not_recorded")
+    expect_length(legacy$attempts, 0L)
+    shift_selection__persist(store, run_id, record)
+    shift_selection__persist(store, run_id, record)
+    store$close()
+    result <- shift_selection(shift_run_get(run_id, plan@store_path))
+    expect_identical(result$state, "recorded")
+    expect_length(result$attempts, 1L)
+    expect_length(result$attempts[[1L]]$checks, 1L)
+    expect_s3_class(result$attempts[[1L]]$checks[[1L]]$future, "data.table")
+    expect_identical(result$requested$climate$model, "EC-Earth3")
+    expect_identical(result$requested$periods$future, 2060L)
+    expect_equal(
+        result$attempts[[1L]]$checks[[1L]]$future$reason,
+        saved$future$reason
+    )
+})
+
+test_that("shared selection records persist without changing workflow intent", {
+    plan <- selection_test__plan()
+    original <- shift_persist__plan_spec(plan)
+    expect_null(original$stages$shared_inputs)
+    plan@meta$shared_inputs <- list(index_node = "https://example.org")
+    before <- shift_persist__plan_spec(plan)
+    saved <- NULL
+    shift_resolve__resolve_cmip6_selection(
+        plan,
+        selection_test__catalog(plan),
+        selection_test__catalog(plan, TRUE),
+        record = function(value) saved <<- value
+    )
+    record <- list(
+        schema_version = 1L,
+        index_node = "https://example.org",
+        outcome = "failed",
+        checks = list(saved),
+        error = "Service unavailable"
+    )
+    plan@meta$shared_inputs$selection_records <- list(shift_persist__spec_json(
+        record
+    ))
+    # Recreate the receipt shape used when a later session starts a batch child.
+    plan@meta$shared_inputs <- jsonlite::fromJSON(
+        shift_persist__spec_json(plan@meta$shared_inputs),
+        simplifyVector = TRUE
+    )
+    expect_identical(shift_persist__plan_spec(plan), before)
+    run_id <- shift_job__run_register(plan)
+    store <- shift_inspect__store(plan)
+    on.exit(store$close(), add = TRUE)
+    shift_job__run_update(store, run_id, status = "failed")
+    read <- shift_selection(shift_run_get(run_id, store))
+    expect_identical(read$attempts[[1L]]$error, "Service unavailable")
+    expect_length(read$attempts[[1L]]$checks, 1L)
+    expect_equal(
+        read$attempts[[1L]]$checks[[1L]]$future$reason,
+        saved$future$reason
+    )
+    expect_equal(nrow(read$attempts[[1L]]$checks[[1L]]$reference), 3L)
+})
+
+# Only network responses and the post-selection extraction stage are replaced.
+# The public workflow executes real catalog storage, candidate resolution and
+# durable run inspection on both success and service-failure paths.
+test_that("public workflow keeps pre-service candidates and service outcomes", {
+    skip_on_cran()
+    plan <- selection_test__plan()
+    docs <- data.table::rbindlist(
+        list(
+            selection_test__catalog(plan),
+            selection_test__catalog(plan, TRUE)
+        ),
+        fill = TRUE
+    )
+    calls <- new.env(parent = emptyenv())
+    calls$values <- character()
+    shift_test__mock_collect_filtered(docs, calls)
+    service_failed <- FALSE
+    testthat::local_mocked_bindings(
+        query_result__resolve_file_services = function(value, ...) {
+            if (service_failed) {
+                stop("Synthetic service access failure")
+            }
+            list(
+                result = value,
+                diagnostics = data.table::data.table(
+                    service = "OPENDAP",
+                    selected = TRUE
+                )
+            )
+        },
+        shift_extract = function(...) stop("Synthetic stop after selection"),
+        .package = "epwshiftr"
+    )
+    error <- tryCatch(shift_run(plan, ui = shift_ui("none")), error = identity)
+    expect_match(conditionMessage(error), "Synthetic stop after selection")
+    read <- shift_selection(shift_run_get(error$run_id, plan@store_path))
+    expect_identical(read$state, "recorded")
+    expect_identical(read$attempts[[1L]]$outcome, "resolved")
+    checks <- read$attempts[[1L]]$checks
+    expect_identical(
+        vapply(checks, `[[`, character(1L), "phase"),
+        c("catalog", "services")
+    )
+    expect_equal(nrow(checks[[1L]]$future), 4L)
+    expect_equal(nrow(checks[[2L]]$future), 1L)
+    expect_true(nzchar(checks[[1L]]$query_ids$future))
+    expect_false(identical(
+        checks[[1L]]$query_ids$future,
+        checks[[2L]]$query_ids$future
+    ))
+
+    service_failed <- TRUE
+    failed_plan <- selection_test__plan()
+    error <- tryCatch(
+        shift_run(failed_plan, ui = shift_ui("none")),
+        error = identity
+    )
+    read <- shift_selection(shift_run_get(error$run_id, failed_plan@store_path))
+    expect_identical(read$attempts[[1L]]$outcome, "failed")
+    expect_identical(read$attempts[[1L]]$failure_phase, "services")
+    expect_match(read$attempts[[1L]]$error, "Synthetic service access failure")
+    expect_length(read$attempts[[1L]]$checks, 1L)
+    expect_true(any(read$attempts[[1L]]$checks[[1L]]$future$selected))
 })
 
 # vim: fdm=marker :

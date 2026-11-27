@@ -101,68 +101,30 @@ WeatherTransformSpec <- S7::new_class(
         if (!self@status %in% WEATHER_RECIPE_STATUSES) {
             return("`status` must use one supported recipe status.")
         }
-        if (
-            !length(self@references) ||
-                anyNA(self@references) ||
-                any(!nzchar(self@references)) ||
-                anyDuplicated(self@references)
-        ) {
-            return(
-                "`references` must contain unique, non-empty scientific references."
-            )
-        }
-        if (
-            length(self@options) &&
-                (is.null(names(self@options)) ||
-                    any(!nzchar(names(self@options))) ||
-                    anyDuplicated(names(self@options)))
-        ) {
-            return("`options` must be uniquely named scientific settings.")
-        }
-        if (
-            is.null(names(self@required_inputs)) ||
-                any(!nzchar(names(self@required_inputs)))
-        ) {
-            return("`required_inputs` must be a named role contract.")
-        }
-        if (
-            length(self@optional_inputs) &&
-                (is.null(names(self@optional_inputs)) ||
-                    any(!nzchar(names(self@optional_inputs))))
-        ) {
-            return("`optional_inputs` must be a named role contract.")
-        }
-        for (contract_name in c("required_inputs", "optional_inputs")) {
-            contract <- S7::prop(self, contract_name)
-            if (anyDuplicated(names(contract))) {
-                return(sprintf(
-                    "`%s` must use unique input roles.",
-                    contract_name
-                ))
-            }
-            for (role in names(contract)) {
-                requirement <- contract[[role]]
-                if (
-                    !S7::S7_inherits(
-                        requirement,
-                        WeatherInputRequirement
-                    ) ||
-                        !identical(requirement@role, role)
-                ) {
-                    return(sprintf(
-                        "`%s` role `%s` must contain a matching WeatherInputRequirement.",
-                        contract_name,
-                        role
-                    ))
-                }
-            }
-        }
-        overlap <- intersect(
-            names(self@required_inputs),
-            names(self@optional_inputs)
+        err <- weather__check_unique_strings(
+            self@references,
+            "references",
+            non_empty = TRUE,
+            item = "scientific references"
         )
-        if (length(overlap)) {
-            return("An input role cannot be both required and optional.")
+        if (!is.null(err)) {
+            return(err)
+        }
+        err <- weather__check_named_list(
+            self@options,
+            "options",
+            message = "`options` must be uniquely named scientific settings."
+        )
+        if (!is.null(err)) {
+            return(err)
+        }
+        err <- weather__check_role_requirements(
+            self@required_inputs,
+            self@optional_inputs,
+            require_required = TRUE
+        )
+        if (!is.null(err)) {
+            return(err)
         }
         for (property in c(
             "source_frequencies",
@@ -170,17 +132,16 @@ WeatherTransformSpec <- S7::new_class(
             "optional_variables",
             "optional_variable_frequencies"
         )) {
-            value <- S7::prop(self, property)
-            if (
-                length(value) &&
-                    (is.null(names(value)) ||
-                        any(!nzchar(names(value))) ||
-                        anyDuplicated(names(value)))
-            ) {
-                return(sprintf(
+            err <- weather__check_named_list(
+                S7::prop(self, property),
+                property,
+                message = sprintf(
                     "`%s` must be uniquely named by input role.",
                     property
-                ))
+                )
+            )
+            if (!is.null(err)) {
+                return(err)
             }
         }
         required_frequency_roles <- setdiff(
@@ -229,11 +190,11 @@ WeatherTransformSpec <- S7::new_class(
         for (role in names(self@optional_variables)) {
             variables <- self@optional_variables[[role]]
             if (
-                !is.character(variables) ||
-                    !length(variables) ||
-                    anyNA(variables) ||
-                    any(!nzchar(variables)) ||
-                    anyDuplicated(variables)
+                !is.null(weather__check_unique_strings(
+                    variables,
+                    "optional_variables",
+                    non_empty = TRUE
+                ))
             ) {
                 return(
                     "Optional source variables must be unique, non-empty variable IDs."
@@ -273,14 +234,13 @@ WeatherTransformSpec <- S7::new_class(
         if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
-        if (
-            anyNA(self@stochastic_variables) ||
-                any(!nzchar(self@stochastic_variables)) ||
-                anyDuplicated(self@stochastic_variables)
-        ) {
-            return(
-                "`stochastic_variables` must contain unique, non-empty variable IDs."
-            )
+        err <- weather__check_unique_strings(
+            self@stochastic_variables,
+            "stochastic_variables",
+            item = "variable IDs"
+        )
+        if (!is.null(err)) {
+            return(err)
         }
         if (
             !identical(
@@ -525,7 +485,7 @@ transform__record <- function(scale, method, reconstruction = NULL) {
 # validator so construction and execution cannot apply different contracts.
 # transform__validated_signal_settings {{{
 transform__validated_signal_settings <- function(
-    method,
+    recipe_spec,
     variables,
     overrides = list()
 ) {
@@ -537,19 +497,20 @@ transform__validated_signal_settings <- function(
             "Unknown transformation variable option(s): {.val {unknown}}."
         )
     }
-    component <- component__get("signal", method@implementation_key)
+    component <- component__get("signal", recipe_spec@signal_component)
     validator <- component@operations$validate_options
     if (!is.function(validator)) {
         cli::cli_abort(
-            "Signal method {.val {method@name}} does not expose its settings validator."
+            "Signal method {.val {recipe_spec@method}} does not expose its settings validator."
         )
     }
+    profiles <- component@metadata$signal_profiles
 
     resolved <- lapply(variables, function(variable) {
-        defaults <- method@parameters[[variable]]
+        defaults <- profiles[[variable]]$settings
         if (is.null(defaults)) {
             cli::cli_abort(
-                "Signal method {.val {method@name}} has no settings profile for {.val {variable}}."
+                "Signal method {.val {recipe_spec@method}} has no settings profile for {.val {variable}}."
             )
         }
         override <- shift_stage__coalesce(overrides[[variable]], list())
@@ -570,11 +531,12 @@ transform__validated_signal_settings <- function(
 # Split adapter controls from the selected signal method's scientific settings
 # and return the complete validated recipe option envelope.
 # transform__signal_options {{{
-transform__signal_options <- function(recipe_spec, method, options) {
+transform__signal_options <- function(recipe_spec, options) {
     if (startsWith(recipe_spec@backend, "daily_adjustment_")) {
         adapter_defaults <- daily_adjustment__options(NULL)
         adapter_names <- setdiff(names(adapter_defaults), "signal_overrides")
-        setting_names <- names(method@parameters$tas)
+        signal <- component__get("signal", recipe_spec@signal_component)
+        setting_names <- names(signal@metadata$signal_profiles$tas$settings)
         nested <- "tas" %in% names(options)
         if (nested && any(setting_names %in% names(options))) {
             cli::cli_abort(
@@ -594,7 +556,7 @@ transform__signal_options <- function(recipe_spec, method, options) {
             list(tas = options[intersect(names(options), setting_names)])
         }
         signal_settings <- transform__validated_signal_settings(
-            method,
+            recipe_spec,
             "tas",
             overrides
         )
@@ -613,11 +575,11 @@ transform__signal_options <- function(recipe_spec, method, options) {
     # The optional longwave signal uses the same public settings validator as
     # the published signals; do not require a lower-level recipe to configure it.
     variables <- c(
-        method@output_variables,
+        EPW_MORPH_HOURLY_KQDM_VARIABLES,
         if (isTRUE(include_longwave)) "rlds"
     )
     signal_settings <- transform__validated_signal_settings(
-        method,
+        recipe_spec,
         variables,
         options
     )
@@ -635,12 +597,11 @@ transform__signal_options <- function(recipe_spec, method, options) {
 transform__recipe_options <- function(record, options) {
     checkmate::assert_list(options, names = "unique")
     recipe_spec <- recipe__get(record$recipe)
-    method <- method__get(recipe_spec@method)
     if (
         startsWith(recipe_spec@backend, "daily_adjustment_") ||
             identical(recipe_spec@backend, "hourly_kernel_qdm")
     ) {
-        return(transform__signal_options(recipe_spec, method, options))
+        return(transform__signal_options(recipe_spec, options))
     }
     defaults <- epw_morph_recipe(record$recipe)$options
     unknown <- setdiff(names(options), names(defaults))
@@ -819,20 +780,32 @@ transform__optional_variable_frequencies <- function(
 # transform__from_recipe {{{
 transform__from_recipe <- function(record, recipe) {
     recipe_spec <- morpher__recipe_spec(recipe)
-    method_spec <- method__get(recipe_spec@method)
     inputs <- transform__input_contracts(recipe_spec, recipe)
     optional_variables <- transform__optional_variables(recipe, inputs)
+    signal <- if (!is.null(recipe_spec@signal_component)) {
+        component__get("signal", recipe_spec@signal_component)
+    } else {
+        NULL
+    }
     stochastic_variables <- if (isTRUE(recipe_spec@stochastic)) {
-        intersect(
-            method_spec@stochastic_variables,
+        candidates <- if (!is.null(signal)) {
+            names(signal@metadata$signal_profiles)
+        } else {
             epw_morph_variables(recipe)
-        )
+        }
+        intersect(candidates, epw_morph_variables(recipe))
     } else {
         character()
     }
     source_references <- recipe_spec@source$references
-    if (!length(source_references)) {
-        source_references <- method_spec@references
+    if (!length(source_references) && !is.null(signal)) {
+        source_references <- unique(c(
+            signal@metadata$references,
+            unlist(
+                lapply(signal@metadata$signal_profiles, `[[`, "references"),
+                use.names = FALSE
+            )
+        ))
     }
     WeatherTransformSpec(
         scale = record$scale,
@@ -957,9 +930,8 @@ transform__persistence_snapshot <- function(transform) {
         transform@recipe,
         version = transform@recipe_version
     )
-    method <- method__get(recipe@method)
     list(
-        method_version = method@version,
+        method_version = recipe@method_version,
         required_inputs = transform__input_contract_value(
             transform@required_inputs
         ),

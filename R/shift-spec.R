@@ -155,22 +155,6 @@ shift_spec__periods_from_years <- function(
 }
 # }}}
 
-# Resolve recipe strings early so later workflow stages can rely on a recipe
-# object and its required variable set.
-# shift_spec__recipe_value {{{
-shift_spec__recipe_value <- function(recipe) {
-    if (inherits(recipe, "epw_morph_recipe")) {
-        return(recipe)
-    }
-    if (is.character(recipe) && length(recipe) == 1L) {
-        return(epw_morph_recipe(recipe))
-    }
-    cli::cli_abort(
-        "`recipe` must be a recipe name or an {.cls epw_morph_recipe} object."
-    )
-}
-# }}}
-
 # Let high-level APIs accept named variable sets while leaving explicit CMIP
 # variable IDs untouched.
 # shift_spec__variables_value {{{
@@ -271,34 +255,30 @@ shift_spec__expected_cases <- function(request, periods) {
     )
     # Keep the exact requested year set as a list column because coverage is a
     # case-level contract, not just a min/max time filter.
-    cases[,
-        years := lapply(period, function(value) {
-            as.integer(periods[periods[["period"]] == value, year])
-        })
-    ]
-    cases[,
-        case_id := vapply(
-            seq_len(.N),
-            function(i) {
-                store__hash(
-                    source_id[[i]],
-                    experiment_id[[i]],
-                    variant_label[[i]],
-                    grid_label[[i]],
-                    period[[i]],
-                    years[[i]]
-                )
-            },
-            character(1L)
-        )
-    ]
-    cases[, `:=`(
-        required = TRUE,
-        status = "planned",
-        output_id = NA_character_,
-        export_path = NA_character_,
-        missing_reason = NA_character_
-    )]
+    years_col <- lapply(cases$period, function(value) {
+        as.integer(periods[periods[["period"]] == value, year])
+    })
+    case_ids <- vapply(
+        seq_len(nrow(cases)),
+        function(i) {
+            store__hash(
+                cases$source_id[[i]],
+                cases$experiment_id[[i]],
+                cases$variant_label[[i]],
+                cases$grid_label[[i]],
+                cases$period[[i]],
+                years_col[[i]]
+            )
+        },
+        character(1L)
+    )
+    data.table::set(cases, j = "years", value = years_col)
+    data.table::set(cases, j = "case_id", value = case_ids)
+    data.table::set(cases, j = "required", value = TRUE)
+    data.table::set(cases, j = "status", value = "planned")
+    data.table::set(cases, j = "output_id", value = NA_character_)
+    data.table::set(cases, j = "export_path", value = NA_character_)
+    data.table::set(cases, j = "missing_reason", value = NA_character_)
     data.table::setcolorder(
         cases,
         c(
@@ -320,31 +300,6 @@ shift_spec__expected_cases <- function(request, periods) {
 }
 # }}}
 
-# Record the durable baseline EPW identity used for run hashing and resume.
-# shift_spec__epw_identity {{{
-shift_spec__epw_identity <- function(epw) {
-    if (shift_spec__is_epw_path(epw)) {
-        path <- normalizePath(path.expand(epw), winslash = "/", mustWork = TRUE)
-        return(list(
-            path = path,
-            checksum = store_hash_file(path, "sha256"),
-            checksum_type = "sha256"
-        ))
-    }
-    if (shift_spec__is_epw_object(epw)) {
-        path <- epw_file_coerce(epw)$path()
-        return(list(
-            path = path,
-            checksum = store_hash_file(path, "sha256"),
-            checksum_type = "sha256"
-        ))
-    }
-    cli::cli_abort(
-        "`epw` must be an EPW file path or an object inheriting from {.cls Epw} or {.cls EpwFile}."
-    )
-}
-# }}}
-
 # Choose CMIP table defaults that match the most common atmospheric frequencies.
 # shift_spec__cmip6_table_id {{{
 shift_spec__cmip6_table_id <- function(frequency) {
@@ -362,58 +317,69 @@ shift_spec__cmip6_table_id <- function(frequency) {
 }
 # }}}
 
-# Validate scalar and variable-specific CMIP6 frequency specifications without
-# discarding names that are needed after a broad multi-frequency ESGF query.
-# shift_spec__cmip6_frequency_spec {{{
-shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
-    if (is.list(frequency)) {
-        if (
-            is.null(names(frequency)) ||
-                anyNA(names(frequency)) ||
-                any(!nzchar(names(frequency)))
-        ) {
-            cli::cli_abort(
-                "A list supplied as `frequency` must name every variable."
-            )
+# Validate a scalar or fully named variable mapping shared by CMIP6 frequency
+# and table specifications, preserving mapping names across list/vector input.
+# shift_spec__named_mapping {{{
+shift_spec__named_mapping <- function(
+    value,
+    list_msg,
+    unnamed_msg,
+    empty_name_msg,
+    dup_name_msg = empty_name_msg,
+    na_name_msg = empty_name_msg
+) {
+    if (is.list(value)) {
+        nms <- names(value)
+        if (is.null(nms) || anyNA(nms) || any(!nzchar(nms))) {
+            cli::cli_abort(list_msg)
         }
-        frequency <- vapply(
-            frequency,
-            function(value) {
-                checkmate::assert_string(value, min.chars = 1L)
-                value
+        value <- vapply(
+            value,
+            function(item) {
+                checkmate::assert_string(item, min.chars = 1L)
+                item
             },
             character(1L)
         )
     }
-    checkmate::assert_character(
+    checkmate::assert_character(value, any.missing = FALSE, min.len = 1L)
+    nms <- names(value)
+    value <- as.character(value)
+    names(value) <- nms
+    if (!is.null(nms) && anyNA(nms)) {
+        cli::cli_abort(na_name_msg)
+    }
+    named <- !is.null(nms) && any(nzchar(nms))
+    if (!isTRUE(named)) {
+        if (length(value) != 1L) {
+            cli::cli_abort(unnamed_msg)
+        }
+        names(value) <- NULL
+        return(value)
+    }
+    if (any(!nzchar(nms))) {
+        cli::cli_abort(empty_name_msg)
+    }
+    if (anyDuplicated(nms)) {
+        cli::cli_abort(dup_name_msg)
+    }
+    value
+}
+# }}}
+
+# Validate scalar and variable-specific CMIP6 frequency specifications without
+# discarding names that are needed after a broad multi-frequency ESGF query.
+# shift_spec__cmip6_frequency_spec {{{
+shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
+    frequency <- shift_spec__named_mapping(
         frequency,
-        any.missing = FALSE,
-        min.len = 1L
+        list_msg = "A list supplied as `frequency` must name every variable.",
+        unnamed_msg = "An unnamed `frequency` value must contain one CMIP6 frequency.",
+        empty_name_msg = "A variable-specific `frequency` vector must have unique, non-empty variable names.",
+        na_name_msg = "A variable-specific `frequency` vector cannot have missing names."
     )
     frequency_names <- names(frequency)
-    frequency <- as.character(frequency)
-    names(frequency) <- frequency_names
-    if (!is.null(frequency_names) && anyNA(frequency_names)) {
-        cli::cli_abort(
-            "A variable-specific `frequency` vector cannot have missing names."
-        )
-    }
-    named <- !is.null(frequency_names) && any(nzchar(frequency_names))
-    if (!isTRUE(named)) {
-        if (length(frequency) != 1L) {
-            cli::cli_abort(
-                "An unnamed `frequency` value must contain one CMIP6 frequency."
-            )
-        }
-        names(frequency) <- NULL
-        return(frequency)
-    }
-    if (any(!nzchar(frequency_names)) || anyDuplicated(frequency_names)) {
-        cli::cli_abort(
-            "A variable-specific `frequency` vector must have unique, non-empty variable names."
-        )
-    }
-    if (!is.null(variables)) {
+    if (!is.null(frequency_names) && !is.null(variables)) {
         variables <- unique(as.character(variables))
         unknown <- setdiff(frequency_names, variables)
         missing <- setdiff(variables, frequency_names)
@@ -465,36 +431,13 @@ shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
         }
         cli::cli_abort("`table` cannot be `NULL` here.")
     }
-    if (is.list(table)) {
-        if (is.null(names(table)) || any(!nzchar(names(table)))) {
-            cli::cli_abort(
-                "A list supplied as `table` must have one name for every variable override."
-            )
-        }
-        table <- vapply(
-            table,
-            function(value) {
-                checkmate::assert_string(value, min.chars = 1L)
-                value
-            },
-            character(1L)
-        )
-    }
-    checkmate::assert_character(table, any.missing = FALSE, min.len = 1L)
-    table_names <- names(table)
-    table <- as.character(table)
-    names(table) <- table_names
-    named <- !is.null(names(table)) && any(nzchar(names(table)))
-    if (isTRUE(named) && any(!nzchar(names(table)))) {
-        cli::cli_abort("A named `table` vector must name every element.")
-    }
-    if (!isTRUE(named) && length(table) != 1L) {
-        cli::cli_abort("An unnamed `table` value must be a single table ID.")
-    }
-    if (isTRUE(named) && anyDuplicated(names(table))) {
-        cli::cli_abort("Variable names in `table` must be unique.")
-    }
-    table
+    shift_spec__named_mapping(
+        table,
+        list_msg = "A list supplied as `table` must have one name for every variable override.",
+        unnamed_msg = "An unnamed `table` value must be a single table ID.",
+        empty_name_msg = "A named `table` vector must name every element.",
+        dup_name_msg = "Variable names in `table` must be unique."
+    )
 }
 # }}}
 
@@ -694,9 +637,9 @@ shift_spec__resolve_epw <- function(x) {
 #'   In `shift_cmip6()`, an unnamed scalar `frequency` applies to every transform
 #'   input, while a named character vector assigns one frequency to every
 #'   source variable so `3hrPt`, `3hr`, and `day` data can be collected together.
-#'   In `shift_reference_historical()`, `experiment` is the historical
-#'   reference experiment filter. Values are not translated; for ESGF, use
-#'   exact facet values such as `project = "CMIP6"` and `frequency = "mon"`.
+#'   In [historical_reference()], `experiment` (passed via `...`) is the
+#'   historical reference experiment filter. Values are not translated; for ESGF,
+#'   use exact facet values such as `project = "CMIP6"` and `frequency = "mon"`.
 #' @param time Optional request or extraction time filter. Numeric years such as
 #'   `2060L` are expanded to the full UTC year; otherwise supply one or two
 #'   date-time values accepted by the provider/store.
@@ -712,10 +655,11 @@ shift_spec__resolve_epw <- function(x) {
 #' @param lon,lat Optional site longitude and latitude. Missing values are read
 #'   from the EPW LOCATION header when `epw` is supplied.
 #' @param epw A baseline EPW path, internal `EpwFile`, or external object
-#'   inheriting from `"Epw"` in site and task APIs; in [shift_plan()], a named
-#'   EPW export option list.
+#'   inheriting from `"Epw"` in site and task APIs.
 #' @param metadata Optional site metadata.
-#' @param ... Additional provider-specific filters or workflow options.
+#' @param ... Additional provider-specific filters or workflow options. In
+#'   [historical_reference()], forwarded options include `experiment`,
+#'   `activity`, `match`, `filters`, `options`, `collect`, and `extract`.
 #'
 #' @return A shift stage object.
 #'
@@ -1040,7 +984,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
         frequencies,
         climate@table
     )
-    request <- shift_cmip6_scenario(
+    request <- shift_spec__cmip6_scenario(
         source = climate@model,
         scenario = climate@scenarios,
         member = climate@member,
@@ -1070,8 +1014,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
 #' @rdname shift_api
 #' @param allow_partial Whether a task-level run may complete with missing cases.
 #' @param download Source-data policy in [shift_control()] (`"auto"`,
-#'   `"always"`, or `"never"`), or a named download-stage option list in
-#'   [shift_plan()].
+#'   `"always"`, or `"never"`).
 #' @param extraction_method Grid extraction method.
 #' @param output_layout Output directory layout.
 #' @export
@@ -1108,21 +1051,8 @@ shift_control <- function(
 }
 # }}}
 
-#' @rdname shift_api
-#' @param scenario CMIP6 scenario experiment IDs, for example
-#'   `"ssp126"` or `"ssp585"`.
-#' @param member CMIP6 variant label, for example `"r1i1p1f1"`.
-#' @param years Optional years used to constrain the future request time window.
-#' @param activity CMIP6 activity ID. `shift_cmip6_scenario()` defaults to
-#'   `"ScenarioMIP"` and `shift_reference_historical()` defaults to `"CMIP"`.
-#' @param table_id One or more CMIP6 table IDs. If `NULL`, the native table is
-#'   inferred for each variable's `frequency`.
-#' @param grid_label Optional CMIP6 grid label.
-#' @param data_node Optional ESGF data node filter.
-#' @param index_node Optional ESGF index node.
-#' @export
-# shift_cmip6_scenario {{{
-shift_cmip6_scenario <- function(
+# shift_spec__cmip6_scenario {{{
+shift_spec__cmip6_scenario <- function(
     source,
     scenario,
     member = NULL,
@@ -1268,14 +1198,8 @@ shift_spec__validate_transform_periods <- function(transform, periods) {
 }
 # }}}
 
-#' @rdname shift_api
-#' @param request A [shift_request()] object, commonly from
-#'   `shift_cmip6_scenario()`.
-#' @param morph Named morph-stage options. Stage option lists are validated and
-#'   cannot override task-level controls or the transform/reference inputs.
-#' @export
-# shift_plan {{{
-shift_plan <- function(
+# shift_spec__plan {{{
+shift_spec__plan <- function(
     request,
     site,
     periods,
@@ -1292,7 +1216,7 @@ shift_plan <- function(
 ) {
     if (!S7::S7_inherits(request, ShiftRequest)) {
         cli::cli_abort(
-            "`request` must be a {.cls ShiftRequest}, usually from {.fn shift_request} or {.fn shift_cmip6_scenario}."
+            "`request` must be a {.cls ShiftRequest}, usually from {.fn shift_request}."
         )
     }
     if (!S7::S7_inherits(site, ShiftSite)) {
@@ -1388,7 +1312,7 @@ shift_plan <- function(
 #'   and bounded native reads are shared; each child owns its persisted outputs.
 #'   Use declarative
 #'   historical/reanalysis references. For previously extracted site-specific
-#'   references, use [shift_plan()] with the matching site and store.
+#'   references, use [shift_reference_from_plan()] with [shift_morph()].
 #' @param methods One or more unambiguous method keys from
 #'   [weather_transforms()]. This high-level form creates a `ShiftBatch` across
 #'   every selected method and model.
@@ -1459,6 +1383,715 @@ shift_epw_future <- function(
         dry_run = dry_run,
         background = background
     )
+}
+# }}}
+
+# Match extraction rows to one resolved CMIP identity without relying on
+# data.table's NA comparison behaviour. The same helper is used for manifest
+# coverage and Parquet data so a derived artifact cannot cross scenarios,
+# members, grids, or sites.
+# shift_climate__humidity_identity_match {{{
+shift_climate__humidity_identity_match <- function(rows, identity, columns) {
+    keep <- rep(TRUE, nrow(rows))
+    for (column in intersect(columns, names(rows))) {
+        keep <- keep &
+            shift_resolve__catalog_match(
+                rows[[column]],
+                identity[[column]][[1L]]
+            )
+    }
+    keep
+}
+# }}}
+
+# Persist canonical hurs extraction plans and Parquet artifacts when a resolved
+# identity has no direct hurs but has complete huss, tas, and ps inputs. This
+# occurs before task-level coverage, so strict coverage and EpwMorpher consume
+# the same durable canonical evidence on initial and resumed runs.
+# shift_climate__derive_hurs_climate {{{
+shift_climate__derive_hurs_climate <- function(
+    climate,
+    recipe,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    if (!S7::S7_inherits(climate, ShiftClimate)) {
+        cli::cli_abort("`climate` must be a {.cls ShiftClimate} stage.")
+    }
+    checkmate::assert_flag(overwrite)
+    checkmate::assert_flag(resume)
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            identical(recipe$backend, "hourly_kernel_qdm")
+    ) {
+        # This workflow must derive HURS after HUSS, TAS, and PS have been
+        # reconstructed to the common hourly lattice.
+        return(climate)
+    }
+    requirements <- morpher__variable_requirements(recipe)
+    humidity_alternatives <- requirements[["hurs"]]
+    if (
+        is.null(humidity_alternatives) ||
+            !any(vapply(
+                humidity_alternatives,
+                function(value) {
+                    identical(as.character(value), c("huss", "tas", "ps"))
+                },
+                logical(1L)
+            ))
+    ) {
+        return(climate)
+    }
+
+    store <- shift_inspect__store(climate)
+    private <- priv(store)
+    coverage <- store$coverage(plan_id = climate@ids$plan_id)
+    coverage <- coverage[complete %in% TRUE]
+    if (!nrow(coverage)) {
+        return(climate)
+    }
+    identity_columns <- intersect(
+        c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "grid_label",
+            "frequency",
+            "table_id",
+            "site_id"
+        ),
+        names(coverage)
+    )
+    identities <- unique(coverage[, identity_columns, with = FALSE])
+    raw <- NULL
+    derived_ids <- character()
+    provenance <- list()
+
+    for (i in seq_len(nrow(identities))) {
+        identity <- identities[i]
+        rows <- coverage[
+            shift_climate__humidity_identity_match(
+                coverage,
+                identity,
+                identity_columns
+            )
+        ]
+        # Direct hurs is always preferred, even when the alternative source
+        # variables were returned by the broad capability query.
+        if (any(rows$variable_id == "hurs" & rows$complete %in% TRUE)) {
+            next
+        }
+        inputs <- c("huss", "tas", "ps")
+        source_rows <- lapply(inputs, function(variable) {
+            rows[variable_id == variable & complete %in% TRUE]
+        })
+        # A zero-row data.table still has a non-zero length because `length()`
+        # counts columns. Check rows so optional table partitions without the
+        # three humidity inputs are skipped instead of being derived.
+        if (!all(vapply(source_rows, nrow, integer(1L)) > 0L)) {
+            next
+        }
+        source_plan_ids <- sort(unique(unlist(
+            lapply(source_rows, function(value) value$plan_id),
+            use.names = FALSE
+        )))
+        derived_plan_id <- store__hash(
+            "derived-hurs-v1",
+            paste(source_plan_ids, collapse = "\r")
+        )
+        existing <- tryCatch(
+            store$coverage(plan_id = derived_plan_id),
+            error = function(e) data.table::data.table()
+        )
+        if (
+            !isTRUE(overwrite) &&
+                isTRUE(resume) &&
+                nrow(existing) &&
+                all(existing$complete %in% TRUE)
+        ) {
+            derived_ids <- c(derived_ids, derived_plan_id)
+            provenance[[length(provenance) + 1L]] <- list(
+                plan_id = derived_plan_id,
+                derived_from = inputs,
+                source_plan_ids = source_plan_ids,
+                reused = TRUE
+            )
+            if (!is.null(reporter)) {
+                reporter$notice(
+                    "Reused derived hurs from huss + tas + ps",
+                    outcome = "skipped",
+                    details = list(
+                        unit_type = "derived_variable",
+                        variable = "hurs"
+                    )
+                )
+            }
+            next
+        }
+
+        if (is.null(raw)) {
+            # Derivation must read every source partition. `shift_data()` is a
+            # preview API by default and would otherwise stop after 100 rows,
+            # often before tas and ps partitions are reached.
+            raw <- shift_data(climate, n = Inf, variables = inputs)
+        }
+        data_rows <- raw[
+            shift_climate__humidity_identity_match(
+                raw,
+                identity,
+                identity_columns
+            )
+        ]
+        data_rows <- data_rows[plan_id %in% source_plan_ids]
+        derived <- morpher__derive_hurs_rows(data_rows)
+        if (!nrow(derived)) {
+            cli::cli_abort(
+                "Derived hurs produced no rows for the resolved CMIP identity.",
+                class = "epwshiftr_hurs_derivation_error"
+            )
+        }
+
+        huss_row <- source_rows[[1L]][1L]
+        now <- store__now()
+        plan <- data.frame(
+            plan_id = derived_plan_id,
+            query_id = huss_row$query_id[[1L]],
+            file_key = huss_row$file_key[[1L]],
+            site_id = huss_row$site_id[[1L]],
+            variable_id = "hurs",
+            lon = huss_row$lon[[1L]],
+            lat = huss_row$lat[[1L]],
+            method = huss_row$method[[1L]],
+            time_start = min(derived$time, na.rm = TRUE),
+            time_stop = max(derived$time, na.rm = TRUE),
+            status = "done",
+            available_time_count = data.table::uniqueN(derived$time),
+            attempt_count = 1L,
+            last_error = NA_character_,
+            created_at = now,
+            updated_at = now,
+            stringsAsFactors = FALSE
+        )
+        file_catalog <- data.table::as.data.table(
+            private$read_table("file_catalog")
+        )
+        file <- file_catalog[
+            file_catalog[["file_key"]] == plan$file_key[[1L]]
+        ][1L]
+        if (!nrow(file)) {
+            cli::cli_abort(
+                "Cannot persist derived hurs because its source file catalog row is missing."
+            )
+        }
+        derived[, `:=`(
+            plan_id = derived_plan_id,
+            file_key = plan$file_key[[1L]],
+            query_id = plan$query_id[[1L]],
+            method = plan$method[[1L]]
+        )]
+
+        # Write the plan before its result rows so a crash leaves an explicit,
+        # resumable incomplete plan instead of an orphaned Parquet artifact.
+        private$replace_rows("extraction_plan", plan, "plan_id")
+        private$delete_by_key("extraction_result", "plan_id", derived_plan_id)
+        results <- private$write_extract_partitions(
+            derived,
+            data.table::as.data.table(plan),
+            file,
+            overwrite = overwrite
+        )
+        private$replace_rows(
+            "extraction_result",
+            as.data.frame(results),
+            "result_id"
+        )
+        derived_ids <- c(derived_ids, derived_plan_id)
+        provenance[[length(provenance) + 1L]] <- list(
+            plan_id = derived_plan_id,
+            derived_from = inputs,
+            source_plan_ids = source_plan_ids,
+            equation = "e=q*p/(epsilon+(1-epsilon)*q); hurs=100*e/pws(tas)",
+            reused = FALSE
+        )
+        if (!is.null(reporter)) {
+            reporter$notice(
+                "Derived hurs from huss + tas + ps",
+                outcome = "completed",
+                details = list(
+                    unit_type = "derived_variable",
+                    variable = "hurs",
+                    rows = nrow(derived)
+                )
+            )
+        }
+    }
+
+    if (!length(derived_ids)) {
+        return(climate)
+    }
+    climate@ids$plan_id <- unique(c(climate@ids$plan_id, derived_ids))
+    climate@meta$coverage <- store$coverage(plan_id = climate@ids$plan_id)
+    climate@meta$variables <- unique(c(climate@meta$variables, "hurs"))
+    climate@meta$derived_variables <- provenance
+    climate
+}
+# }}}
+
+#' @rdname shift_api
+#' @param plan_id Store extraction plan IDs for manually selected reference
+#'   climate data.
+#' @param role Semantic role of the plan-backed climate. Use
+#'   `"observed_reference"` only for an observational extraction plan.
+#' @export
+# shift_reference_from_plan {{{
+shift_reference_from_plan <- function(
+    plan_id,
+    periods,
+    role = c("model_historical", "observed_reference")
+) {
+    checkmate::assert_character(
+        plan_id,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
+    periods <- shift_reference__periods(periods)
+    role <- match.arg(role)
+
+    ShiftReferenceSpec(
+        mode = "plan",
+        role = role,
+        plan_id = plan_id,
+        periods = periods,
+        experiment = NULL,
+        activity = NULL,
+        match = character(),
+        filters = list(),
+        options = list(),
+        collect = list(),
+        extract = list()
+    )
+}
+# }}}
+
+#' @rdname shift_api
+#' @param years Reference years used by [historical_reference()].
+#' @param period Reference period name used when constructing periods from
+#'   `years`.
+#' @export
+# historical_reference {{{
+historical_reference <- function(years = 1995:2014, period = "reference", ...) {
+    shift_reference__historical(
+        shift_spec__periods_from_years(years, period = period, arg = "years"),
+        ...
+    )
+}
+# }}}
+
+# shift_reference__historical {{{
+shift_reference__historical <- function(
+    periods,
+    experiment = "historical",
+    activity = "CMIP",
+    match = c(
+        "source_id",
+        "variant_label",
+        "frequency",
+        "table_id",
+        "grid_label"
+    ),
+    filters = list(),
+    options = list(),
+    collect = list(),
+    extract = list(fallback = "auto")
+) {
+    periods <- shift_reference__periods(periods)
+    checkmate::assert_string(experiment, min.chars = 1L)
+    checkmate::assert_string(activity, min.chars = 1L, null.ok = TRUE)
+    checkmate::assert_character(
+        match,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
+    checkmate::assert_list(filters, names = "unique")
+    checkmate::assert_list(options, names = "unique")
+    checkmate::assert_list(collect, names = "unique")
+    checkmate::assert_subset(
+        names(collect),
+        c("fields", "all", "limit", "label", "time")
+    )
+    checkmate::assert_list(extract, names = "unique")
+    checkmate::assert_subset(
+        names(extract),
+        c("variables", "time", "filters", "method", "fallback")
+    )
+
+    ShiftReferenceSpec(
+        mode = "historical",
+        role = "model_historical",
+        plan_id = NULL,
+        periods = periods,
+        experiment = experiment,
+        activity = activity,
+        match = match,
+        filters = filters,
+        options = options,
+        collect = collect,
+        extract = extract
+    )
+}
+# }}}
+
+# shift_reference__periods {{{
+shift_reference__periods <- function(periods) {
+    checkmate::assert_data_frame(periods)
+    checkmate::assert_names(names(periods), must.include = c("period", "year"))
+    data.table::as.data.table(periods)
+}
+# }}}
+
+# shift_reference__resolve {{{
+shift_reference__resolve <- function(
+    x,
+    recipe,
+    site,
+    reference = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    if (is.null(reference)) {
+        return(list(
+            reference = NULL,
+            spec = NULL,
+            plan_id = NULL,
+            periods = NULL
+        ))
+    }
+
+    if (S7::S7_inherits(reference, ShiftClimate)) {
+        reference_ids <- shift_inspect__ids(reference)
+        return(list(
+            reference = reference,
+            spec = NULL,
+            plan_id = reference_ids$plan_id,
+            periods = shift_reference__periods(reference@meta$periods)
+        ))
+    }
+
+    if (!S7::S7_inherits(reference, ShiftReferenceSpec)) {
+        cli::cli_abort(
+            "`reference` must be a {.cls ShiftClimate} stage or a {.cls ShiftReferenceSpec}."
+        )
+    }
+
+    if (identical(reference@mode, "plan")) {
+        return(list(
+            reference = reference,
+            spec = reference,
+            plan_id = reference@plan_id,
+            periods = shift_reference__periods(reference@periods)
+        ))
+    }
+
+    if (identical(reference@mode, "historical")) {
+        climate <- shift_reference__resolve_historical(
+            x = x,
+            recipe = recipe,
+            site = site,
+            spec = reference,
+            overwrite = overwrite,
+            resume = resume,
+            reporter = reporter
+        )
+        climate_ids <- shift_inspect__ids(climate)
+        return(list(
+            reference = climate,
+            spec = reference,
+            plan_id = climate_ids$plan_id,
+            periods = shift_reference__periods(climate@meta$periods)
+        ))
+    }
+
+    cli::cli_abort("Unsupported reference mode: {.val {reference@mode}}.")
+}
+# }}}
+
+# Resolve observed daily weather only from an already extracted climate stage
+# or explicit plan IDs. Automatic CMIP historical discovery cannot satisfy the
+# observational role and is rejected before any store work begins.
+# shift_reference__observed_reference_resolve {{{
+shift_reference__observed_reference_resolve <- function(
+    x,
+    recipe,
+    site,
+    observed_reference = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    if (S7::S7_inherits(observed_reference, ShiftReanalysisSpec)) {
+        climate <- reanalysis__materialize(
+            x = x,
+            recipe = recipe,
+            site = site,
+            spec = observed_reference,
+            overwrite = overwrite,
+            resume = resume,
+            reporter = reporter
+        )
+        climate_ids <- shift_inspect__ids(climate)
+        return(list(
+            reference = climate,
+            spec = observed_reference,
+            plan_id = climate_ids$plan_id,
+            periods = shift_reference__periods(climate@meta$periods)
+        ))
+    }
+    if (
+        S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
+            !identical(observed_reference@mode, "plan")
+    ) {
+        cli::cli_abort(
+            paste(
+                "{.arg observed_reference} must use an existing extraction",
+                "plan; historical CMIP output is not an observation."
+            )
+        )
+    }
+    shift_reference__resolve(
+        x = x,
+        recipe = recipe,
+        site = site,
+        reference = observed_reference,
+        overwrite = overwrite,
+        resume = resume,
+        reporter = reporter
+    )
+}
+# }}}
+
+# shift_reference__resolve_historical {{{
+shift_reference__resolve_historical <- function(
+    x,
+    recipe,
+    site,
+    spec,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    root <- shift_stage__root(x)
+    if (!is.null(root) && !S7::S7_inherits(root, ShiftRequest)) {
+        root <- NULL
+    }
+    provider <- if (is.null(root)) "esgf" else root@meta$provider
+    if (!identical(provider, "esgf")) {
+        cli::cli_abort(
+            "Automatic historical reference resolution currently supports only ESGF-backed shift requests."
+        )
+    }
+
+    store <- shift_inspect__store(x)
+    ids <- shift_inspect__ids(x)
+    catalog <- if (!is.null(ids$query_id)) {
+        shift_inspect__file_catalog(store, ids$query_id)
+    } else {
+        data.table::data.table()
+    }
+
+    periods <- shift_reference__periods(spec@periods)
+    variables <- shift_stage__coalesce(
+        spec@extract$variables,
+        morpher__input_variables(recipe)
+    )
+    variables <- as.character(variables)
+    variables <- variables[!is.na(variables) & nzchar(variables)]
+    if (!length(variables)) {
+        cli::cli_abort(
+            "Automatic historical reference resolution could not determine required climate variables."
+        )
+    }
+
+    filters <- shift_reference__historical_filters(
+        catalog = catalog,
+        request = root,
+        spec = spec,
+        variables = variables
+    )
+    options <- utils::modifyList(
+        if (is.null(root)) list() else root@meta$options,
+        spec@options
+    )
+    project <- shift_stage__coalesce(
+        if (is.null(root)) NULL else root@meta$project,
+        "CMIP6"
+    )
+    # Historical Dataset records often span the full CMIP run; only constrain
+    # ESGF collection by time when the caller explicitly requests it.
+    collect_time <- if ("time" %in% names(spec@collect)) {
+        spec@collect$time
+    } else {
+        NULL
+    }
+    request <- shift_request(
+        provider = provider,
+        project = project,
+        time = collect_time,
+        filters = filters,
+        options = options
+    )
+
+    collect_overrides <- spec@collect
+    collect_overrides$time <- NULL
+    collect_args <- utils::modifyList(
+        list(
+            store = store,
+            fields = "*",
+            all = TRUE,
+            limit = FALSE,
+            label = "historical-reference"
+        ),
+        collect_overrides
+    )
+    files <- shift_run__do_call_with_reporter(
+        reporter,
+        shift_collect,
+        c(list(request), collect_args)
+    )
+    if (is.null(files@meta$file_count) || files@meta$file_count < 1L) {
+        cli::cli_abort(
+            "Automatic historical reference query returned no File records."
+        )
+    }
+
+    extract_filters <- filters[intersect(
+        names(filters),
+        c(
+            "experiment_id",
+            "activity_id",
+            "source_id",
+            "variant_label",
+            "frequency",
+            "table_id",
+            "grid_label"
+        )
+    )]
+    extract_defaults <- list(
+        site = site,
+        periods = periods,
+        variables = variables,
+        time = shift_spec__method_time_window(periods, recipe),
+        filters = extract_filters,
+        method = "nearest",
+        fallback = "auto",
+        overwrite = overwrite,
+        resume = resume
+    )
+    extract_overrides <- spec@extract
+    if (!is.null(extract_overrides$filters)) {
+        extract_overrides$filters <- utils::modifyList(
+            extract_filters,
+            extract_overrides$filters
+        )
+    }
+    extract_args <- utils::modifyList(extract_defaults, extract_overrides)
+    extract_args$site <- site
+    extract_args$periods <- periods
+    extract_args$overwrite <- overwrite
+    extract_args$resume <- resume
+    climate <- shift_run__do_call_with_reporter(
+        reporter,
+        shift_extract,
+        c(list(files), extract_args)
+    )
+    shift_climate__derive_hurs_climate(
+        climate,
+        recipe,
+        overwrite = overwrite,
+        resume = resume,
+        reporter = reporter
+    )
+}
+# }}}
+
+# shift_reference__historical_filters {{{
+shift_reference__historical_filters <- function(
+    catalog,
+    request,
+    spec,
+    variables
+) {
+    filters <- list(
+        experiment_id = spec@experiment,
+        variable_id = variables
+    )
+    if (!is.null(spec@activity)) {
+        filters$activity_id <- spec@activity
+    }
+
+    missing <- character()
+    for (field in spec@match) {
+        if (!is.null(spec@filters[[field]])) {
+            next
+        }
+        values <- shift_reference__infer_field(field, catalog, request)
+        if (!length(values)) {
+            missing <- c(missing, field)
+        } else {
+            filters[[field]] <- values
+        }
+    }
+    if (length(missing)) {
+        cli::cli_abort(c(
+            "Automatic historical reference resolution could not infer required match field(s).",
+            "x" = "{.field {missing}}",
+            "i" = "Supply explicit values through `historical_reference(filters = ...)` or reduce `match`."
+        ))
+    }
+
+    utils::modifyList(filters, spec@filters)
+}
+# }}}
+
+# shift_reference__infer_field {{{
+shift_reference__infer_field <- function(field, catalog, request) {
+    values <- character()
+    if (field %in% names(catalog) && nrow(catalog)) {
+        values <- unique(as.character(unlist(
+            catalog[[field]],
+            use.names = FALSE
+        )))
+    }
+    values <- values[!is.na(values) & nzchar(values)]
+    if (length(values)) {
+        return(values)
+    }
+
+    if (!is.null(request)) {
+        alias <- switch(
+            field,
+            source_id = request@meta$source,
+            experiment_id = request@meta$experiment,
+            variant_label = request@meta$variant,
+            frequency = request@meta$frequency,
+            variable_id = request@meta$variables,
+            NULL
+        )
+        values <- unique(as.character(unlist(alias, use.names = FALSE)))
+        values <- values[!is.na(values) & nzchar(values)]
+        if (length(values)) {
+            return(values)
+        }
+
+        filter_value <- request@meta$filters[[field]]
+        values <- unique(as.character(unlist(filter_value, use.names = FALSE)))
+        return(values[!is.na(values) & nzchar(values)])
+    }
+
+    character()
 }
 # }}}
 

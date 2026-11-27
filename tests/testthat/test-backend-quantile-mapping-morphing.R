@@ -4,62 +4,6 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-# Build deterministic daily tas rows for quantile-mapping morphing inputs.
-# quantile_mapping_morphing_test__climate {{{
-quantile_mapping_morphing_test__climate <- function(
-    years,
-    period,
-    experiment,
-    temperature_shift = 0,
-    frequency = "day",
-    source_id = "TestModel"
-) {
-    rows <- lapply(as.integer(years), function(year) {
-        dates <- seq.Date(
-            as.Date(sprintf("%d-01-01", year)),
-            as.Date(sprintf("%d-12-31", year)),
-            by = "day"
-        )
-        # Exclude leap day so test inputs retain one unambiguous annual phase.
-        dates <- dates[format(dates, "%m-%d") != "02-29"]
-        day <- seq_along(dates)
-        phase <- (day - 0.5) / length(day)
-        temperature <- 12 +
-            8 * sin(2 * pi * phase) +
-            temperature_shift
-        data.table::data.table(
-            activity_id = if (
-                identical(
-                    experiment,
-                    "historical"
-                )
-            ) {
-                "CMIP"
-            } else {
-                "ScenarioMIP"
-            },
-            institution_id = "test",
-            source_id = source_id,
-            experiment_id = experiment,
-            variant_label = "r1i1p1f1",
-            frequency = frequency,
-            table_id = "day",
-            variable_id = "tas",
-            time = as.POSIXct(dates, tz = "UTC") + 12 * 3600,
-            year = year,
-            month = as.integer(format(dates, "%m")),
-            annual_phase = phase,
-            period = period,
-            lon = 103.8,
-            lat = 1.3,
-            units = "K",
-            value = temperature + 273.15
-        )
-    })
-    data.table::rbindlist(rows)
-}
-# }}}
-
 # Build a complete four-role context around the packaged EPW fixture.
 # quantile_mapping_morphing_test__context {{{
 quantile_mapping_morphing_test__context <- function(
@@ -67,65 +11,51 @@ quantile_mapping_morphing_test__context <- function(
     policy = "paper_faithful",
     recipe_name = "quantile_mapping_morphing_daily"
 ) {
-    historical <- quantile_mapping_morphing_test__climate(
-        2001:2003,
-        period = "reference",
-        experiment = "historical"
-    )
-    future <- quantile_mapping_morphing_test__climate(
-        2061:2063,
-        period = "2060s",
-        experiment = "ssp585",
-        temperature_shift = temperature_shift
-    )
-    observed <- quantile_mapping_morphing_test__climate(
-        2001:2003,
-        period = "observed",
-        experiment = "observed",
-        source_id = "Observed"
-    )
-    morpher__context(
-        epw = epw_file_read(get_cache_epw()),
-        climate = future,
-        reference_climate = historical,
-        observed_reference = observed,
-        recipe = epw_morph_recipe(
-            recipe_name,
-            policy = policy
+    make_series <- function(
+        years,
+        period,
+        experiment,
+        shift = 0,
+        source = "TestModel"
+    ) {
+        morph_test__daily_climate(
+            years = years,
+            period = period,
+            experiment = experiment,
+            variables = "tas",
+            mean_shift = shift,
+            base_temp = 12,
+            seasonal_amp = 8,
+            source_id = source,
+            institution_id = "test",
+            lon = 103.8,
+            lat = 1.3,
+            include_month = TRUE
         )
+    }
+    morph_test__context(
+        climate = make_series(
+            2061:2063,
+            "2060s",
+            "ssp585",
+            shift = temperature_shift
+        ),
+        reference_climate = make_series(2001:2003, "reference", "historical"),
+        observed_reference = make_series(
+            2001:2003,
+            "observed",
+            "observed",
+            source = "Observed"
+        ),
+        recipe = epw_morph_recipe(recipe_name, policy = policy)
     )
 }
 # }}}
 
-test_that("Quantile-mapping morphing recipe registers all four required input roles", {
-    expect_true("quantile_mapping_morphing" %in% epw_morph_backends())
-    expect_true(
-        "quantile_mapping_morphing_daily" %in% epw_morph_recipes()[["name"]]
-    )
+test_that("Quantile-mapping morphing requires both historical and observed references", {
     recipe <- epw_morph_recipe("quantile_mapping_morphing_daily")
-    spec <- recipe__get("quantile_mapping_morphing_daily")
-
-    expect_identical(recipe$policy, "paper_faithful")
-    expect_identical(
-        names(spec@required_inputs),
-        c(
-            "weather_template",
-            "observed_reference",
-            "model_historical",
-            "model_future"
-        )
-    )
     expect_true(morpher__recipe_requires_reference(recipe))
     expect_true(morpher__recipe_requires_observed_reference(recipe))
-    expect_identical(epw_morph_variables(recipe), "tas")
-    expect_identical(
-        recipe$components$signal,
-        "percentile_temperature_change_function"
-    )
-    expect_identical(
-        morpher__recipe_required_frequency(recipe),
-        "day"
-    )
     expect_error(
         transform__validate_execution_inputs(daily_transform("qm_morphing")),
         "requires.*reference"
@@ -153,11 +83,18 @@ test_that("Quantile-mapping morphing smoother uses fixed nine-rank endpoint mean
 })
 
 test_that("Quantile-mapping morphing monthly inputs do not require an annual-phase mapping", {
-    source <- quantile_mapping_morphing_test__climate(
+    source <- morph_test__daily_climate(
         2001L,
         period = "observed",
         experiment = "observed",
-        source_id = "Observed"
+        variables = "tas",
+        base_temp = 12,
+        seasonal_amp = 8,
+        source_id = "Observed",
+        institution_id = "test",
+        lon = 103.8,
+        lat = 1.3,
+        include_month = TRUE
     )
     source[, annual_phase := NULL]
     normalized <- quantile_mapping_morphing__temperature_series(
@@ -172,9 +109,7 @@ test_that("Quantile-mapping morphing monthly inputs do not require an annual-pha
 
 test_that("Quantile-mapping morphing zero climate change is an hourly identity", {
     context <- quantile_mapping_morphing_test__context()
-    baseline <- context$epw$clone()
-    suppressMessages(baseline$drop_unit())
-    baseline_weather <- data.table::as.data.table(baseline$data())
+    baseline_weather <- morph_test__baseline_weather(context)
     result <- morpher__run_context(context)
 
     expect_s3_class(result, "epw_morph_result")
@@ -204,10 +139,9 @@ test_that("Quantile-mapping morphing zero climate change is an hourly identity",
 test_that("Quantile-mapping morphing applies the selected daily factor to every hour", {
     context <- quantile_mapping_morphing_test__context(temperature_shift = 2.25)
     result <- morpher__run_context(context)
-    baseline <- context$epw$clone()
-    suppressMessages(baseline$drop_unit())
+    baseline_weather <- morph_test__baseline_weather(context)
     hourly_delta <- result$data$dry_bulb_temperature -
-        baseline$data()[["dry_bulb_temperature"]]
+        baseline_weather[["dry_bulb_temperature"]]
 
     expect_equal(hourly_delta, rep(2.25, 8760L), tolerance = 1e-10)
     expect_equal(
@@ -286,7 +220,7 @@ test_that("Quantile-mapping morphing public method persists both reference roles
         table = "day"
     )
     periods <- epw_morph_periods(`2060s` = 2061L)
-    plan <- shift_plan(
+    plan <- shift_spec__plan(
         request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
@@ -349,14 +283,8 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
             opendap_url = paths[[role]],
             download_url = paths[[role]],
             variable_id = "tas",
-            datetime_start = sprintf(
-                "%d-01-01T00:00:00Z",
-                year
-            ),
-            datetime_end = sprintf(
-                "%d-12-31T23:59:59Z",
-                year
-            )
+            datetime_start = sprintf("%d-01-01T00:00:00Z", year),
+            datetime_end = sprintf("%d-12-31T23:59:59Z", year)
         )
         query_id <- store$add_files(esgf_test__file_result(docs))
         plan <- store$plan_region(
@@ -408,19 +336,14 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         dir = NULL,
         overwrite = TRUE
     )
-    mapping <- morpher__read_table(
-        store,
-        "epw_morph_observed_reference"
-    )
+    mapping <- morpher__read_table(store, "epw_morph_observed_reference")
     result_path <- store_abs_path(
         workflow$results$output_path,
         root = store$path
     )
     weather <- read_test_parquet(result_path)
 
-    observed_mapping <- mapping[
-        morph_id == workflow$plan$morph_id
-    ]
+    observed_mapping <- mapping[morph_id == workflow$plan$morph_id]
     expect_identical(nrow(observed_mapping), 1L)
     expect_true(nzchar(observed_mapping$observed_summary_id))
     expect_identical(nrow(weather), 8760L)

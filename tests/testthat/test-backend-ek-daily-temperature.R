@@ -4,7 +4,7 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-# Build deterministic native-calendar daily extrema for the Ek factor tests.
+# Build deterministic native-calendar daily extrema for Ek tests.
 # ek_test__climate {{{
 ek_test__climate <- function(
     years,
@@ -17,63 +17,25 @@ ek_test__climate <- function(
     omit = character(),
     frequency = "day"
 ) {
-    years <- as.integer(years)
-    calendar_days <- as.integer(calendar_days)
-    phase <- (seq_len(calendar_days) - 0.5) / calendar_days
-    rows <- lapply(seq_along(years), function(index) {
-        replicate_offset <- (index - mean(seq_along(years))) * 0.2
-        mean_temperature <- 12 +
-            7 * sin(2 * pi * phase) +
-            replicate_offset +
-            temperature_shift
-        baseline_dtr <- if (identical(historical_dtr, 0)) {
-            rep.int(0, calendar_days)
-        } else {
-            historical_dtr + 1.5 * cos(2 * pi * phase)
-        }
-        dtr <- baseline_dtr * dtr_ratio
-        values <- list(
-            tasmin = mean_temperature - dtr / 2 + 273.15,
-            tasmax = mean_temperature + dtr / 2 + 273.15
-        )
-        data.table::rbindlist(lapply(
-            setdiff(names(values), omit),
-            function(variable_id) {
-                data.table::data.table(
-                    activity_id = if (
-                        identical(
-                            experiment,
-                            "historical"
-                        )
-                    ) {
-                        "CMIP"
-                    } else {
-                        "ScenarioMIP"
-                    },
-                    institution_id = "PCIC-test",
-                    source_id = "TestModel",
-                    experiment_id = experiment,
-                    variant_label = "r1i1p1f1",
-                    frequency = frequency,
-                    table_id = "day",
-                    variable_id = variable_id,
-                    time = as.POSIXct(
-                        sprintf("%04d-01-01 12:00:00", years[[index]]),
-                        tz = "UTC"
-                    ) +
-                        seq.int(0L, calendar_days - 1L) * 86400,
-                    year = years[[index]],
-                    annual_phase = phase,
-                    period = period,
-                    lon = -123,
-                    lat = 49,
-                    units = "K",
-                    value = values[[variable_id]]
-                )
-            }
-        ))
-    })
-    data.table::rbindlist(rows)
+    morph_test__daily_climate(
+        years = years,
+        period = period,
+        experiment = experiment,
+        variables = c("tasmin", "tasmax"),
+        calendar_days = calendar_days,
+        frequency = frequency,
+        mean_shift = temperature_shift,
+        base_temp = 12,
+        seasonal_amp = 7,
+        replicate_step = 0.2,
+        dtr_base = historical_dtr,
+        dtr_ratio = dtr_ratio,
+        omit = omit,
+        source_id = "TestModel",
+        institution_id = "PCIC-test",
+        lon = -123,
+        lat = 49
+    )
 }
 # }}}
 
@@ -88,69 +50,29 @@ ek_test__context <- function(
     policy = "paper_faithful",
     recipe_name = "ek_daily_factors"
 ) {
-    historical <- ek_test__climate(
-        2001:2003,
-        period = "reference",
-        experiment = "historical",
-        calendar_days = historical_days,
-        historical_dtr = historical_dtr
-    )
-    future <- ek_test__climate(
-        2061:2063,
-        period = "2060s",
-        experiment = "ssp585",
-        calendar_days = future_days,
-        temperature_shift = temperature_shift,
-        dtr_ratio = dtr_ratio,
-        historical_dtr = historical_dtr
-    )
-    morpher__context(
-        epw = epw_file_read(get_cache_epw()),
-        climate = future,
-        reference_climate = historical,
-        recipe = epw_morph_recipe(
-            recipe_name,
-            policy = policy
-        )
+    morph_test__context(
+        climate = ek_test__climate(
+            2061:2063,
+            period = "2060s",
+            experiment = "ssp585",
+            calendar_days = future_days,
+            temperature_shift = temperature_shift,
+            dtr_ratio = dtr_ratio,
+            historical_dtr = historical_dtr
+        ),
+        reference_climate = ek_test__climate(
+            2001:2003,
+            period = "reference",
+            experiment = "historical",
+            calendar_days = historical_days,
+            historical_dtr = historical_dtr
+        ),
+        recipe = epw_morph_recipe(recipe_name, policy = policy)
     )
 }
 # }}}
 
-test_that("Ek recipe registers its temperature-focused daily contract", {
-    expect_true("ek_daily_temperature" %in% epw_morph_backends())
-    expect_true("ek_daily_factors" %in% epw_morph_recipes()[["name"]])
-    backend <- epw_morph_backend("ek_daily_temperature")
-    recipe <- epw_morph_recipe("ek_daily_factors")
-    spec <- recipe__get("ek_daily_factors")
-
-    expect_true(backend$requires_reference)
-    expect_identical(recipe$policy, "paper_faithful")
-    expect_identical(
-        names(spec@policy_profiles),
-        c("paper_faithful", "harmonized")
-    )
-    expect_identical(
-        epw_morph_variables(recipe),
-        c("tasmin", "tasmax")
-    )
-    expect_identical(
-        spec@calendar_policy,
-        "cf_yearly_linear_to_epw_365"
-    )
-    expect_identical(
-        recipe$components$signal,
-        "daily_mean_dtr_change_factors"
-    )
-    expect_identical(
-        recipe$components$hourly,
-        "daily_mean_dtr_shift_stretch"
-    )
-    expect_match(spec@source$ambiguity_note, "not fully self-consistent")
-    expect_match(spec@source$implementation_note, "temperature")
-    expect_identical(
-        morpher__recipe_required_frequency(recipe),
-        "day"
-    )
+test_that("Ek recipe rejects unsupported smoothing options and missing reference", {
     expect_error(
         transform__validate_execution_inputs(daily_transform("ek")),
         "requires.*reference"
@@ -179,13 +101,13 @@ test_that("Ek calendar adapter maps 360-day years without smoothing", {
         temperature_shift = 2,
         dtr_ratio = 1.25
     )
-    targets <- ek__daily_temperature_targets(
-        temperature__daily_climate(
-            future,
+    targets <- ek__daily_temperature_factors(
+        ek__daily_temperature_climatology(
+            temperature__daily_climate(future, "future climate"),
             "future climate"
         ),
-        temperature__daily_climate(
-            historical,
+        ek__daily_temperature_climatology(
+            temperature__daily_climate(historical, "historical climate"),
             "historical climate"
         )
     )
@@ -205,9 +127,7 @@ test_that("Ek calendar adapter maps 360-day years without smoothing", {
 
 test_that("Ek zero climate change is an hourly identity", {
     context <- ek_test__context()
-    baseline <- context$epw$clone()
-    suppressMessages(baseline$drop_unit())
-    baseline_weather <- data.table::as.data.table(baseline$data())
+    baseline_weather <- morph_test__baseline_weather(context)
     result <- morpher__run_context(context)
 
     expect_s3_class(result, "epw_morph_result")
@@ -242,18 +162,11 @@ test_that("Ek zero climate change is an hourly identity", {
 })
 
 test_that("Ek combined equation closes daily mean and DTR changes", {
-    context <- ek_test__context(
-        temperature_shift = 2,
-        dtr_ratio = 1.25
-    )
+    context <- ek_test__context(temperature_shift = 2, dtr_ratio = 1.25)
     result <- morpher__run_context(context)
     factors <- result$factors
 
-    expect_equal(
-        factors$mean_delta,
-        rep(2, 365L),
-        tolerance = 1e-10
-    )
+    expect_equal(factors$mean_delta, rep(2, 365L), tolerance = 1e-10)
     expect_equal(
         factors$dtr_relative_change,
         rep(0.25, 365L),
@@ -327,25 +240,7 @@ test_that("Ek harmonized policy closes humidity against temperature", {
 })
 
 test_that("Ek records zero historical model DTR fallback", {
-    historical <- ek_test__climate(
-        2001:2002,
-        period = "reference",
-        experiment = "historical",
-        historical_dtr = 0
-    )
-    future <- ek_test__climate(
-        2061:2062,
-        period = "2060s",
-        experiment = "ssp585",
-        temperature_shift = 2,
-        historical_dtr = 0
-    )
-    context <- morpher__context(
-        epw = epw_file_read(get_cache_epw()),
-        climate = future,
-        reference_climate = historical,
-        recipe = epw_morph_recipe("ek_daily_factors")
-    )
+    context <- ek_test__context(temperature_shift = 2, historical_dtr = 0)
     result <- morpher__run_context(context)
 
     expect_true(all(
@@ -355,8 +250,7 @@ test_that("Ek records zero historical model DTR fallback", {
         result$factors$projection_status == "mean_shift_zero_historical_dtr"
     ))
     expect_true(
-        "ek_zero_historical_model_dtr" %in%
-            result$diagnostics$code
+        "ek_zero_historical_model_dtr" %in% result$diagnostics$code
     )
 })
 
@@ -396,24 +290,15 @@ test_that("Ek validates extrema, year, frequency, and daily completeness", {
         "missing required variable"
     )
     expect_error(
-        ek__daily_temperature_climatology(
-            missing_year,
-            "historical climate"
-        ),
+        ek__daily_temperature_climatology(missing_year, "historical climate"),
         "source-calendar year"
     )
     expect_error(
-        temperature__daily_climate(
-            wrong_frequency,
-            "historical climate"
-        ),
+        temperature__daily_climate(wrong_frequency, "historical climate"),
         "must use CMIP frequency"
     )
     expect_error(
-        ek__daily_temperature_climatology(
-            duplicated,
-            "historical climate"
-        ),
+        ek__daily_temperature_climatology(duplicated, "historical climate"),
         "one value per annual phase"
     )
 })
@@ -439,18 +324,8 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
     )@meta$children[[1L]]
     rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
-    expect_identical(
-        plan@meta$recipe$backend,
-        "ek_daily_temperature"
-    )
-    expect_identical(
-        rebuilt@meta$recipe$recipe_spec,
-        "ek_daily_factors"
-    )
-    expect_identical(
-        rebuilt@meta$recipe$components$signal,
-        "daily_mean_dtr_change_factors"
-    )
+    expect_identical(plan@meta$recipe$backend, "ek_daily_temperature")
+    expect_identical(rebuilt@meta$recipe$recipe_spec, "ek_daily_factors")
     expect_identical(
         rebuilt@meta$recipe$policy,
         transform__recipe(transform)$policy

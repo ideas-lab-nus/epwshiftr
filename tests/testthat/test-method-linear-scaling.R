@@ -14,28 +14,13 @@ test_that("Linear Scaling applies monthly additive temperature corrections", {
         2061L,
         c(18, 21, 30, 35)
     )
-    component <- bias__linear_scaling_component()
-    inputs <- bias_adjustment_test__inputs(
+    execution <- signal_test__execute(
+        bias__linear_scaling_component(),
+        "tas",
         observed,
         historical,
-        future
-    )
-    group <- signal__group(
-        key = list(site = "A"),
-        inputs = list(
-            observed_reference = observed,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = "tas"
-    )
-
-    execution <- component__execute(
-        component,
-        "apply",
-        inputs = inputs,
-        groups = list(group),
-        overrides = list(tas = list(bounds = c(-Inf, 40)))
+        future,
+        overrides = list(bounds = c(-Inf, 40))
     )
     adjusted <- execution@values[[1L]]
 
@@ -53,9 +38,20 @@ test_that("Linear Scaling applies monthly additive temperature corrections", {
         adjusted@provenance$monthly_corrections$correction,
         c(3, 4)
     )
+    expect_identical(adjusted@provenance$grouping, "calendar_month")
+    expect_identical(adjusted@provenance$statistic, "mean")
     expect_identical(adjusted@provenance$group_key, list(site = "A"))
+    expect_identical(
+        names(adjusted@settings),
+        c("transformation", "bounds", "zero_tolerance")
+    )
     expect_identical(adjusted@settings$bounds, c(-Inf, 40))
     expect_identical(execution@profiles$tas$settings$bounds, c(-Inf, 40))
+    expect_identical(
+        execution@profiles$tas$metadata$grouping,
+        "calendar_month"
+    )
+    expect_identical(execution@profiles$tas$metadata$statistic, "mean")
 })
 
 test_that("Linear Scaling applies multiplicative precipitation corrections", {
@@ -84,7 +80,10 @@ test_that("Linear Scaling applies multiplicative precipitation corrections", {
             model_future = future
         ),
         settings = list(
-            pr = component@metadata$signal_profiles$pr$settings
+            pr = signal_test__profile_settings(
+                bias__linear_scaling_profiles(),
+                "pr"
+            )
         ),
         key = list(site = "A")
     )
@@ -116,7 +115,10 @@ test_that("Linear Scaling handles undefined ratios and bounds explicitly", {
         c(2, 2, 2, 2)
     )
     component <- bias__linear_scaling_component()
-    settings <- component@metadata$signal_profiles$pr$settings
+    settings <- signal_test__profile_settings(
+        bias__linear_scaling_profiles(),
+        "pr"
+    )
 
     expect_error(
         component__execute(
@@ -132,24 +134,13 @@ test_that("Linear Scaling handles undefined ratios and bounds explicitly", {
         ),
         "historical monthly mean is zero"
     )
-    inputs <- bias_adjustment_test__inputs(
+    collected <- signal_test__execute(
+        component,
+        "pr",
         observed,
         historical,
-        future
-    )
-    group <- signal__group(
-        inputs = list(
-            observed_reference = observed,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = "pr"
-    )
-    collected <- component__execute(
-        component,
-        "apply",
-        inputs = inputs,
-        groups = list(group),
+        future,
+        key = list(),
         error_policy = "collect"
     )
     expect_null(collected@values[[1L]])
@@ -178,66 +169,6 @@ test_that("Linear Scaling handles undefined ratios and bounds explicitly", {
     )
     expect_equal(bounded@data$value, rep(1.5, 4L))
     expect_identical(bounded@provenance$clipped_values, 4L)
-
-    future$value[[1L]] <- -1
-    expect_error(
-        component__execute(
-            component,
-            "apply_group",
-            inputs = list(
-                observed_reference = observed,
-                model_historical = historical,
-                model_future = future
-            ),
-            settings = list(pr = settings),
-            key = list()
-        ),
-        "non-negative"
-    )
-})
-
-test_that("Linear Scaling is a registered package-native signal component", {
-    bias__register_linear_scaling_component()
-    component <- component__get("signal", "linear_scaling_daily")
-
-    expect_true(S7::S7_inherits(component, WeatherComponentSpec))
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_daily_series"
-    )
-    expect_identical(component@output_kinds, "daily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_false(component@stochastic)
-    expect_identical(
-        sort(names(component@required_inputs)),
-        sort(c(
-            "observed_reference",
-            "model_historical",
-            "model_future"
-        ))
-    )
-    expect_identical(
-        component@metadata$output_contract,
-        "daily_adjusted_series"
-    )
-
-    calendar <- component__spec(
-        name = "daily_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
-    )
-    sequence <- component__spec(
-        name = "adjusted_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :

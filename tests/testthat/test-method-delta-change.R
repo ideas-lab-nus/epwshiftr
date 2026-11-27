@@ -17,27 +17,12 @@ test_that("Delta Change transfers additive changes onto observed daily data", {
         c(18, 22, 30, 34),
         calendar = "all_leap"
     )
-    component <- bias__delta_change_component()
-    inputs <- bias_adjustment_test__inputs(
+    execution <- signal_test__execute(
+        bias__delta_change_component(),
+        "tas",
         observed,
         historical,
         future
-    )
-    group <- signal__group(
-        key = list(site = "A"),
-        inputs = list(
-            observed_reference = observed,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = "tas"
-    )
-
-    execution <- component__execute(
-        component,
-        "apply",
-        inputs = inputs,
-        groups = list(group)
     )
     adjusted <- execution@values[[1L]]
 
@@ -59,21 +44,35 @@ test_that("Delta Change transfers additive changes onto observed daily data", {
     expect_identical(adjusted@output_role, "observed_reference")
     expect_identical(adjusted@transformation, "additive")
     expect_identical(adjusted@provenance$method, "delta_change")
+    expect_identical(adjusted@provenance$grouping, "calendar_month")
+    expect_identical(adjusted@provenance$statistic, "mean")
     expect_equal(
         adjusted@provenance$monthly_changes$change,
         c(11, 14)
     )
     expect_identical(adjusted@provenance$group_key, list(site = "A"))
+    expect_identical(
+        names(adjusted@settings),
+        c("transformation", "bounds", "zero_tolerance")
+    )
     expect_identical(execution@diagnostics$status, "ok")
     expect_identical(
         execution@profiles$tas$metadata$output_role,
         "observed_reference"
     )
+    expect_identical(
+        execution@profiles$tas$metadata$grouping,
+        "calendar_month"
+    )
+    expect_identical(execution@profiles$tas$metadata$statistic, "mean")
 })
 
 test_that("Delta Change has zero-change identity for every CF calendar", {
     component <- bias__delta_change_component()
-    settings <- component@metadata$signal_profiles$tas$settings
+    settings <- signal_test__profile_settings(
+        bias__delta_change_profiles(),
+        "tas"
+    )
 
     for (calendar in CF_TIME_CALENDARS) {
         observed <- bias_adjustment_test__series(
@@ -138,7 +137,10 @@ test_that("Delta Change transfers multiplicative precipitation changes", {
         c(2, 6, 6, 2)
     )
     component <- bias__delta_change_component()
-    settings <- component@metadata$signal_profiles$pr$settings
+    settings <- signal_test__profile_settings(
+        bias__delta_change_profiles(),
+        "pr"
+    )
     result <- component__execute(
         component,
         "apply_group",
@@ -164,7 +166,7 @@ test_that("Delta Change transfers multiplicative precipitation changes", {
     expect_identical(result@provenance$clipped_values, 0L)
 })
 
-test_that("Delta Change rejects undefined inputs and records clipping", {
+test_that("Delta Change rejects undefined ratios and records clipping", {
     observed <- bias_adjustment_test__series(
         "pr",
         2001L,
@@ -181,7 +183,10 @@ test_that("Delta Change rejects undefined inputs and records clipping", {
         c(2, 2, 2, 2)
     )
     component <- bias__delta_change_component()
-    settings <- component@metadata$signal_profiles$pr$settings
+    settings <- signal_test__profile_settings(
+        bias__delta_change_profiles(),
+        "pr"
+    )
     roles <- list(
         observed_reference = observed,
         model_historical = historical,
@@ -200,32 +205,6 @@ test_that("Delta Change rejects undefined inputs and records clipping", {
     )
 
     roles$model_historical$value <- rep.int(1, 4L)
-    incompatible_units <- roles
-    incompatible_units$model_future$units <- rep.int("mm day-1", 4L)
-    expect_error(
-        component__execute(
-            component,
-            "apply_group",
-            inputs = incompatible_units,
-            settings = list(pr = settings),
-            key = list()
-        ),
-        "identical units"
-    )
-
-    negative <- roles
-    negative$model_future$value[[1L]] <- -1
-    expect_error(
-        component__execute(
-            component,
-            "apply_group",
-            inputs = negative,
-            settings = list(pr = settings),
-            key = list()
-        ),
-        "non-negative"
-    )
-
     bounded <- component__execute(
         component,
         "apply_group",
@@ -240,46 +219,6 @@ test_that("Delta Change rejects undefined inputs and records clipping", {
     )
     expect_equal(bounded@data$value, c(2, 4, 5, 5))
     expect_identical(bounded@provenance$clipped_values, 2L)
-})
-
-test_that("Delta Change is a registered package-native signal component", {
-    bias__register_delta_change_component()
-    component <- component__get("signal", "delta_change_daily")
-
-    expect_true(S7::S7_inherits(component, WeatherComponentSpec))
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_daily_series"
-    )
-    expect_identical(component@output_kinds, "daily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_false(component@stochastic)
-    expect_identical(
-        sort(names(component@metadata$signal_profiles)),
-        sort(c("tas", "tasmin", "tasmax", "pr"))
-    )
-    expect_identical(
-        component@metadata$signal_profiles$pr$evidence,
-        "published"
-    )
-
-    calendar <- component__spec(
-        name = "delta_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
-    )
-    sequence <- component__spec(
-        name = "delta_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :

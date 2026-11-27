@@ -1,4 +1,4 @@
-#' @include signal-adjustment.R calendar-daily.R distribution-quantile.R
+#' @include signal-adjustment.R calendar.R distribution.R
 NULL
 
 # Quantile Mapping references identify the published transfer equation and
@@ -25,8 +25,9 @@ QM_EXPERIMENTAL_VARIABLES <- c(
     "tasmax"
 )
 
-# Construct the complete empirical Quantile Mapping settings record shared by
-# every variable profile, including conventions that publications leave open.
+# Construct the tunable empirical Quantile Mapping settings record shared by
+# every variable profile. Fixed empirical-CDF conventions remain in component
+# metadata and output provenance.
 # qm__default_settings {{{
 qm__default_settings <- function(
     bounds,
@@ -35,15 +36,9 @@ qm__default_settings <- function(
 ) {
     distribution_model <- match.arg(distribution_model)
     list(
-        mapping_type = "nonparametric",
-        detrending = "none",
         seasonal_window_days = 31L,
         target_year_days = 365L,
         min_samples = 10L,
-        cdf_method = "linear_interpolation",
-        inverse_cdf_method = "linear_type_7",
-        tie_method = "average_rank",
-        tail_policy = "clamp",
         bounds = bounds,
         distribution_model = distribution_model,
         dry_threshold = dry_threshold,
@@ -70,42 +65,33 @@ qm__profiles <- function() {
         tasmin = qm__default_settings(c(-Inf, Inf)),
         tasmax = qm__default_settings(c(-Inf, Inf))
     )
-    variables <- c(QM_PUBLISHED_VARIABLES, QM_EXPERIMENTAL_VARIABLES)
-    lapply(variables, function(variable) {
-        published <- variable %in% QM_PUBLISHED_VARIABLES
-        signal__variable_profile(
-            variable,
-            settings = settings[[variable]],
-            evidence = if (published) "published" else "experimental",
-            references = if (published) QM_REFERENCES else character(),
-            metadata = list(
-                method = "quantile_mapping",
-                output_role = "model_future",
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = QM_PUBLISHED_VARIABLES,
+        references = QM_REFERENCES,
+        method = "quantile_mapping",
+        output_role = "model_future",
+        evidence_mode = "by_variable",
+        metadata_fn = function(variable, published) {
+            list(
                 default_source = if (published) {
                     "method_literature"
                 } else {
                     "package_implementation"
                 }
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
-# Validate all method conventions at the kernel boundary so unsupported
-# empirical-CDF variants cannot be selected silently through an override.
+# Validate all tunable method settings at the kernel boundary.
 # qm__settings {{{
 qm__settings <- function(settings) {
     expected <- c(
-        "mapping_type",
-        "detrending",
         "seasonal_window_days",
         "target_year_days",
         "min_samples",
-        "cdf_method",
-        "inverse_cdf_method",
-        "tie_method",
-        "tail_policy",
         "bounds",
         "distribution_model",
         "dry_threshold",
@@ -116,26 +102,6 @@ qm__settings <- function(settings) {
         expected,
         "Quantile Mapping"
     )
-    if (!identical(resolved$mapping_type, "nonparametric")) {
-        cli::cli_abort(
-            "Quantile Mapping currently supports only nonparametric mapping."
-        )
-    }
-    if (!identical(resolved$detrending, "none")) {
-        cli::cli_abort(
-            "Quantile Mapping currently supports only `detrending = \"none\"`."
-        )
-    }
-    if (
-        !identical(resolved$cdf_method, "linear_interpolation") ||
-            !identical(resolved$inverse_cdf_method, "linear_type_7") ||
-            !identical(resolved$tie_method, "average_rank") ||
-            !identical(resolved$tail_policy, "clamp")
-    ) {
-        cli::cli_abort(
-            "Quantile Mapping currently requires linear empirical CDF interpolation, type-7 inverse quantiles, average-rank ties, and clamped tails."
-        )
-    }
     resolved$seasonal_window_days <- signal__integer_setting(
         resolved$seasonal_window_days,
         "seasonal_window_days",
@@ -172,63 +138,6 @@ qm__settings <- function(settings) {
     )
     resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
-}
-# }}}
-
-# Validate the three role-addressable daily inputs without pairing their native
-# dates or requiring their CF calendars to be identical.
-# qm__inputs {{{
-qm__inputs <- function(inputs, variable, distribution_model) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!identical(sort(names(inputs)), sort(roles))) {
-        cli::cli_abort(
-            "Quantile Mapping requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        bias__daily_table(inputs[[role]], role)
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "Quantile Mapping role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "Quantile Mapping role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "Quantile Mapping inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        identical(distribution_model, "precipitation_hurdle") &&
-            any(vapply(
-                series,
-                function(data) any(data[["value"]] < 0),
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "Precipitation-hurdle Quantile Mapping requires non-negative input values."
-        )
-    }
-    series
 }
 # }}}
 
@@ -338,15 +247,9 @@ qm__diagnostics <- function(
     precipitation = NULL
 ) {
     diagnostics <- list(
-        observed_window_samples = c(
-            minimum = min(observed_samples),
-            median = stats::median(observed_samples),
-            maximum = max(observed_samples)
-        ),
-        historical_window_samples = c(
-            minimum = min(historical_samples),
-            median = stats::median(historical_samples),
-            maximum = max(historical_samples)
+        observed_window_samples = signal__sample_summary(observed_samples),
+        historical_window_samples = signal__sample_summary(
+            historical_samples
         ),
         mapped_probability_range = range(probability),
         lower_tail_values = sum(lower_tail),
@@ -506,10 +409,20 @@ qm__adjust_values <- function(series, resolved, key, variable) {
 qm__apply_group <- function(inputs, settings, key) {
     resolved <- qm__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- qm__inputs(
+    is_hurdle <- identical(
+        resolved$distribution_model,
+        "precipitation_hurdle"
+    )
+    series <- signal__validate_three_role_inputs(
         inputs,
-        variable,
-        resolved$distribution_model
+        variable = variable,
+        method = "Quantile Mapping",
+        min_value = if (is_hurdle) 0 else -Inf,
+        min_value_message = if (is_hurdle) {
+            "Precipitation-hurdle Quantile Mapping requires non-negative input values."
+        } else {
+            NULL
+        }
     )
     mapped <- qm__adjust_values(series, resolved, key, variable)
     future <- series$model_future
@@ -522,6 +435,14 @@ qm__apply_group <- function(inputs, settings, key) {
         settings = resolved,
         provenance = list(
             method = "quantile_mapping",
+            mapping_type = "nonparametric",
+            detrending = "none",
+            empirical_conventions = list(
+                cdf = "linear_interpolation",
+                inverse_cdf = "linear_type_7",
+                ties = "average_rank",
+                tails = "clamp"
+            ),
             references = QM_REFERENCES,
             group_key = key,
             output_backbone = "model_future",
@@ -531,51 +452,27 @@ qm__apply_group <- function(inputs, settings, key) {
 }
 # }}}
 
-# Return one explicit diagnostic string when Quantile Mapping violates the
-# package-native future-model output contract.
-# qm__validate_result {{{
-qm__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        DailyAdjustedSeries,
-        "DailyAdjustedSeries",
-        "model_future",
-        "Quantile Mapping"
-    )
-}
-# }}}
-
 # Construct the reusable Quantile Mapping signal with three explicit daily
 # input roles and method-evidence-aware variable alternatives.
 # qm__component {{{
 qm__component <- function() {
-    alternatives <- as.list(c(
-        QM_PUBLISHED_VARIABLES,
-        QM_EXPERIMENTAL_VARIABLES
-    ))
-    requirements <- signal__three_role_requirements(
-        alternatives,
-        frequencies = "day"
-    )
-    signal__component(
+    signal__three_role_component(
         name = "quantile_mapping_daily",
         label = "Daily Quantile Mapping",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_daily_series",
-        output_kinds = "daily_adjusted_series",
-        scopes = "univariate",
-        stochastic = TRUE,
+        variables = c(QM_PUBLISHED_VARIABLES, QM_EXPERIMENTAL_VARIABLES),
         profiles = qm__profiles(),
         apply_group = qm__apply_group,
-        operations = list(
-            validate_options = qm__settings,
-            validate_result = qm__validate_result
-        ),
+        validate_options = qm__settings,
+        method_label = "Quantile Mapping",
+        output_role = "model_future",
+        stochastic = TRUE,
         metadata = list(
             method_family = "bias_adjustment",
             output_contract = "daily_adjusted_series",
             references = QM_REFERENCES,
             stochastic_operation = "precipitation_dry_day_randomization",
+            mapping_type = "nonparametric",
+            detrending = "none",
             empirical_conventions = list(
                 cdf = "linear_interpolation",
                 inverse_cdf = "linear_type_7",

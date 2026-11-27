@@ -1,4 +1,4 @@
-#' @include calendar-subdaily.R method-temporal-interpolation.R method-solar-radiation-interpolation.R
+#' @include calendar.R method-temporal-interpolation.R method-solar-radiation-interpolation.R
 NULL
 
 # Model variables accepted by the composite hourly weather preprocessing

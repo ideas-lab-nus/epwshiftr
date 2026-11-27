@@ -11,12 +11,6 @@ fixture_json <- function(...) {
 }
 # }}}
 
-# read_fixture_json {{{
-read_fixture_json <- function(...) {
-    readLines(fixture_path(...), warn = FALSE)
-}
-# }}}
-
 # Build the canonical Solr response envelope shared by query, Store, CLI, and
 # staged-workflow tests while allowing time-sensitive tests to supply a timestamp.
 # esgf_test__response {{{
@@ -168,6 +162,69 @@ esgf_test__file_result <- function(docs) {
         params = params,
         result = esgf_test__response(docs)
     )
+}
+# }}}
+
+# query_result_test_params {{{
+query_result_test_params <- function(type = "Dataset", ...) {
+    values <- list(...)
+    params <- list(
+        project = "CMIP6",
+        latest = NULL,
+        distrib = TRUE,
+        limit = 1L,
+        type = type,
+        format = QUERY_PARAM__FORMAT_JSON
+    )
+    params[names(values)] <- values
+    query_param__as_store(params)
+}
+# }}}
+
+# query_result_test_object {{{
+query_result_test_object <- function(
+    type = "Dataset",
+    docs,
+    params = query_result_test_params(type),
+    context = NULL
+) {
+    generator <- switch(
+        type,
+        Dataset = EsgResultDataset,
+        File = EsgResultFile,
+        Aggregation = EsgResultAggregation
+    )
+    query_result__new(
+        generator,
+        index_node = "https://example.org",
+        params = params,
+        result = esgf_test__response(docs, timestamp = Sys.time()),
+        context = context
+    )
+}
+# }}}
+
+# query_result_test_file_docs {{{
+query_result_test_file_docs <- function(
+    url = "https://example.org/file.nc|application/netcdf|HTTPServer"
+) {
+    docs <- data.frame(
+        id = "file-1",
+        dataset_id = "dataset-1",
+        size = 1,
+        checksum = "abc",
+        checksum_type = "SHA256",
+        instance_id = "file-instance-1",
+        master_id = "master-file-1",
+        replica = FALSE,
+        tracking_id = "hdl:21.14100/mock-file",
+        title = "file.nc",
+        version = 20260101L,
+        data_node = "example.org",
+        check.names = FALSE
+    )
+    docs$url <- I(list(url))
+    docs
 }
 # }}}
 

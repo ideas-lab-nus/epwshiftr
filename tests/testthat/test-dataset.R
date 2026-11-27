@@ -3,6 +3,134 @@
 dataset_async_timeout <- 60
 
 # local_dataset_table_file() / local_dataset_cmip6_files() / mirai_dataset_symbols / start_mirai_dataset_runtime() / stop_mirai_dataset_runtime() / mirai_dataset_lapply() {{{
+# Shared local native NetCDF builder for table, point, neighborhood, and climatology tests.
+dataset_test__write_nc <- function(
+    time_values,
+    units,
+    calendar = "standard",
+    lat = c(0, 1),
+    lon = c(10, 11),
+    tas = NULL,
+    bounds = NULL,
+    bounds_attr = "bounds",
+    bounds_var = "time_bnds",
+    bounds_dim = "bnds",
+    reversed = FALSE,
+    method = NULL,
+    extra_vars = NULL,
+    extra_edit = NULL,
+    path = tempfile(fileext = ".nc")
+) {
+    nc <- RNetCDF::create.nc(path)
+    on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    nt <- length(time_values)
+    RNetCDF::dim.def.nc(nc, "time", nt)
+    RNetCDF::dim.def.nc(nc, "lat", length(lat))
+    RNetCDF::dim.def.nc(nc, "lon", length(lon))
+    for (nm in c("time", "lat", "lon")) {
+        RNetCDF::var.def.nc(nc, nm, "NC_DOUBLE", nm)
+    }
+    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
+    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
+    if (!is.null(method)) {
+        RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
+    }
+    RNetCDF::var.put.nc(nc, "time", time_values)
+    RNetCDF::var.put.nc(nc, "lat", lat)
+    RNetCDF::var.put.nc(nc, "lon", lon)
+    if (is.null(tas)) {
+        tas <- array(
+            270 + seq_len(nt * length(lat) * length(lon)),
+            c(nt, length(lat), length(lon))
+        )
+    }
+    RNetCDF::var.put.nc(nc, "tas", tas)
+    if (length(extra_vars)) {
+        for (nm in names(extra_vars)) {
+            spec <- extra_vars[[nm]]
+            RNetCDF::var.def.nc(nc, nm, "NC_DOUBLE", c("time", "lat", "lon"))
+            RNetCDF::att.put.nc(nc, nm, "units", "NC_CHAR", "K")
+            if (!is.null(spec$method)) {
+                RNetCDF::att.put.nc(
+                    nc,
+                    nm,
+                    "cell_methods",
+                    "NC_CHAR",
+                    spec$method
+                )
+            }
+            RNetCDF::var.put.nc(
+                nc,
+                nm,
+                if (is.null(spec$values)) tas else spec$values
+            )
+        }
+    }
+    if (!is.null(bounds)) {
+        RNetCDF::dim.def.nc(nc, bounds_dim, 2L)
+        dims <- if (reversed) c(bounds_dim, "time") else c("time", bounds_dim)
+        RNetCDF::var.def.nc(nc, bounds_var, "NC_DOUBLE", dims)
+        RNetCDF::att.put.nc(nc, "time", bounds_attr, "NC_CHAR", bounds_var)
+        RNetCDF::var.put.nc(
+            nc,
+            bounds_var,
+            if (reversed) t(bounds) else bounds
+        )
+    }
+    if (is.function(extra_edit)) {
+        extra_edit(nc)
+    }
+    path
+}
+
+# Memoized read-only fixtures shared across immutable tests in this file.
+dataset_test__shared_cmip6_2060_2061 <- local({
+    paths <- NULL
+    function() {
+        if (is.null(paths) || !all(file.exists(paths))) {
+            paths <<- vapply(
+                c(2060L, 2061L),
+                function(year) {
+                    path <- tempfile(
+                        sprintf("dataset-cmip6-%d-", year),
+                        fileext = ".nc"
+                    )
+                    write_local_cmip6_netcdf_fixture(path, year)
+                    path
+                },
+                character(1L)
+            )
+            withr::defer(unlink(paths), envir = testthat::teardown_env())
+        }
+        paths
+    }
+})
+
+dataset_test__shared_table_pair <- local({
+    paths <- NULL
+    function() {
+        if (is.null(paths) || !all(file.exists(paths))) {
+            time_vals <- list(c(0, 1, 2), c(3, 4, 5))
+            tas_vals <- list(c(11, 12, 13), c(21, 22, 23))
+            paths <<- vapply(
+                1:2,
+                function(i) {
+                    local_dataset_table_file(
+                        time_vals = time_vals[[i]],
+                        time_units = "days since 2000-01-01 00:00:00",
+                        tas_vals = tas_vals[[i]]
+                    )
+                },
+                character(1L)
+            )
+            withr::defer(unlink(paths), envir = testthat::teardown_env())
+        }
+        paths
+    }
+})
+
 # local_dataset_table_file {{{
 local_dataset_table_file <- function(
     time_vals,
@@ -10,31 +138,14 @@ local_dataset_table_file <- function(
     tas_vals = seq_along(time_vals),
     calendar = "standard"
 ) {
-    path <- tempfile(fileext = ".nc")
-    nc <- RNetCDF::create.nc(path)
-
-    RNetCDF::dim.def.nc(nc, "time", length(time_vals))
-    RNetCDF::dim.def.nc(nc, "lat", 1L)
-    RNetCDF::dim.def.nc(nc, "lon", 1L)
-    RNetCDF::var.def.nc(nc, "time", "NC_DOUBLE", "time")
-    RNetCDF::var.def.nc(nc, "lat", "NC_DOUBLE", "lat")
-    RNetCDF::var.def.nc(nc, "lon", "NC_DOUBLE", "lon")
-    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
-
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", time_units)
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
-    RNetCDF::var.put.nc(nc, "time", time_vals, count = length(time_vals))
-    RNetCDF::var.put.nc(nc, "lat", 1, count = 1L)
-    RNetCDF::var.put.nc(nc, "lon", 2, count = 1L)
-    RNetCDF::var.put.nc(
-        nc,
-        "tas",
-        array(tas_vals, dim = c(length(time_vals), 1L, 1L)),
-        count = c(length(time_vals), 1L, 1L)
+    dataset_test__write_nc(
+        time_vals,
+        time_units,
+        calendar = calendar,
+        lat = 1,
+        lon = 2,
+        tas = array(tas_vals, dim = c(length(time_vals), 1L, 1L))
     )
-    RNetCDF::close.nc(nc)
-
-    path
 }
 # }}}
 
@@ -53,6 +164,76 @@ local_dataset_cmip6_files <- function(years) {
     paths
 }
 # }}}
+
+dataset_test__open <- function(paths, env = parent.frame()) {
+    ds <- EsgDataset$new(paths)
+    ds$open()
+    withr::defer(ds$close(), envir = env)
+    ds
+}
+
+dataset_test__open_temp <- function(path, env = parent.frame()) {
+    withr::defer(unlink(path), envir = env)
+    dataset_test__open(path, env = env)
+}
+
+dataset_test__edit_nc <- function(path, fn) {
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    fn(nc)
+}
+
+dataset_test__table_pair <- function(
+    time_units = rep("days since 2000-01-01 00:00:00", 2L),
+    time_vals = list(c(0, 1, 2), c(3, 4, 5)),
+    tas_vals = list(c(11, 12, 13), c(21, 22, 23)),
+    env = parent.frame()
+) {
+    paths <- vapply(
+        seq_along(time_vals),
+        function(i) {
+            local_dataset_table_file(
+                time_vals = time_vals[[i]],
+                time_units = time_units[[i]],
+                tas_vals = tas_vals[[i]]
+            )
+        },
+        character(1L)
+    )
+    withr::defer(unlink(paths), envir = env)
+    paths
+}
+
+dataset_test__mock_progress <- function(env = parent.frame()) {
+    state <- list2env(
+        list(bars = list(), updates = list(), dones = list()),
+        parent = emptyenv()
+    )
+    testthat::local_mocked_bindings(
+        cli_progress_bar = function(name = NULL, total = NA, ...) {
+            state$bars[[length(state$bars) + 1L]] <- list(
+                name = name,
+                total = total
+            )
+            "progress-id"
+        },
+        cli_progress_update = function(id = NULL, set = NULL, ...) {
+            state$updates[[length(state$updates) + 1L]] <- list(
+                id = id,
+                set = set
+            )
+        },
+        cli_progress_done = function(id = NULL, result = "done", ...) {
+            state$dones[[length(state$dones) + 1L]] <- list(
+                id = id,
+                result = result
+            )
+        },
+        .package = "cli",
+        .env = env
+    )
+    state
+}
 
 mirai_dataset_symbols <- c(
     "EsgDataset",
@@ -176,289 +357,123 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
 # }}}
 # }}}
 
-# EsgDataset$new() {{{
-test_that("EsgDataset$new()", {
-    path <- local_dataset_cmip6_files(2060L)
-
-    ds <- EsgDataset$new(path)
-    expect_s3_class(ds, "EsgDataset")
-})
-# }}}
-# EsgDataset$url {{{
-test_that("EsgDataset$url", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+# EsgDataset lifecycle and properties {{{
+test_that("EsgDataset$new(), properties, $open(), and $close()", {
+    paths <- dataset_test__shared_cmip6_2060_2061()
 
     single <- EsgDataset$new(paths[[1L]])
+    multi <- EsgDataset$new(paths)
+    expect_s3_class(single, "EsgDataset")
     expect_identical(single$url, paths[[1L]])
-
-    multi <- EsgDataset$new(paths)
     expect_identical(multi$url, paths)
-})
-# }}}
-# EsgDataset$file_count {{{
-test_that("EsgDataset$file_count", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-
-    single <- EsgDataset$new(paths[[1L]])
     expect_equal(single$file_count, 1L)
-
-    multi <- EsgDataset$new(paths)
     expect_equal(multi$file_count, 2L)
-})
-# }}}
-# EsgDataset$is_aggregated {{{
-test_that("EsgDataset$is_aggregated", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-
-    single <- EsgDataset$new(paths[[1L]])
     expect_false(single$is_aggregated)
-
-    multi <- EsgDataset$new(paths)
     expect_true(multi$is_aggregated)
-})
-# }}}
-# EsgDataset$is_open {{{
-test_that("EsgDataset$is_open", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-
-    single <- EsgDataset$new(paths[[1L]])
     expect_false(single$is_open)
-
-    multi <- EsgDataset$new(paths)
     expect_false(multi$is_open)
-})
-# }}}
-# EsgDataset$open() {{{
-test_that("EsgDataset$open()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
 
-    returned <- ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    expect_identical(returned, ds)
-    expect_true(ds$is_open)
+    expect_identical(single$open(), single)
+    expect_true(single$is_open)
+    expect_identical(single$close(), single)
+    expect_false(single$is_open)
 })
 
-test_that("EsgDataset$open() reports progress while opening handles", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-    bars <- list()
-    updates <- list()
-    dones <- list()
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(name = NULL, total = NA, ...) {
-            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
-            "progress-id"
-        },
-        cli_progress_update = function(id = NULL, set = NULL, ...) {
-            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
-        },
-        cli_progress_done = function(id = NULL, result = "done", ...) {
-            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
-        },
-        .package = "cli"
-    )
+test_that("EsgDataset$open() progress reporting", {
+    paths <- dataset_test__shared_cmip6_2060_2061()
 
+    prog <- dataset_test__mock_progress()
     ds <- EsgDataset$new(paths)
-    on.exit(ds$close(), add = TRUE)
-
+    withr::defer(ds$close())
     expect_identical(ds$open(progress = TRUE), ds)
     expect_true(ds$is_open)
-    expect_equal(bars, list(list(name = "Opening dataset files", total = 2L)))
-    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(1L, 2L))
-    expect_equal(dones, list(list(id = "progress-id", result = "done")))
-})
+    expect_equal(
+        prog$bars,
+        list(list(name = "Opening dataset files", total = 2L))
+    )
+    expect_equal(vapply(prog$updates, `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_equal(prog$dones, list(list(id = "progress-id", result = "done")))
 
-test_that("EsgDataset$open() updates progress for already adopted handles", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    # Already adopted handles still report full progress.
     source <- EsgDataset$new(paths[[1L]])
     source$open()
     handles <- dataset__detach_handles(source)
-
-    bars <- list()
-    updates <- list()
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(name = NULL, total = NA, ...) {
-            bars[[length(bars) + 1L]] <<- list(name = name, total = total)
-            "progress-id"
-        },
-        cli_progress_update = function(id = NULL, set = NULL, ...) {
-            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
-        },
-        cli_progress_done = function(...) NULL,
-        .package = "cli"
+    prog2 <- dataset_test__mock_progress()
+    ds2 <- EsgDataset$new(paths)
+    dataset__adopt_handles(ds2, list(handles[[1L]], NULL))
+    withr::defer(ds2$close())
+    ds2$open(progress = TRUE)
+    expect_equal(
+        prog2$bars,
+        list(list(name = "Opening dataset files", total = 2L))
     )
+    expect_equal(vapply(prog2$updates, `[[`, integer(1L), "set"), c(1L, 2L))
+    expect_true(ds2$is_open)
 
-    ds <- EsgDataset$new(paths)
-    dataset__adopt_handles(ds, list(handles[[1L]], NULL))
-    on.exit(ds$close(), add = TRUE)
+    # progress = FALSE suppresses bar creation.
+    prog3 <- dataset_test__mock_progress()
+    ds3 <- EsgDataset$new(paths[[1L]])
+    withr::defer(ds3$close())
+    ds3$open(progress = FALSE)
+    expect_length(prog3$bars, 0L)
 
-    ds$open(progress = TRUE)
-    expect_equal(bars, list(list(name = "Opening dataset files", total = 2L)))
-    expect_equal(vapply(updates, `[[`, integer(1L), "set"), c(1L, 2L))
-    expect_true(ds$is_open)
-})
-
-test_that("EsgDataset$open(progress = FALSE) does not report progress", {
-    path <- local_dataset_cmip6_files(2060L)
-    bars <- list()
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(...) {
-            bars[[length(bars) + 1L]] <<- list(...)
-            "progress-id"
-        },
-        cli_progress_update = function(...) NULL,
-        cli_progress_done = function(...) NULL,
-        .package = "cli"
-    )
-
-    ds <- EsgDataset$new(path)
-    on.exit(ds$close(), add = TRUE)
-
-    ds$open(progress = FALSE)
-    expect_length(bars, 0L)
-})
-
-test_that("EsgDataset$open() closes progress on failures", {
-    path <- tempfile(fileext = ".nc")
-    if (file.exists(path)) {
-        unlink(path)
-    }
-
-    dones <- list()
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(...) "progress-id",
-        cli_progress_update = function(...) NULL,
-        cli_progress_done = function(id = NULL, result = "done", ...) {
-            dones[[length(dones) + 1L]] <<- list(id = id, result = result)
-        },
-        .package = "cli"
-    )
-
-    ds <- EsgDataset$new(path)
-    expect_error(ds$open(progress = TRUE), "Failed to open OPeNDAP connection")
-    expect_false(ds$is_open)
-    expect_equal(dones, list(list(id = "progress-id", result = "failed")))
+    # Failures close the progress bar with result = "failed".
+    missing_path <- tempfile(fileext = ".nc")
+    prog4 <- dataset_test__mock_progress()
+    ds4 <- EsgDataset$new(missing_path)
+    expect_error(ds4$open(progress = TRUE), "Failed to open OPeNDAP connection")
+    expect_false(ds4$is_open)
+    expect_equal(prog4$dones, list(list(id = "progress-id", result = "failed")))
 })
 # }}}
-# EsgDataset$close() {{{
-test_that("EsgDataset$close()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
 
-    returned <- ds$close()
-
-    expect_identical(returned, ds)
-    expect_false(ds$is_open)
-})
-# }}}
-# EsgDataset$file_inq() {{{
-test_that("EsgDataset$file_inq()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
+# EsgDataset metadata, time axis, and spatial grid {{{
+test_that("EsgDataset metadata inquiry, enumeration, time axis, and spatial grid", {
+    paths <- dataset_test__shared_cmip6_2060_2061()
+    ds <- dataset_test__open(paths)
 
     info <- ds$file_inq()
     expect_type(info, "list")
-    expect_true("nvars" %in% names(info))
-    expect_true("ndims" %in% names(info))
-})
-# }}}
-# EsgDataset$var_inq() {{{
-test_that("EsgDataset$var_inq()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    var_info <- ds$var_inq("tas")
-    expect_type(var_info, "list")
-    expect_equal(var_info$name, "tas")
-})
-# }}}
-# EsgDataset$dim_inq() {{{
-test_that("EsgDataset$dim_inq()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    dim_info <- ds$dim_inq("time")
-    expect_type(dim_info, "list")
-    expect_equal(dim_info$name, "time")
-})
-# }}}
-# EsgDataset$att_get() {{{
-test_that("EsgDataset$att_get()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    units <- ds$att_get("tas", "units")
-    expect_identical(units, "K")
-})
-# }}}
-# EsgDataset$get_variables() {{{
-test_that("EsgDataset$get_variables()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    vars <- ds$get_variables()
-    expect_type(vars, "character")
-    expect_true(length(vars) > 0)
-    expect_true("tas" %in% vars)
-})
-# }}}
-# EsgDataset$get_dimensions() {{{
-test_that("EsgDataset$get_dimensions()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    dims <- ds$get_dimensions()
-    expect_type(dims, "character")
-    expect_true("time" %in% dims)
-    expect_true("lat" %in% dims)
-    expect_true("lon" %in% dims)
-})
-# }}}
-
-# EsgDataset metadata-name enumeration {{{
-test_that("EsgDataset metadata names preserve direct inquiry order by file", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-    ds <- EsgDataset$new(paths)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
+    expect_true(all(c("nvars", "ndims") %in% names(info)))
+    expect_equal(ds$var_inq("tas")$name, "tas")
+    expect_equal(ds$dim_inq("time")$name, "time")
+    expect_identical(ds$att_get("tas", "units"), "K")
+    expect_true("tas" %in% ds$get_variables())
+    expect_true(all(c("time", "lat", "lon") %in% ds$get_dimensions()))
 
     for (index in seq_along(paths)) {
-        info <- ds$file_inq(index)
-        expected_variables <- vapply(
-            seq_len(info$nvars) - 1L,
+        fi <- ds$file_inq(index)
+        expected_vars <- vapply(
+            seq_len(fi$nvars) - 1L,
             function(id) ds$var_inq(id, index)$name,
             character(1L)
         )
-        expected_dimensions <- vapply(
-            seq_len(info$ndims) - 1L,
+        expected_dims <- vapply(
+            seq_len(fi$ndims) - 1L,
             function(id) ds$dim_inq(id, index)$name,
             character(1L)
         )
-
-        expect_identical(ds$get_variables(index), expected_variables)
-        expect_identical(ds$get_dimensions(index), expected_dimensions)
+        expect_identical(ds$get_variables(index), expected_vars)
+        expect_identical(ds$get_dimensions(index), expected_dims)
     }
-})
 
-test_that("EsgDataset metadata-name methods reject closed datasets", {
-    ds <- EsgDataset$new("https://example.org/data.nc")
+    time_info <- ds$get_time_axis(2)
+    expect_true(all(
+        c("values", "units", "calendar", "coordinates", "bounds") %in%
+            names(time_info)
+    ))
+    expect_s3_class(time_info$values, "POSIXct")
+    expect_named(time_info$coordinates, CF_TIME_COORDINATE_COLUMNS)
+    expect_identical(time_info$bounds$name, "time_bnds")
+    expect_s3_class(time_info$bounds$start, "POSIXct")
+    expect_s3_class(time_info$bounds$end, "POSIXct")
+    expect_identical(
+        as.numeric(time_info$bounds$end - time_info$bounds$start),
+        rep.int(1, time_info$length)
+    )
 
-    expect_error(ds$get_variables(), "not open")
-    expect_error(ds$get_dimensions(), "not open")
+    grid <- ds$get_spatial_grid()
+    expect_true(all(c("lat", "lon") %in% names(grid)))
 })
 
 # A failed enumeration must be retried. A successful declaration list is valid
@@ -466,9 +481,7 @@ test_that("EsgDataset metadata-name methods reject closed datasets", {
 test_that("variable declarations are cached only after success until close", {
     path <- file.path(withr::local_tempdir(), "source.nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    withr::defer(ds$close())
+    ds <- dataset_test__open(path)
 
     inquire <- RNetCDF::var.inq.nc
     declaration_reads <- 0L
@@ -499,49 +512,11 @@ test_that("variable declarations are cached only after success until close", {
     )
     expect_gt(declaration_reads, count)
 })
-# }}}
-
-# EsgDataset$get_time_axis() {{{
-test_that("EsgDataset$get_time_axis()", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-    ds <- EsgDataset$new(paths)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    time_info <- ds$get_time_axis(2)
-    expect_type(time_info, "list")
-    expect_true("values" %in% names(time_info))
-    expect_true("units" %in% names(time_info))
-    expect_true("calendar" %in% names(time_info))
-    expect_true("coordinates" %in% names(time_info))
-    expect_true("bounds" %in% names(time_info))
-    expect_s3_class(time_info$values, "POSIXct")
-    expect_named(time_info$coordinates, CF_TIME_COORDINATE_COLUMNS)
-    expect_identical(time_info$bounds$name, "time_bnds")
-    expect_s3_class(time_info$bounds$start, "POSIXct")
-    expect_s3_class(time_info$bounds$end, "POSIXct")
-    expect_identical(
-        as.numeric(time_info$bounds$end - time_info$bounds$start),
-        rep.int(1, time_info$length)
-    )
-})
-# }}}
-# EsgDataset$get_spatial_grid() {{{
-test_that("EsgDataset$get_spatial_grid()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    grid <- ds$get_spatial_grid()
-    expect_type(grid, "list")
-    expect_true("lat" %in% names(grid))
-    expect_true("lon" %in% names(grid))
-})
 
 # Simulate one native read failure with a real NetCDF file so the retry uses
 # the same dataset handle and must retrieve the original coordinate values.
-test_that("EsgDataset retries a failed coordinate read on the same object", {
+# A missing declaration is still a valid partial grid.
+test_that("EsgDataset retries failed coordinate reads and returns NULL for undeclared axes", {
     path <- file.path(withr::local_tempdir(), "grid.nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
     read_variable <- RNetCDF::var.get.nc
@@ -555,161 +530,52 @@ test_that("EsgDataset retries a failed coordinate read on the same object", {
             read_variable(ncfile, variable, ...)
         }
     )
-    ds <- EsgDataset$new(path)
-    ds$open()
-    withr::defer(ds$close())
-
+    ds <- dataset_test__open(path)
     expect_error(ds$get_spatial_grid(), "DAP server error")
-
     fail_latitude <- FALSE
     grid <- ds$get_spatial_grid()
     expect_equal(as.numeric(grid$lat), c(1, 2, 41))
     expect_equal(as.numeric(grid$lon), c(103.5, 104, 104.5, 254))
-})
 
-# A missing declaration is still a valid partial grid, even though a failed
-# read of an existing coordinate must propagate to the caller.
-test_that("EsgDataset returns NULL for an undeclared coordinate", {
-    path <- file.path(withr::local_tempdir(), "grid.nc")
-    write_local_cmip6_netcdf_fixture(path, 2060L)
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    tryCatch(
-        RNetCDF::var.rename.nc(nc, "lat", "other_latitude"),
-        finally = RNetCDF::close.nc(nc)
-    )
-    ds <- EsgDataset$new(path)
-    ds$open()
-    withr::defer(ds$close())
-
-    grid <- ds$get_spatial_grid()
-    expect_named(grid, c("lat", "lon"))
-    expect_null(grid$lat)
-    expect_equal(as.numeric(grid$lon), c(103.5, 104, 104.5, 254))
+    path2 <- file.path(withr::local_tempdir(), "partial.nc")
+    write_local_cmip6_netcdf_fixture(path2, 2060L)
+    dataset_test__edit_nc(path2, function(nc) {
+        RNetCDF::var.rename.nc(nc, "lat", "other_latitude")
+    })
+    grid2 <- dataset_test__open(path2)$get_spatial_grid()
+    expect_named(grid2, c("lat", "lon"))
+    expect_null(grid2$lat)
+    expect_equal(as.numeric(grid2$lon), c(103.5, 104, 104.5, 254))
 })
 # }}}
-# EsgDataset$var_get() {{{
-test_that("EsgDataset$var_get()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
 
-    data <- ds$var_get(
-        "tas",
-        start = c(1, 1, 1),
-        count = c(2, 2, 2),
-        collapse = TRUE
-    )
-    expect_type(data, "double")
-    expect_equal(dim(data), c(2, 2, 2))
-    data <- ds$var_get(
-        "tas",
-        start = c(1, 1, 1),
-        count = c(2, 2, 2),
-        collapse = FALSE
-    )
-    expect_type(data, "double")
-    expect_equal(dim(data), c(2, 2, 2))
-})
-# }}}
-# EsgDataset$read_array() {{{
-test_that("EsgDataset$read_array()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    arr_list <- ds$read_array(
-        "tas",
-        start = c(1, 1, 1),
-        count = c(2, 2, 2),
-        collapse = TRUE
-    )
-    expect_type(arr_list, "list")
-    expect_length(arr_list, 1L)
-    arr <- arr_list[[1L]]
-    expect_type(arr, "double")
-    expect_equal(dim(arr), c(2, 2, 2))
-
-    arr_list <- ds$read_array(
-        "tas",
-        start = c(1, 1, 1),
-        count = c(2, 2, 2),
-        collapse = FALSE
-    )
-    expect_type(arr_list, "list")
-    expect_length(arr_list, 1L)
-    arr <- arr_list[[1L]]
-    expect_type(arr, "double")
-    expect_equal(dim(arr), c(2, 2, 2))
-})
-# }}}
-# EsgDataset$read_data_table() {{{
-test_that("EsgDataset$read_data_table()", {
-    path <- local_dataset_cmip6_files(2060L)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+# EsgDataset$var_get(), $read_array(), $read_data_table() {{{
+test_that("EsgDataset$var_get(), $read_array(), and $read_data_table() read single and multi-file slices", {
+    paths <- dataset_test__shared_cmip6_2060_2061()
+    ds1 <- dataset_test__open(paths[[1L]])
+    ds <- dataset_test__open(paths)
     start <- c(1, 1, 1)
     count <- c(2, 2, 2)
-    dt_list <- ds$read_data_table("tas", start = start, count = count)
-    expect_type(dt_list, "list")
-    expect_length(dt_list, 1L)
-    dt <- dt_list[[1L]]
-    expect_s3_class(dt, "data.table")
-    expect_true("tas" %in% names(dt))
-    expect_equal(nrow(dt), prod(count))
 
-    vinfo <- ds$var_inq("tas")
-    dim_names <- vapply(
-        vinfo$dimids,
-        function(id) ds$dim_inq(id)$name,
-        character(1L)
-    )
-    expect_true(all(dim_names %in% names(dt)))
-    for (j in seq_along(dim_names)) {
-        nm <- dim_names[[j]]
-        if (identical(nm, "time")) {
-            coord <- ds$get_time_axis()$values[seq.int(
-                start[[j]],
-                length.out = count[[j]]
-            )]
-            expect_s3_class(dt[[nm]], "POSIXct")
-            expect_identical(attr(dt[[nm]], "tzone"), "UTC")
-            expect_equal(
-                as.numeric(sort(unique(dt[[nm]]))),
-                as.numeric(sort(coord))
-            )
-        } else {
-            coord <- ds$var_get(
-                nm,
-                start = start[[j]],
-                count = count[[j]],
-                collapse = TRUE
-            )
-            expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
-        }
+    for (collapse in c(TRUE, FALSE)) {
+        v <- ds1$var_get(
+            "tas",
+            start = start,
+            count = count,
+            collapse = collapse
+        )
+        expect_type(v, "double")
+        expect_equal(dim(v), c(2, 2, 2))
+        arr_list <- ds1$read_array(
+            "tas",
+            start = start,
+            count = count,
+            collapse = collapse
+        )
+        expect_length(arr_list, 1L)
+        expect_type(arr_list[[1L]], "double")
+        expect_equal(dim(arr_list[[1L]]), c(2, 2, 2))
     }
-})
-
-test_that("EsgDataset$read_data_table() handles multiple files", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
-    ds <- EsgDataset$new(paths)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    start <- c(1, 1, 1)
-    count <- c(2, 2, 2)
-
-    dt_list <- ds$read_data_table("tas", start = start, count = count)
-    expect_type(dt_list, "list")
-    expect_length(dt_list, 2L)
-    expect_true(all(vapply(
-        dt_list,
-        function(x) inherits(x, "data.table"),
-        logical(1L)
-    )))
 
     vinfo <- ds$var_inq("tas")
     dim_names <- vapply(
@@ -717,32 +583,44 @@ test_that("EsgDataset$read_data_table() handles multiple files", {
         function(id) ds$dim_inq(id)$name,
         character(1L)
     )
-    for (i in 1:2) {
-        dti <- dt_list[[i]]
+    check_dt <- function(target_ds, dt, index) {
+        expect_s3_class(dt, "data.table")
+        expect_true(all(c("tas", dim_names) %in% names(dt)))
+        expect_equal(nrow(dt), prod(count))
         for (j in seq_along(dim_names)) {
             nm <- dim_names[[j]]
             if (identical(nm, "time")) {
-                coord <- ds$get_time_axis(i)$values[seq.int(
+                coord <- target_ds$get_time_axis(index)$values[seq.int(
                     start[[j]],
                     length.out = count[[j]]
                 )]
-                expect_s3_class(dti[[nm]], "POSIXct")
-                expect_identical(attr(dti[[nm]], "tzone"), "UTC")
+                expect_s3_class(dt[[nm]], "POSIXct")
+                expect_identical(attr(dt[[nm]], "tzone"), "UTC")
                 expect_equal(
-                    as.numeric(sort(unique(dti[[nm]]))),
+                    as.numeric(sort(unique(dt[[nm]]))),
                     as.numeric(sort(coord))
                 )
             } else {
-                coord <- ds$var_get(
+                coord <- target_ds$var_get(
                     nm,
                     start = start[[j]],
                     count = count[[j]],
-                    index = i,
+                    index = index,
                     collapse = TRUE
                 )
-                expect_equal(sort(unique(dti[[nm]])), sort(as.vector(coord)))
+                expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
             }
         }
+    }
+
+    dt1 <- ds1$read_data_table("tas", start = start, count = count)
+    expect_length(dt1, 1L)
+    check_dt(ds1, dt1[[1L]], 1L)
+
+    dt_list <- ds$read_data_table("tas", start = start, count = count)
+    expect_length(dt_list, 2L)
+    for (i in 1:2) {
+        check_dt(ds, dt_list[[i]], i)
     }
 
     dt_all <- ds$read_data_table(
@@ -752,54 +630,41 @@ test_that("EsgDataset$read_data_table() handles multiple files", {
         rbind = TRUE
     )
     expect_s3_class(dt_all, "data.table")
-    expect_true("file_index" %in% names(dt_all))
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
 })
-# }}}
-# EsgDataset$read_data_table() {{{
+
 test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like CF units", {
-    path1 <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 1850-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
+    paths <- dataset_test__table_pair(
+        time_units = c(
+            "days since 1850-01-01 00:00:00",
+            "days since 2010-01-01 00:00:00"
+        ),
+        time_vals = list(0:2, 0:2)
     )
-    path2 <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2010-01-01 00:00:00",
-        tas_vals = c(21, 22, 23)
-    )
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds <- EsgDataset$new(c(path1, path2))
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+    ds <- dataset_test__open(paths)
     start <- c(2, 1, 1)
     count <- c(2, 1, 1)
     expected <- list(
         as.POSIXct(c("1850-01-02 00:00:00", "1850-01-03 00:00:00"), tz = "UTC"),
         as.POSIXct(c("2010-01-02 00:00:00", "2010-01-03 00:00:00"), tz = "UTC")
     )
-
     dt_list <- ds$read_data_table("tas", start = start, count = count)
     expect_length(dt_list, 2L)
-
     for (i in seq_along(dt_list)) {
         time <- dt_list[[i]]$time
-        expect_true(inherits(time, "POSIXct"))
+        expect_s3_class(time, "POSIXct")
         expect_identical(attr(time, "tzone"), "UTC")
         expect_length(time, count[[1L]])
         expect_false(is.unsorted(as.numeric(time), strictly = TRUE))
         expect_equal(as.numeric(time), as.numeric(expected[[i]]))
     }
-
     dt_all <- ds$read_data_table(
         "tas",
         start = start,
         count = count,
         rbind = TRUE
     )
-    expect_true(inherits(dt_all$time, "POSIXct"))
+    expect_s3_class(dt_all$time, "POSIXct")
     expect_identical(attr(dt_all$time, "tzone"), "UTC")
     expect_equal(
         as.numeric(dt_all[file_index == 1L, time]),
@@ -1022,13 +887,9 @@ test_that("the internal multi-site reader respects native site windows", {
     expect_identical(actual$cf_day, c(30L, 1L))
 })
 
-test_that("the internal multi-site reader rejects ambiguous sites and empty input", {
-    path <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(path, 2060L)
-    on.exit(unlink(path), add = TRUE)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
+test_that("the internal multi-site reader rejects ambiguous sites, empty input, and preserves missing values", {
+    path <- local_dataset_cmip6_files(2060L)
+    ds <- dataset_test__open(path)
 
     sites <- data.table::data.table(
         site_id = "first",
@@ -1036,10 +897,7 @@ test_that("the internal multi-site reader rejects ambiguous sites and empty inpu
         lat = 1.37,
         method = "nearest"
     )
-    expect_error(
-        dataset__read_regions(ds, "tas", sites[0L]),
-        "at least 1 rows"
-    )
+    expect_error(dataset__read_regions(ds, "tas", sites[0L]), "at least 1 rows")
     expect_error(
         dataset__read_regions(ds, "tas", sites[c(1L, 1L)]),
         "duplicated"
@@ -1097,26 +955,19 @@ test_that("the internal multi-site reader rejects ambiguous sites and empty inpu
             "time_count"
         )
     )
-})
 
-test_that("the internal multi-site reader preserves missing source values", {
-    path <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(path, 2060L)
-    on.exit(unlink(path), add = TRUE)
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::var.put.nc(
-        nc,
-        "tas",
-        NA_real_,
-        start = c(2L, 1L, 2L),
-        count = c(1L, 1L, 1L)
-    )
-    RNetCDF::close.nc(nc)
-    ds <- EsgDataset$new(path)
+    ds$close()
+    dataset_test__edit_nc(path, function(nc) {
+        RNetCDF::var.put.nc(
+            nc,
+            "tas",
+            NA_real_,
+            start = c(2L, 1L, 2L),
+            count = c(1L, 1L, 1L)
+        )
+    })
     ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    sites <- data.table::data.table(
+    sites_na <- data.table::data.table(
         site_id = c("nearest", "mean"),
         lon = c(103.98, 103.98),
         lat = c(1.37, 1.37),
@@ -1125,108 +976,103 @@ test_that("the internal multi-site reader preserves missing source values", {
     actual <- dataset__read_regions(
         ds,
         "tas",
-        sites,
+        sites_na,
         time = c("2060-01-02", "2060-01-03 23:59:59")
     )
-    for (method in sites$method) {
-        target_method <- method
-        observed <- actual[actual$site_id == target_method]
+    for (method in sites_na$method) {
+        observed <- actual[actual$site_id == method]
         expect_true(is.na(observed$value[[1L]]))
         expect_true(is.finite(observed$value[[2L]]))
     }
 })
 
-test_that("EsgDataset$read_region() reads grid-method values and time windows", {
-    path1 <- tempfile(fileext = ".nc")
-    path2 <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(path1, 2060L)
-    write_local_cmip6_netcdf_fixture(path2, 2061L)
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds <- EsgDataset$new(c(path1, path2))
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
+test_that("EsgDataset$read_region() reads grid-method values, windows, and 360-day CF boundaries", {
+    ds <- dataset_test__open(dataset_test__shared_cmip6_2060_2061())
+    window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     expected_values <- function(sources) {
         lat_vals <- c(1.0, 2.0, 41.0)
         lon_vals <- c(103.5, 104.0, 104.5, 254.0)
-        time_vals <- c(1.5, 2.5)
+        spatial <- match(sources$grid_lat, lat_vals) /
+            10 +
+            match(sources$grid_lon, lon_vals) / 20
         vapply(
-            time_vals,
-            function(time) {
-                phase <- 2 * pi * time / 366
-                source_values <- vapply(
-                    seq_len(nrow(sources)),
-                    function(i) {
-                        lat_i <- match(sources$grid_lat[[i]], lat_vals)
-                        lon_i <- match(sources$grid_lon[[i]], lon_vals)
-                        spatial <- lat_i / 10 + lon_i / 20
-                        299 + 5 * sin(phase) + spatial
-                    },
-                    numeric(1L)
+            c(1.5, 2.5),
+            function(t) {
+                sum(
+                    (299 + 5 * sin(2 * pi * t / 366) + spatial) * sources$weight
                 )
-                sum(source_values * sources$weight)
             },
             numeric(1L)
         )
     }
 
+    expected_cols <- c(
+        "file_index",
+        "variable",
+        "time",
+        "time_bound_start",
+        "time_bound_end",
+        CF_TIME_COORDINATE_COLUMNS,
+        "lon",
+        "lat",
+        "method",
+        "value"
+    )
     for (method in ESG_GRID_METHOD_CHOICES) {
         dt <- ds$read_region(
-            variable = "tas",
+            "tas",
             lon = 103.98,
             lat = 1.37,
-            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+            time = window,
             method = method
         )
         sources <- attr(dt, "grid_sources")
-
         expect_s3_class(dt, "data.table")
-        expect_named(
-            dt,
-            c(
-                "file_index",
-                "variable",
-                "time",
-                "time_bound_start",
-                "time_bound_end",
-                CF_TIME_COORDINATE_COLUMNS,
-                "lon",
-                "lat",
-                "method",
-                "value"
+        expect_named(dt, expected_cols)
+        expect_equal(nrow(dt), 2L)
+        expect_equal(
+            as.list(dt[, .(
+                file_index,
+                variable,
+                method,
+                cf_calendar,
+                cf_year,
+                cf_month,
+                cf_day,
+                cf_day_of_year,
+                cf_year_days,
+                cf_second_of_day,
+                lon,
+                lat
+            )]),
+            list(
+                file_index = rep(1L, 2L),
+                variable = rep("tas", 2L),
+                method = rep(method, 2L),
+                cf_calendar = rep("proleptic_gregorian", 2L),
+                cf_year = rep(2060L, 2L),
+                cf_month = rep(1L, 2L),
+                cf_day = 2:3,
+                cf_day_of_year = 2:3,
+                cf_year_days = rep(366L, 2L),
+                cf_second_of_day = rep(43200, 2L),
+                lon = rep(103.98, 2L),
+                lat = rep(1.37, 2L)
             )
         )
-        expect_identical(unique(dt$file_index), 1L)
-        expect_identical(unique(dt$variable), "tas")
-        expect_identical(unique(dt$method), method)
-        expect_identical(unique(dt$cf_calendar), "proleptic_gregorian")
-        expect_identical(dt$cf_year, rep.int(2060L, 2L))
-        expect_identical(dt$cf_month, rep.int(1L, 2L))
-        expect_identical(dt$cf_day, 2:3)
-        expect_identical(dt$cf_day_of_year, 2:3)
-        expect_identical(dt$cf_year_days, rep.int(366L, 2L))
-        expect_identical(dt$cf_second_of_day, rep.int(43200, 2L))
         expect_equal(dt$annual_phase, c(1.5, 2.5) / 366)
         expect_equal(
             as.numeric(dt$time_bound_end - dt$time_bound_start),
-            rep.int(1, 2L)
+            c(1, 1)
         )
         expect_equal(
-            as.numeric(
-                dt$time - dt$time_bound_start,
-                units = "days"
-            ),
-            rep.int(0.5, 2L)
+            as.numeric(dt$time - dt$time_bound_start, units = "days"),
+            c(0.5, 0.5)
         )
-        expect_equal(unique(dt$lon), 103.98)
-        expect_equal(unique(dt$lat), 1.37)
-        expect_equal(nrow(dt), 2L)
         expect_equal(
             sort(unique(as.Date(dt$time))),
             as.Date(c("2060-01-02", "2060-01-03"))
         )
-
         expect_s3_class(sources, "data.table")
         expect_equal(sum(sources$weight), 1)
         expect_equal(
@@ -1237,82 +1083,81 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
     }
 
     dt_list <- ds$read_region(
-        variable = "tas",
+        "tas",
         lon = 103.98,
         lat = 1.37,
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        time = window,
         rbind = FALSE
     )
-    expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    expect_true(all(vapply(
-        dt_list,
-        function(x) inherits(x, "data.table"),
-        logical(1L)
-    )))
+    expect_true(all(vapply(dt_list, inherits, logical(1L), "data.table")))
     expect_true(all(vapply(
         dt_list,
         function(x) inherits(attr(x, "grid_sources"), "data.table"),
         logical(1L)
     )))
 
-    dt_neg_lon <- ds$read_region(
-        variable = "tas",
+    dt_neg <- ds$read_region(
+        "tas",
         lon = -106,
         lat = 41,
         time = c("2060-01-01T00:00:00Z", "2060-01-01T23:59:59Z")
     )
-    neg_sources <- attr(dt_neg_lon, "grid_sources")
-    expect_identical(unique(dt_neg_lon$lon), -106)
-    expect_identical(unique(dt_neg_lon$lat), 41)
-    expect_identical(unique(neg_sources$grid_lon), 254)
-    expect_identical(unique(neg_sources$grid_lat), 41)
-
+    expect_identical(c(unique(dt_neg$lon), unique(dt_neg$lat)), c(-106, 41))
+    expect_identical(
+        c(
+            unique(attr(dt_neg, "grid_sources")$grid_lon),
+            unique(attr(dt_neg, "grid_sources")$grid_lat)
+        ),
+        c(254, 41)
+    )
     expect_error(
         ds$read_region("hurs", lon = 103.98, lat = 1.37),
         "None of the requested variable"
     )
-})
 
-test_that("EsgDataset$read_region() selects and exposes 360-day CF boundaries", {
-    path <- tempfile(fileext = ".nc")
+    path360 <- withr::local_tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(
-        path,
+        path360,
         2060L,
         calendar = "360_day",
         n_years = 2L
     )
-    on.exit(unlink(path), add = TRUE)
-
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    dt <- ds$read_region(
-        variable = "tas",
+    dt360 <- dataset_test__open(path360)$read_region(
+        "tas",
         lon = 103.98,
         lat = 1.37,
         time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z")
     )
-
-    expect_equal(nrow(dt), 2L)
-    expect_identical(dt$cf_calendar, rep.int("360_day", 2L))
-    expect_identical(dt$cf_year, c(2060L, 2061L))
-    expect_identical(dt$cf_month, c(12L, 1L))
-    expect_identical(dt$cf_day, c(30L, 1L))
-    expect_identical(dt$cf_day_of_year, c(360L, 1L))
-    expect_identical(dt$cf_year_days, rep.int(360L, 2L))
-    expect_identical(dt$cf_second_of_day, rep.int(43200, 2L))
-    expect_equal(dt$annual_phase, c(359.5 / 360, 0.5 / 360))
     expect_equal(
-        as.numeric(dt$time_bound_end - dt$time_bound_start),
-        rep.int(1, 2L)
+        as.list(dt360[, .(
+            cf_calendar,
+            cf_year,
+            cf_month,
+            cf_day,
+            cf_day_of_year,
+            cf_year_days,
+            cf_second_of_day
+        )]),
+        list(
+            cf_calendar = rep("360_day", 2L),
+            cf_year = c(2060L, 2061L),
+            cf_month = c(12L, 1L),
+            cf_day = c(30L, 1L),
+            cf_day_of_year = c(360L, 1L),
+            cf_year_days = rep(360L, 2L),
+            cf_second_of_day = rep(43200, 2L)
+        )
     )
-    # Both surrogate timestamps remain in Gregorian 2060; the CF columns are
-    # therefore the authoritative year/month identity.
+    expect_equal(dt360$annual_phase, c(359.5 / 360, 0.5 / 360))
+    expect_equal(
+        as.numeric(dt360$time_bound_end - dt360$time_bound_start),
+        c(1, 1)
+    )
+    # Both surrogate timestamps remain in Gregorian 2060; CF columns are authoritative.
     expect_identical(
-        as.integer(format(dt$time, "%Y", tz = "UTC")),
-        rep.int(2060L, 2L)
+        as.integer(format(dt360$time, "%Y", tz = "UTC")),
+        c(2060L, 2060L)
     )
 })
 
@@ -1345,13 +1190,7 @@ test_that("EsgDataset$read_region() retains native clock schema for empty result
 })
 
 test_that("EsgDataset$read_region() reuses recorded result time filters by default", {
-    path1 <- tempfile(fileext = ".nc")
-    path2 <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(path1, 2060L)
-    write_local_cmip6_netcdf_fixture(path2, 2061L)
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds <- EsgDataset$new(c(path1, path2))
+    ds <- EsgDataset$new(dataset_test__shared_cmip6_2060_2061())
     dataset__set_context(
         ds,
         list(
@@ -1363,10 +1202,9 @@ test_that("EsgDataset$read_region() reuses recorded result time filters by defau
         )
     )
     ds$open()
-    on.exit(ds$close(), add = TRUE)
+    withr::defer(ds$close())
 
     expect_identical(ds$time_filter$method, "drs")
-
     dt_default <- ds$read_region("tas", lon = 103.98, lat = 1.37)
     dt_auto <- ds$read_region("tas", lon = 103.98, lat = 1.37, time = "auto")
     expect_equal(dt_default, dt_auto)
@@ -1392,27 +1230,17 @@ test_that("EsgDataset$read_region() reuses recorded result time filters by defau
     expect_identical(unique(dt_outside$file_index), 2L)
 })
 # }}}
-# EsgDataset$slice() {{{
-test_that("EsgDataset$slice() selects files and preserves runtime context", {
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12)
-        ),
-        local_dataset_table_file(
-            time_vals = c(2, 3),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22)
-        ),
-        local_dataset_table_file(
-            time_vals = c(4, 5),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(31, 32)
-        )
+# EsgDataset$slice() / $selection() {{{
+test_that("EsgDataset$slice() and $selection() preserve context, validate selectors, and reopen", {
+    paths <- dataset_test__table_pair(
+        time_units = rep("days since 2000-01-01 00:00:00", 3L),
+        time_vals = list(0:1, 2:3, 4:5),
+        tas_vals = list(11:12, 21:22, 31:32)
     )
-    on.exit(unlink(paths), add = TRUE)
-
+    expect_identical(
+        EsgDataset$new(paths[1:2])$selection(),
+        list(source_count = 2L, source_num_found = 2L, source_indices = 1:2)
+    )
     ds <- EsgDataset$new(paths)
     dataset__set_context(
         ds,
@@ -1429,7 +1257,6 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
             )
         )
     )
-
     sliced <- ds$slice(c(3L, 1L))
     expect_false(sliced$is_open)
     expect_identical(sliced$url, paths[c(3L, 1L)])
@@ -1443,114 +1270,24 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
             source_indices = c(5L, 2L)
         )
     )
-
     chained <- sliced$slice(2L)
     expect_identical(chained$url, paths[[1L]])
+    expect_identical(chained$selection()$source_indices, 2L)
     expect_identical(
-        chained$selection(),
-        list(
-            source_count = 5L,
-            source_num_found = 10L,
-            source_indices = 2L
-        )
+        ds$slice(c(TRUE, FALSE, TRUE))$selection()$source_indices,
+        c(2L, 5L)
     )
+    expect_identical(ds$slice(-2L)$url, paths[c(1L, 3L)])
 
-    logical_slice <- ds$slice(c(TRUE, FALSE, TRUE))
-    expect_identical(logical_slice$url, paths[c(1L, 3L)])
-    expect_identical(logical_slice$selection()$source_indices, c(2L, 5L))
-
-    negative_slice <- ds$slice(-2L)
-    expect_identical(negative_slice$url, paths[c(1L, 3L)])
-    expect_identical(negative_slice$selection()$source_indices, c(2L, 5L))
-})
-# }}}
-# EsgDataset$selection() {{{
-test_that("EsgDataset$selection()", {
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12)
-        ),
-        local_dataset_table_file(
-            time_vals = c(2, 3),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
-    identity <- EsgDataset$new(paths)$selection()
-    expect_identical(
-        identity,
-        list(
-            source_count = 2L,
-            source_num_found = 2L,
-            source_indices = 1:2
-        )
-    )
-})
-# }}}
-# EsgDataset$slice() {{{
-test_that("EsgDataset$slice() validates selectors", {
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12)
-        ),
-        local_dataset_table_file(
-            time_vals = c(2, 3),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
-    ds <- EsgDataset$new(paths)
-
-    expect_error(ds$slice(), "must be supplied")
-    expect_error(ds$slice(NULL), "must not be `NULL`")
-    expect_error(ds$slice(integer()), "at least one file")
-    expect_error(ds$slice(c(FALSE, FALSE)), "at least one file")
-    expect_error(ds$slice(c(TRUE, FALSE, TRUE)), "length")
-    expect_error(ds$slice(c(1L, 1L)), "duplicate")
-    expect_error(ds$slice(0L), "zero")
-    expect_error(ds$slice(c(1L, -2L)), "mix")
-    expect_error(ds$slice(3L), "outside")
-    expect_error(ds$slice("1"), "integer")
-})
-
-test_that("EsgDataset$slice() reopens selected files only when requested", {
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12)
-        ),
-        local_dataset_table_file(
-            time_vals = c(2, 3),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
-    ds <- EsgDataset$new(paths)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    expect_error(ds$slice(1L), "reopen = TRUE")
-
-    sliced <- ds$slice(2L, reopen = TRUE)
-    on.exit(sliced$close(), add = TRUE)
-
-    expect_true(ds$is_open)
-    expect_true(sliced$is_open)
-    expect_identical(sliced$url, paths[2L])
-    expect_identical(sliced$selection()$source_indices, 2L)
+    ds2 <- dataset_test__open(paths[1:2])
+    expect_error(ds2$slice(1L), "reopen = TRUE")
+    reopened <- ds2$slice(2L, reopen = TRUE)
+    withr::defer(reopened$close())
+    expect_true(ds2$is_open && reopened$is_open)
+    expect_identical(reopened$url, paths[2L])
+    expect_identical(reopened$selection()$source_indices, 2L)
     expect_equal(
-        as.numeric(sliced$var_get(
+        as.numeric(reopened$var_get(
             "tas",
             start = c(1L, 1L, 1L),
             count = c(1L, 1L, 1L),
@@ -1559,7 +1296,7 @@ test_that("EsgDataset$slice() reopens selected files only when requested", {
         21
     )
     expect_equal(
-        as.numeric(ds$var_get(
+        as.numeric(ds2$var_get(
             "tas",
             index = 2L,
             start = c(1L, 1L, 1L),
@@ -1568,29 +1305,30 @@ test_that("EsgDataset$slice() reopens selected files only when requested", {
         )),
         21
     )
+
+    ds_closed <- EsgDataset$new(paths[1:2])
+    expect_error(ds_closed$slice(), "must be supplied")
+    for (case in list(
+        list(NULL, "must not be `NULL`"),
+        list(integer(), "at least one file"),
+        list(c(FALSE, FALSE), "at least one file"),
+        list(c(TRUE, FALSE, TRUE), "length"),
+        list(c(1L, 1L), "duplicate"),
+        list(0L, "zero"),
+        list(c(1L, -2L), "mix"),
+        list(3L, "outside"),
+        list("1", "integer")
+    )) {
+        expect_error(ds_closed$slice(case[[1L]]), case[[2L]])
+    }
 })
 # }}}
 # EsgDataset$reachable() {{{
-test_that("EsgDataset$reachable() checks current local files and selection source indices", {
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12)
-        ),
-        tempfile(fileext = ".nc"),
-        local_dataset_table_file(
-            time_vals = c(2, 3),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
-    ds <- EsgDataset$new(paths)
-    sliced <- ds$slice(c(3L, 2L))
-    diag <- sliced$reachable()
-
+test_that("EsgDataset$reachable() checks local files, Windows paths, and remote data nodes", {
+    pair <- dataset_test__shared_table_pair()
+    paths <- c(pair[[1L]], tempfile(fileext = ".nc"), pair[[2L]])
+    diag <- EsgDataset$new(paths)$slice(c(3L, 2L))$reachable()
+    expect_s3_class(diag, "data.table")
     expect_named(
         diag,
         c(
@@ -1607,46 +1345,42 @@ test_that("EsgDataset$reachable() checks current local files and selection sourc
             "probe_cached"
         )
     )
-    expect_s3_class(diag, "data.table")
-    expect_identical(diag$file_index, 1:2)
-    expect_identical(diag$source_index, c(3L, 2L))
-    expect_identical(diag$data_node, c(NA_character_, NA_character_))
-    expect_identical(diag$service, c("local", "local"))
-    expect_identical(diag$url, paths[c(3L, 2L)])
-    expect_identical(diag$reachable, c(TRUE, FALSE))
-    expect_equal(diag$latency_ms, c(0, 0))
-    expect_identical(diag$error, c(NA_character_, "File does not exist."))
-    expect_identical(diag$probe_level, c("local", "local"))
-    expect_identical(diag$probe_url, paths[c(3L, 2L)])
-    expect_false(any(diag$probe_cached))
+    expect_equal(
+        as.list(diag),
+        list(
+            file_index = 1:2,
+            source_index = c(3L, 2L),
+            data_node = c(NA_character_, NA_character_),
+            service = c("local", "local"),
+            url = paths[c(3L, 2L)],
+            reachable = c(TRUE, FALSE),
+            latency_ms = c(0, 0),
+            error = c(NA_character_, "File does not exist."),
+            probe_level = c("local", "local"),
+            probe_url = paths[c(3L, 2L)],
+            probe_cached = c(FALSE, FALSE)
+        )
+    )
 
     file_url <- EsgDataset$new(paste0("file://", paths[[1L]]))$reachable()
     expect_identical(file_url$service, "local")
-    expect_true(file_url$reachable)
-    expect_equal(file_url$latency_ms, 0)
-})
+    expect_true(file_url$reachable && file_url$latency_ms == 0)
 
-test_that("EsgDataset$reachable() treats Windows drive paths as local files", {
     win_path <- "C:/epwshiftr/missing.nc"
-
     expect_identical(query_result__url_scheme(win_path), NA_character_)
     expect_true(query_result__url_local(win_path))
+    win_diag <- EsgDataset$new(win_path)$reachable()
+    expect_identical(
+        c(win_diag$service, win_diag$probe_level, win_diag$probe_url),
+        c("local", "local", win_path)
+    )
+    expect_false(win_diag$reachable)
+    expect_identical(win_diag$error, "File does not exist.")
 
-    diag <- EsgDataset$new(win_path)$reachable()
-
-    expect_identical(diag$service, "local")
-    expect_identical(diag$probe_level, "local")
-    expect_identical(diag$probe_url, win_path)
-    expect_false(diag$reachable)
-    expect_identical(diag$error, "File does not exist.")
-})
-
-test_that("EsgDataset$reachable() probes current remote data nodes without cached result context", {
-    urls <- c(
+    ds <- EsgDataset$new(c(
         "https://ok.example.org/data.nc",
         "https://bad.example.org/data.nc"
-    )
-    ds <- EsgDataset$new(urls)
+    ))
     dataset__set_context(
         ds,
         list(
@@ -1658,7 +1392,6 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
             reachability = list(stale = TRUE)
         )
     )
-
     seen <- NULL
     testthat::local_mocked_bindings(
         query_result__reach_nodes = function(
@@ -1688,122 +1421,69 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
         },
         .package = "epwshiftr"
     )
-
-    diag <- ds$reachable(
+    rdiag <- ds$reachable(
         probe = list(
             timeout = 7,
             concurrency = 2L,
             network_policy = list(useragent = "dataset-agent")
         )
     )
-
-    expect_identical(seen$data_node, c("ok.example.org", "bad.example.org"))
-    expect_identical(seen$timeout, 7)
-    expect_identical(seen$useragent, "dataset-agent")
-    expect_identical(seen$probe_concurrency, 2L)
-    expect_identical(seen$cache_seconds, 3600L)
-    expect_identical(seen$cache_failures_seconds, 0L)
-    expect_identical(diag$file_index, 1:2)
-    expect_identical(diag$source_index, c(10L, 11L))
-    expect_identical(diag$data_node, c("ok.example.org", "bad.example.org"))
-    expect_true(all(is.na(diag$service)))
-    expect_identical(diag$reachable, c(TRUE, FALSE))
-    expect_equal(diag$latency_ms, c(12, NA))
-    expect_identical(diag$error, c(NA_character_, "remote boom"))
-    expect_identical(diag$probe_level, c("data_node", "data_node"))
     expect_identical(
-        diag$probe_url,
-        c("https://ok.example.org/", "https://bad.example.org/")
+        seen,
+        list(
+            data_node = c("ok.example.org", "bad.example.org"),
+            timeout = 7,
+            useragent = "dataset-agent",
+            probe_concurrency = 2L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        )
     )
-    expect_false(any(diag$probe_cached))
+    expect_identical(rdiag$source_index, c(10L, 11L))
+    expect_true(all(is.na(rdiag$service)))
+    expect_identical(rdiag$reachable, c(TRUE, FALSE))
+    expect_equal(rdiag$latency_ms, c(12, NA))
+    expect_identical(rdiag$error, c(NA_character_, "remote boom"))
+    expect_identical(rdiag$probe_level, c("data_node", "data_node"))
+    expect_false(any(rdiag$probe_cached))
 })
 # }}}
-# EsgDataset$open() {{{
-test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return", {
+# EsgDataset async open / read parity and concurrency {{{
+test_that("EsgDataset async open, reads, progress, and failures match sync contracts", {
     skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
+    paths <- dataset_test__shared_table_pair()
+    start <- c(1L, 1L, 1L)
+    count <- c(2L, 1L, 1L)
+    to <- dataset_async_timeout
+
+    ds_closed <- EsgDataset$new(paths[[1L]])
+    expect_error(ds_closed$var_get("tas", timeout = to), "only supported")
+    expect_error(
+        ds_closed$read_array("tas", async = TRUE, timeout = to),
+        "not open"
     )
-    on.exit(unlink(path), add = TRUE)
 
-    ds <- EsgDataset$new(path)
+    prog <- dataset_test__mock_progress()
+    ds <- EsgDataset$new(paths)
     private <- ds$.__enclos_env__$private
-
-    returned <- ds$open(async = TRUE, timeout = dataset_async_timeout)
-    on.exit(ds$close(), add = TRUE)
-
-    expect_identical(returned, ds)
+    expect_identical(ds$open(async = TRUE, timeout = to, progress = TRUE), ds)
+    withr::defer(ds$close())
     expect_true(ds$is_open)
     expect_identical(private$async_state, "completed")
     expect_null(private$async_task)
     expect_equal(
+        vapply(prog$updates, `[[`, integer(1L), "set"),
+        c(1L, 2L)
+    )
+    expect_equal(
         as.numeric(ds$var_get(
             "tas",
-            start = c(1L, 1L, 1L),
-            count = c(2L, 1L, 1L),
+            start = start,
+            count = count,
             collapse = TRUE
         )),
         c(11, 12)
     )
-})
-
-test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned reopen", {
-    skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    on.exit(unlink(path), add = TRUE)
-
-    updates <- list()
-    testthat::local_mocked_bindings(
-        cli_progress_bar = function(...) "progress-id",
-        cli_progress_update = function(id = NULL, set = NULL, ...) {
-            updates[[length(updates) + 1L]] <<- list(id = id, set = set)
-        },
-        cli_progress_done = function(...) NULL,
-        .package = "cli"
-    )
-
-    ds <- EsgDataset$new(path)
-    on.exit(ds$close(), add = TRUE)
-
-    ds$open(async = TRUE, timeout = dataset_async_timeout, progress = TRUE)
-    expect_true(ds$is_open)
-    expect_equal(updates, list(list(id = "progress-id", set = 1L)))
-})
-# }}}
-# EsgDataset$var_get() {{{
-test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_on_cran()
-    path1 <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    path2 <- local_dataset_table_file(
-        time_vals = c(3, 4, 5),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(21, 22, 23)
-    )
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds_closed <- EsgDataset$new(path1)
-    expect_error(
-        ds_closed$var_get("tas", timeout = dataset_async_timeout),
-        "only supported"
-    )
-
-    ds <- EsgDataset$new(c(path1, path2))
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    start <- c(1L, 1L, 1L)
-    count <- c(2L, 1L, 1L)
-
     expect_equal(
         ds$var_get(
             "tas",
@@ -1812,7 +1492,7 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
             index = 2L,
             collapse = TRUE,
             async = TRUE,
-            timeout = dataset_async_timeout
+            timeout = to
         ),
         ds$var_get(
             "tas",
@@ -1822,42 +1502,6 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
             collapse = TRUE
         )
     )
-
-    expect_true(ds$is_open)
-})
-# }}}
-# EsgDataset$read_array() {{{
-test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_on_cran()
-    path1 <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    path2 <- local_dataset_table_file(
-        time_vals = c(3, 4, 5),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(21, 22, 23)
-    )
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds_closed <- EsgDataset$new(path1)
-    expect_error(
-        ds_closed$read_array(
-            "tas",
-            async = TRUE,
-            timeout = dataset_async_timeout
-        ),
-        "not open"
-    )
-
-    ds <- EsgDataset$new(c(path1, path2))
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    start <- c(1L, 1L, 1L)
-    count <- c(2L, 1L, 1L)
-
     expect_equal(
         ds$read_array(
             "tas",
@@ -1865,36 +1509,10 @@ test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps op
             count = count,
             collapse = FALSE,
             async = TRUE,
-            timeout = dataset_async_timeout
+            timeout = to
         ),
         ds$read_array("tas", start = start, count = count, collapse = FALSE)
     )
-
-    expect_true(ds$is_open)
-})
-# }}}
-# EsgDataset$read_data_table() {{{
-test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_on_cran()
-    path1 <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    path2 <- local_dataset_table_file(
-        time_vals = c(3, 4, 5),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(21, 22, 23)
-    )
-    on.exit(unlink(c(path1, path2)), add = TRUE)
-
-    ds <- EsgDataset$new(c(path1, path2))
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-
-    start <- c(1L, 1L, 1L)
-    count <- c(2L, 1L, 1L)
-
     expect_equal(
         ds$read_data_table(
             "tas",
@@ -1902,93 +1520,42 @@ test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and kee
             count = count,
             rbind = TRUE,
             async = TRUE,
-            timeout = dataset_async_timeout
+            timeout = to
         ),
         ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
     )
-
     expect_true(ds$is_open)
+
+    # Failed async open leaves the dataset closed and clean.
+    bad <- EsgDataset$new(tempfile(fileext = ".nc"))
+    bad_priv <- bad$.__enclos_env__$private
+    expect_error(
+        bad$open(async = TRUE, timeout = to),
+        "Failed to open OPeNDAP connection"
+    )
+    expect_false(bad$is_open)
+    expect_identical(bad_priv$async_state, "failed")
+    expect_null(bad_priv$async_task)
+    expect_true(all(vapply(bad_priv$nc_handles, is.null, logical(1L))))
 })
-# }}}
-# EsgDataset$open() {{{
-test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
+
+test_that("EsgDataset async open and var_get support concurrent local datasets", {
     skip_on_cran()
-
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1, 2),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12, 13)
-        ),
-        local_dataset_table_file(
-            time_vals = c(3, 4, 5),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22, 23)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
-    results <- mirai_dataset_lapply(
-        seq_along(paths),
-        function(i, paths) {
-            ds <- EsgDataset$new(paths[[i]])
-            private <- ds$.__enclos_env__$private
-            on.exit(ds$close(), add = TRUE)
-
-            ds$open(async = TRUE, timeout = dataset_async_timeout)
-
-            list(
-                is_open = ds$is_open,
-                async_state = private$async_state,
-                async_task_is_null = is.null(private$async_task),
-                values = as.numeric(ds$var_get("tas", collapse = TRUE))
-            )
-        },
-        paths = paths
-    )
-
-    expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
-    expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
-    expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
-    expect_equal(
-        vapply(results, `[[`, character(1L), "async_state"),
-        rep("completed", 2L)
-    )
-    expect_equal(
-        lapply(results, `[[`, "values"),
-        list(c(11, 12, 13), c(21, 22, 23))
-    )
-})
-# }}}
-# EsgDataset$var_get() {{{
-test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets", {
-    skip_on_cran()
-
-    paths <- c(
-        local_dataset_table_file(
-            time_vals = c(0, 1, 2),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(11, 12, 13)
-        ),
-        local_dataset_table_file(
-            time_vals = c(3, 4, 5),
-            time_units = "days since 2000-01-01 00:00:00",
-            tas_vals = c(21, 22, 23)
-        )
-    )
-    on.exit(unlink(paths), add = TRUE)
-
+    paths <- dataset_test__shared_table_pair()
     start <- c(2L, 1L, 1L)
     count <- c(2L, 1L, 1L)
     results <- mirai_dataset_lapply(
         seq_along(paths),
         function(i, paths, start, count) {
             ds <- EsgDataset$new(paths[[i]])
-            private <- ds$.__enclos_env__$private
-            ds$open()
+            priv <- ds$.__enclos_env__$private
             on.exit(ds$close(), add = TRUE)
-
-            async_values <- as.numeric(ds$var_get(
+            ds$open(async = TRUE, timeout = dataset_async_timeout)
+            ok_open <- ds$is_open &&
+                identical(priv$async_state, "completed") &&
+                is.null(priv$async_task)
+            full <- as.numeric(ds$var_get("tas", collapse = TRUE))
+            async_vals <- as.numeric(ds$var_get(
                 "tas",
                 start = start,
                 count = count,
@@ -1996,12 +1563,13 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
                 async = TRUE,
                 timeout = dataset_async_timeout
             ))
-
+            ok_read <- ds$is_open &&
+                identical(priv$async_state, "completed") &&
+                is.null(priv$async_task)
             list(
-                is_open = ds$is_open,
-                async_state = private$async_state,
-                async_task_is_null = is.null(private$async_task),
-                async_values = async_values,
+                ok = ok_open && ok_read,
+                full = full,
+                async_values = async_vals,
                 sync_values = as.numeric(ds$var_get(
                     "tas",
                     start = start,
@@ -2014,13 +1582,11 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
         start = start,
         count = count
     )
-
     expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
-    expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
-    expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
+    expect_true(all(vapply(results, `[[`, logical(1L), "ok")))
     expect_equal(
-        vapply(results, `[[`, character(1L), "async_state"),
-        rep("completed", 2L)
+        lapply(results, `[[`, "full"),
+        list(c(11, 12, 13), c(21, 22, 23))
     )
     expect_equal(
         lapply(results, `[[`, "async_values"),
@@ -2030,28 +1596,6 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
         lapply(results, `[[`, "async_values"),
         lapply(results, `[[`, "sync_values")
     )
-})
-# }}}
-# EsgDataset$open() {{{
-test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and clean", {
-    skip_on_cran()
-    path <- tempfile(fileext = ".nc")
-    if (file.exists(path)) {
-        unlink(path)
-    }
-
-    ds <- EsgDataset$new(path)
-    private <- ds$.__enclos_env__$private
-
-    expect_error(
-        ds$open(async = TRUE, timeout = dataset_async_timeout),
-        "Failed to open OPeNDAP connection"
-    )
-
-    expect_false(ds$is_open)
-    expect_identical(private$async_state, "failed")
-    expect_null(private$async_task)
-    expect_true(all(vapply(private$nc_handles, is.null, logical(1L))))
 })
 # }}}
 # dataset__detach_handles() / dataset__adopt_handles() {{{
@@ -2119,12 +1663,7 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
     skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     ds$open()
@@ -2148,11 +1687,7 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
 # }}}
 # private$collect_async_task() {{{
 test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
@@ -2174,11 +1709,7 @@ test_that("private$collect_async_task() surfaces timeout errors and clears lifec
 # }}}
 # EsgDataset$close() {{{
 test_that("EsgDataset$close() best-effort cancels pending internal async work", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     ds$open()
@@ -2205,11 +1736,7 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
 # private$cancel_async_task() {{{
 test_that("private$cancel_async_task() keeps cancelled terminal state", {
     skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
@@ -2242,24 +1769,13 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
     expect_null(private$async_task)
 })
 # }}}
-# EsgDataset$file_inq() {{{
-test_that("EsgDataset$file_inq() rejects closed datasets", {
+# EsgDataset closed-dataset guards {{{
+test_that("EsgDataset inquiry and read methods reject closed datasets", {
     ds <- EsgDataset$new("https://example.org/data.nc")
-
+    expect_error(ds$get_variables(), "not open")
+    expect_error(ds$get_dimensions(), "not open")
     expect_error(ds$file_inq(), "not open")
-})
-# }}}
-# EsgDataset$var_inq() {{{
-test_that("EsgDataset$var_inq() rejects closed datasets", {
-    ds <- EsgDataset$new("https://example.org/data.nc")
-
     expect_error(ds$var_inq("tas"), "not open")
-})
-# }}}
-# EsgDataset$var_get() {{{
-test_that("EsgDataset$var_get() rejects closed datasets", {
-    ds <- EsgDataset$new("https://example.org/data.nc")
-
     expect_error(ds$var_get("tas"), "not open")
 })
 # }}}
@@ -2271,39 +1787,49 @@ test_that("EsgDataset$print()", {
 })
 # }}}
 
+dataset_test__point_site <- function() {
+    data.frame(site_id = "a", lon = 10.25, lat = .25)
+}
+
+dataset_test__assert_no_tas_read <- function(expr) {
+    reads <- 0L
+    reader <- RNetCDF::var.get.nc
+    testthat::with_mocked_bindings(
+        {
+            force(expr)
+            expect_identical(reads, 0L)
+        },
+        var.get.nc = function(...) {
+            args <- list(...)
+            if (length(args) >= 2L && identical(args[[2L]], "tas")) {
+                reads <<- reads + 1L
+            }
+            reader(...)
+        },
+        .package = "RNetCDF"
+    )
+}
+
 # Distinct native values detect lost corners, transposition and extra times.
 test_that("raw neighborhoods retain four corners and share disjoint demand", {
-    path <- tempfile(fileext = ".nc")
-    nc <- RNetCDF::create.nc(path)
-    RNetCDF::dim.def.nc(nc, "time", 6L)
-    RNetCDF::dim.def.nc(nc, "lat", 3L)
-    RNetCDF::dim.def.nc(nc, "lon", 3L)
-    RNetCDF::dim.def.nc(nc, "bnds", 2L)
-    for (name in c("time", "lat", "lon")) {
-        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
-    }
-    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
-    RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", c("bnds", "time"))
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 2060-01-01")
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "360_day")
-    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
-    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
-    RNetCDF::var.put.nc(nc, "time", 0:5)
-    RNetCDF::var.put.nc(nc, "time_bnds", rbind(0:5, 1:6))
-    RNetCDF::var.put.nc(nc, "lat", 0:2)
-    RNetCDF::var.put.nc(nc, "lon", 10:12)
     native <- expand.grid(time = 1:6, lat = 1:3, lon = 1:3)
     values <- array(
         native$time + 100 * native$lat + 10000 * native$lon,
         c(6, 3, 3)
     )
     values[1, 1, 1] <- NA_real_
-    RNetCDF::var.put.nc(nc, "tas", values)
-    RNetCDF::close.nc(nc)
-    on.exit(unlink(path), add = TRUE)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
+    path <- dataset_test__write_nc(
+        0:5,
+        "days since 2060-01-01",
+        calendar = "360_day",
+        lat = 0:2,
+        lon = 10:12,
+        tas = values,
+        bounds = cbind(0:5, 1:6),
+        reversed = TRUE,
+        path = withr::local_tempfile(fileext = ".nc")
+    )
+    ds <- dataset_test__open(path)
     sites <- data.frame(
         site_id = c("a", "copy", "b"),
         lon = c(10.25, 10.25, 11.25),
@@ -2314,8 +1840,10 @@ test_that("raw neighborhoods retain four corners and share disjoint demand", {
         c("2060-01-04", "2060-01-04")
     )
     actual <- ds$read_neighborhood("tas", sites, time = windows)
-    expect_equal(nrow(actual$neighborhoods), 12L)
-    expect_equal(nrow(actual$values), 14L)
+    expect_equal(
+        c(nrow(actual$neighborhoods), nrow(actual$values)),
+        c(12L, 14L)
+    )
     expect_equal(sort(unique(actual$values$time_index)), c(1L, 4L))
     expect_identical(unique(actual$time$cf_calendar), "360_day")
     expect_equal(actual$time$bound_start_value, actual$time$time_index - 1)
@@ -2330,6 +1858,7 @@ test_that("raw neighborhoods retain four corners and share disjoint demand", {
     expect_true(anyNA(actual$values$value))
     expect_false("weight" %in% names(actual$neighborhoods))
     expect_identical(sites$site_id, c("a", "copy", "b"))
+
     chunks <- list()
     streamed <- ds$read_neighborhood(
         "tas",
@@ -2338,34 +1867,37 @@ test_that("raw neighborhoods retain four corners and share disjoint demand", {
         on_chunk = function(chunk) chunks[[length(chunks) + 1L]] <<- chunk
     )
     expect_equal(nrow(streamed$values), 0L)
-    streamed_values <- data.table::rbindlist(lapply(chunks, `[[`, "values"))
-    expect_equal(streamed_values, actual$values)
-    native_path <- tempfile(fileext = ".nc")
+    expect_equal(
+        data.table::rbindlist(lapply(chunks, `[[`, "values")),
+        actual$values
+    )
+
+    native_path <- withr::local_tempfile(fileext = ".nc")
     file.copy(path, native_path)
-    on.exit(unlink(native_path), add = TRUE)
-    nc <- RNetCDF::open.nc(native_path, write = TRUE)
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 2060-02-28")
-    RNetCDF::close.nc(nc)
-    native_ds <- EsgDataset$new(native_path)
-    native_ds$open()
-    on.exit(native_ds$close(), add = TRUE)
-    february <- native_ds$read_neighborhood(
+    dataset_test__edit_nc(native_path, function(nc) {
+        RNetCDF::att.put.nc(
+            nc,
+            "time",
+            "units",
+            "NC_CHAR",
+            "days since 2060-02-28"
+        )
+    })
+    feb <- dataset_test__open(native_path)$read_neighborhood(
         "tas",
         sites[1L, ],
         time = c("2060-02-30", "2060-02-30")
     )
-    expect_equal(nrow(february$values), 4L)
-    expect_identical(unique(february$values$time_index), 3L)
-    expect_identical(unique(february$time$cf_day), 30L)
+    expect_equal(nrow(feb$values), 4L)
+    expect_identical(
+        c(unique(feb$values$time_index), unique(feb$time$cf_day)),
+        c(3L, 30L)
+    )
     expect_error(
-        ds$read_neighborhood(
-            "tas",
-            sites[1:2, ] |> transform(site_id = "same")
-        ),
+        ds$read_neighborhood("tas", transform(sites[1:2, ], site_id = "same")),
         "duplicated"
     )
 })
-
 
 # This local native 2x2 fixture exercises the public reader with both bounds
 # dimension orders and per-variable temporal semantics, without remote I/O.
@@ -2375,49 +1907,41 @@ dataset_test__cf_point_fixture <- function(
     width = 0,
     reversed = FALSE,
     units = "days since 1900-02-28",
-    time_values = 0:2
+    time_values = 0:2,
+    bounds = NULL,
+    extra_vars = NULL,
+    extra_edit = NULL
 ) {
-    path <- tempfile(fileext = ".nc")
-    nc <- RNetCDF::create.nc(path)
-    for (name in c("time", "lat", "lon", "bnds")) {
-        RNetCDF::dim.def.nc(nc, name, if (name == "time") 3L else 2L)
-    }
-    for (name in c("time", "lat", "lon")) {
-        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
-    }
-    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
-    dims <- if (reversed) c("bnds", "time") else c("time", "bnds")
-    RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", dims)
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
-    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
-    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
-    if (!is.null(method)) {
-        RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
-    }
-    RNetCDF::var.put.nc(nc, "time", time_values)
-    bounds <- cbind(time_values, time_values + width)
-    RNetCDF::var.put.nc(nc, "time_bnds", if (reversed) t(bounds) else bounds)
-    RNetCDF::var.put.nc(nc, "lat", c(0, 1))
-    RNetCDF::var.put.nc(nc, "lon", c(10, 11))
-    RNetCDF::var.put.nc(nc, "tas", array(270 + seq_len(12L), c(3, 2, 2)))
-    RNetCDF::close.nc(nc)
-    path
+    dataset_test__write_nc(
+        time_values,
+        units,
+        calendar = calendar,
+        bounds = if (is.null(bounds)) {
+            cbind(time_values, time_values + width)
+        } else {
+            bounds
+        },
+        reversed = reversed,
+        method = method,
+        extra_vars = extra_vars,
+        extra_edit = extra_edit
+    )
 }
 
-test_that("instantaneous native bounds preserve Julian four-corner values", {
+# Bounds cached for a point variable must not authorize another variable's
+# averages. Native durations remain authoritative below POSIX precision.
+test_that("instantaneous native bounds preserve Julian corners and strict variable validation", {
+    sites <- dataset_test__point_site()
     for (reversed in c(FALSE, TRUE)) {
-        path <- dataset_test__cf_point_fixture(reversed = reversed)
-        on.exit(unlink(path), add = TRUE)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        on.exit(ds$close(), add = TRUE)
+        ds <- dataset_test__open_temp(
+            dataset_test__cf_point_fixture(reversed = reversed)
+        )
         # Populate the shared bounds cache before the variable-specific read.
         axis <- ds$get_time_axis()
         expect_equal(as.numeric(axis$bounds$end), as.numeric(axis$bounds$start))
         actual <- ds$read_neighborhood(
             "tas",
-            data.frame(site_id = "a", lon = 10.25, lat = .25),
+            sites,
             time = c("1900-02-29", "1900-02-29")
         )
         expect_equal(nrow(actual$values), 4L)
@@ -2427,81 +1951,57 @@ test_that("instantaneous native bounds preserve Julian four-corner values", {
         expect_equal(actual$time$bound_start_value, rep(1, nrow(actual$time)))
         expect_equal(actual$time$bound_end_value, actual$time$bound_start_value)
     }
-})
 
-test_that("instantaneous bounds cannot weaken interval or identity validation", {
-    for (method in list(
-        "time: mean",
-        "time: sum",
-        NULL,
-        "time: point time: mean"
-    )) {
-        path <- dataset_test__cf_point_fixture(
-            method = method,
-            calendar = "standard"
+    neg_ds <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(width = -1, calendar = "standard")
+    )
+    expect_error(neg_ds$get_time_axis(), "increasing|non-decreasing")
+
+    ds_var <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(
+            calendar = "standard",
+            extra_vars = list(
+                tas_mean = list(
+                    method = "time: mean",
+                    values = array(280, c(3, 2, 2))
+                ),
+                tas_sum = list(method = "time: sum"),
+                tas_null = list(method = NULL),
+                tas_both = list(method = "time: point time: mean")
+            )
         )
-        on.exit(unlink(path), add = TRUE)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        on.exit(ds$close(), add = TRUE)
+    )
+    expect_equal(nrow(ds_var$read_neighborhood("tas", sites)$values), 12L)
+    expect_error(
+        ds_var$read_neighborhood("tas_mean", sites),
+        "positive intervals"
+    )
+    for (var_name in c("tas_mean", "tas_sum", "tas_null", "tas_both")) {
         expect_error(
-            ds$read_neighborhood(
-                "tas",
-                data.frame(site_id = "a", lon = 10.25, lat = .25)
-            ),
+            ds_var$read_neighborhood(var_name, sites),
             "positive|increasing"
         )
     }
-    path <- dataset_test__cf_point_fixture(width = -1, calendar = "standard")
-    on.exit(unlink(path), add = TRUE)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-    expect_error(ds$get_time_axis(), "increasing|non-decreasing")
-})
 
-
-# Bounds cached for a point variable must not authorize another variable's
-# averages. Native durations remain authoritative below POSIX precision.
-test_that("instantaneous bounds validation remains variable-specific and native", {
-    path <- dataset_test__cf_point_fixture(calendar = "standard")
-    on.exit(unlink(path), add = TRUE)
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::var.def.nc(nc, "tas_mean", "NC_DOUBLE", c("time", "lat", "lon"))
-    RNetCDF::att.put.nc(nc, "tas_mean", "units", "NC_CHAR", "K")
-    RNetCDF::att.put.nc(nc, "tas_mean", "cell_methods", "NC_CHAR", "time: mean")
-    RNetCDF::var.put.nc(nc, "tas_mean", array(280, c(3, 2, 2)))
-    RNetCDF::close.nc(nc)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
-    expect_equal(nrow(ds$read_neighborhood("tas", sites)$values), 12L)
-    expect_error(ds$read_neighborhood("tas_mean", sites), "positive intervals")
-    short <- dataset_test__cf_point_fixture(
-        calendar = "standard",
-        method = "time: mean",
-        width = 1e-10
+    short_ds <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(
+            calendar = "standard",
+            method = "time: mean",
+            width = 1e-10
+        )
     )
-    on.exit(unlink(short), add = TRUE)
-    short_ds <- EsgDataset$new(short)
-    short_ds$open()
-    on.exit(short_ds$close(), add = TRUE)
-    actual <- short_ds$read_neighborhood("tas", sites)
-    expect_equal(nrow(actual$values), 12L)
+    short_out <- short_ds$read_neighborhood("tas", sites)
+    expect_equal(nrow(short_out$values), 12L)
     expect_true(all(
-        actual$time$bound_end_value > actual$time$bound_start_value
+        short_out$time$bound_end_value > short_out$time$bound_start_value
     ))
-    wrong <- dataset_test__cf_point_fixture(calendar = "standard")
-    on.exit(unlink(wrong), add = TRUE)
-    nc <- RNetCDF::open.nc(wrong, write = TRUE)
-    RNetCDF::var.put.nc(nc, "time_bnds", cbind(1:3, 1:3))
-    RNetCDF::close.nc(nc)
-    wrong_ds <- EsgDataset$new(wrong)
-    wrong_ds$open()
-    on.exit(wrong_ds$close(), add = TRUE)
+
+    wrong <- dataset_test__cf_point_fixture(
+        calendar = "standard",
+        bounds = cbind(1:3, 1:3)
+    )
     expect_error(
-        wrong_ds$read_neighborhood("tas", sites),
+        dataset_test__open_temp(wrong)$read_neighborhood("tas", sites),
         "equal their native time coordinate"
     )
 })
@@ -2509,6 +2009,7 @@ test_that("instantaneous bounds validation remains variable-specific and native"
 # Public NetCDF reads must preserve the exact source coordinates and bounds
 # while selecting four native corners with corrected UTC and calendar fields.
 test_that("CF normalization preserves public native offsets bounds and selections", {
+    sites <- dataset_test__point_site()
     cases <- list(
         list(
             units = "hours since 2000-01-01 00:00:00 +02:00",
@@ -2539,14 +2040,11 @@ test_that("CF normalization preserves public native offsets bounds and selection
         )
     )
     for (case in cases) {
-        path <- dataset_test__cf_point_fixture(
+        ds <- dataset_test__open_temp(dataset_test__cf_point_fixture(
             calendar = "standard",
             units = case$units,
             time_values = case$offsets
-        )
-        on.exit(unlink(path), add = TRUE)
-        ds <- EsgDataset$new(path)
-        ds$open()
+        ))
         axis <- ds$get_time_axis()
         expect_identical(as.numeric(axis$raw_values), as.numeric(case$offsets))
         expect_identical(
@@ -2554,20 +2052,14 @@ test_that("CF normalization preserves public native offsets bounds and selection
             as.numeric(cbind(case$offsets, case$offsets))
         )
         expect_identical(axis$units, case$units)
-        result <- ds$read_neighborhood(
-            "tas",
-            data.frame(site_id = "a", lon = 10.25, lat = .25),
-            time = case$range
-        )
+        result <- ds$read_neighborhood("tas", sites, time = case$range)
         expect_equal(nrow(result$values), 4L * length(case$days))
         expect_identical(result$time$cf_day, case$days)
         expect_equal(result$time$bound_start_value, result$time$time_value)
         expect_equal(result$time$bound_end_value, result$time$time_value)
         expect_identical(unique(result$time$time_units), case$units)
-        ds$close()
     }
 })
-
 
 # Encode the CF seasonal-climatology example as a local native 2x2 file. Raw
 # boundaries retain both dimension orders and are never inferred from spacing.
@@ -2577,209 +2069,149 @@ dataset_test__climatology_fixture <- function(
     reversed = FALSE,
     units = "days since 1960-01-01",
     times = NULL,
-    bounds = NULL
+    bounds = NULL,
+    bounds_attr = "climatology",
+    extra_vars = NULL,
+    extra_edit = NULL
 ) {
-    if (is.null(times)) {
+    if (is.null(times) || is.null(bounds)) {
         origin <- cf_time_parse_origin("1960-01-01", calendar)
-        dates <- data.frame(
-            year = c(1960L, 1960L, 1960L, 1961L),
-            month = c(4L, 7L, 10L, 1L),
-            day = 16L
-        )
-        times <- cf_time_date2offset(dates, origin, calendar)
+        to_off <- function(y, m, d) {
+            cf_time_date2offset(
+                data.frame(year = y, month = m, day = d),
+                origin,
+                calendar
+            )
+        }
+        if (is.null(times)) {
+            times <- to_off(
+                c(1960L, 1960L, 1960L, 1961L),
+                c(4L, 7L, 10L, 1L),
+                16L
+            )
+        }
+        if (is.null(bounds)) {
+            bounds <- cbind(
+                to_off(1960L, c(3L, 6L, 9L, 12L), 1L),
+                to_off(c(1990L, 1990L, 1990L, 1991L), c(6L, 9L, 12L, 3L), 1L)
+            )
+        }
     }
-    if (is.null(bounds)) {
-        origin <- cf_time_parse_origin("1960-01-01", calendar)
-        start <- data.frame(year = 1960L, month = c(3L, 6L, 9L, 12L), day = 1L)
-        end <- data.frame(
-            year = c(1990L, 1990L, 1990L, 1991L),
-            month = c(6L, 9L, 12L, 3L),
-            day = 1L
-        )
-        bounds <- cbind(
-            cf_time_date2offset(start, origin, calendar),
-            cf_time_date2offset(end, origin, calendar)
-        )
-    }
-    path <- tempfile(fileext = ".nc")
-    nc <- RNetCDF::create.nc(path)
-    on.exit(RNetCDF::close.nc(nc), add = TRUE)
-    for (name in c("time", "lat", "lon", "nv")) {
-        RNetCDF::dim.def.nc(nc, name, if (name == "time") length(times) else 2L)
-    }
-    for (name in c("time", "lat", "lon")) {
-        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
-    }
-    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
-    RNetCDF::var.def.nc(
-        nc,
-        "climatology_bounds",
-        "NC_DOUBLE",
-        if (reversed) c("nv", "time") else c("time", "nv")
+    dataset_test__write_nc(
+        times,
+        units,
+        calendar = calendar,
+        bounds = bounds,
+        bounds_attr = bounds_attr,
+        bounds_var = "climatology_bounds",
+        bounds_dim = "nv",
+        reversed = reversed,
+        method = method,
+        extra_vars = extra_vars,
+        extra_edit = extra_edit
     )
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
-    RNetCDF::att.put.nc(
-        nc,
-        "time",
-        "climatology",
-        "NC_CHAR",
-        "climatology_bounds"
-    )
-    if (!is.null(method)) {
-        RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
-    }
-    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
-    RNetCDF::var.put.nc(nc, "time", times)
-    RNetCDF::var.put.nc(
-        nc,
-        "climatology_bounds",
-        if (reversed) t(bounds) else bounds
-    )
-    RNetCDF::var.put.nc(nc, "lat", c(0, 1))
-    RNetCDF::var.put.nc(nc, "lon", c(10, 11))
-    RNetCDF::var.put.nc(
-        nc,
-        "tas",
-        array(seq_len(length(times) * 4L) + 270, c(length(times), 2L, 2L))
-    )
-    path
 }
 
 # Reading a precomputed climatology preserves its statistics, representative
 # labels and discontinuous annual cells instead of inventing ordinary intervals.
 test_that("CF climatology exposes seasonal bounds and ordered statistics", {
-    for (calendar in c("standard", "julian", "360_day", "365_day")) {
-        for (reversed in c(FALSE, TRUE)) {
-            path <- dataset_test__climatology_fixture(
+    sites <- dataset_test__point_site()
+    cases <- list(
+        list(calendar = "standard", reversed = FALSE),
+        list(calendar = "standard", reversed = TRUE),
+        list(calendar = "julian", reversed = FALSE),
+        list(calendar = "360_day", reversed = TRUE),
+        list(calendar = "365_day", reversed = FALSE)
+    )
+    for (case in cases) {
+        calendar <- case$calendar
+        reversed <- case$reversed
+        ds <- dataset_test__open_temp(
+            dataset_test__climatology_fixture(
                 calendar = calendar,
                 reversed = reversed
             )
-            ds <- EsgDataset$new(path)
-            ds$open()
-            axis <- ds$get_time_axis(variable = "tas")
-            expect_identical(axis$kind, "climatology")
-            expect_null(axis$bounds)
-            expect_identical(axis$climatology$name, "climatology_bounds")
-            expect_identical(
-                axis$statistics$operations$method,
-                c("minimum", "mean")
-            )
-            expect_identical(
-                axis$statistics$operations$scope,
-                c("within years", "over years")
-            )
-            expect_identical(
-                axis$climatology$interpretation$wraps_year,
-                c(FALSE, FALSE, FALSE, TRUE)
-            )
-            expect_equal(
-                dim(axis$climatology$raw_values),
-                if (reversed) c(2L, 4L) else c(4L, 2L)
-            )
-            actual <- ds$read_neighborhood(
-                "tas",
-                data.frame(site_id = "a", lon = 10.25, lat = .25),
-                time = c("1960-01-01", "1961-12-31")
-            )
-            expect_equal(sort(actual$values$value), as.double(271:286))
-            expect_identical(unique(actual$time$time_kind), "climatology")
-            expect_false("time_bound_start" %in% names(actual$time))
-            native <- if (reversed) {
-                t(axis$climatology$raw_values)
-            } else {
-                axis$climatology$raw_values
-            }
-            expect_equal(
-                actual$time$climatology_bound_start_value,
-                native[, 1L]
-            )
-            expect_equal(actual$time$climatology_bound_end_value, native[, 2L])
-            expect_equal(actual$time$time_value, as.double(axis$raw_values))
-            expect_identical(
-                unique(actual$time$climatology_cell_methods),
-                axis$statistics$raw
-            )
-            table <- ds$read_data_table("tas", rbind = TRUE)
-            expect_identical(unique(table$time_kind), "climatology")
-            expect_equal(sort(table$tas), as.double(271:286))
-            expect_equal(
-                sort(unique(table$time_value)),
-                sort(as.double(axis$raw_values))
-            )
-            expect_equal(
-                unique(table$climatology_bound_start_value),
-                native[, 1L]
-            )
-            expect_error(
-                ds$read_region(
-                    "tas",
-                    lon = 10.25,
-                    lat = .25,
-                    time = c("1960-01-01", "1961-12-31")
-                ),
-                "climatolog"
-            )
-            ds$close()
-            unlink(path)
+        )
+        axis <- ds$get_time_axis(variable = "tas")
+        expect_identical(axis$kind, "climatology")
+        expect_null(axis$bounds)
+        expect_identical(axis$climatology$name, "climatology_bounds")
+        expect_identical(
+            axis$statistics$operations$method,
+            c("minimum", "mean")
+        )
+        expect_identical(
+            axis$statistics$operations$scope,
+            c("within years", "over years")
+        )
+        expect_identical(
+            axis$climatology$interpretation$wraps_year,
+            c(FALSE, FALSE, FALSE, TRUE)
+        )
+        expect_equal(
+            dim(axis$climatology$raw_values),
+            if (reversed) c(2L, 4L) else c(4L, 2L)
+        )
+        actual <- ds$read_neighborhood(
+            "tas",
+            sites,
+            time = c("1960-01-01", "1961-12-31")
+        )
+        expect_equal(sort(actual$values$value), as.double(271:286))
+        expect_identical(unique(actual$time$time_kind), "climatology")
+        expect_false("time_bound_start" %in% names(actual$time))
+        native <- if (reversed) {
+            t(axis$climatology$raw_values)
+        } else {
+            axis$climatology$raw_values
         }
-    }
-})
-
-# Method order distinguishes mean-of-minima from minimum-of-means; malformed
-# or undeclared climatological statistics must fail before any weather values.
-test_that("CF climatology rejects ambiguous or unsupported statistical declarations", {
-    methods <- list(
-        NULL,
-        "time: mean",
-        "time: mean over years time: mean within years",
-        "time: banana within years time: mean over years",
-        "time: mean within days time: mean over years"
-    )
-    for (method in methods) {
-        path <- dataset_test__climatology_fixture(method = method)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        expect_error(
-            ds$get_time_axis(variable = "tas"),
-            "climatolog|cell_methods"
+        expect_equal(
+            actual$time$climatology_bound_start_value,
+            native[, 1L]
+        )
+        expect_equal(actual$time$climatology_bound_end_value, native[, 2L])
+        expect_equal(actual$time$time_value, as.double(axis$raw_values))
+        expect_identical(
+            unique(actual$time$climatology_cell_methods),
+            axis$statistics$raw
+        )
+        table <- ds$read_data_table("tas", rbind = TRUE)
+        expect_identical(unique(table$time_kind), "climatology")
+        expect_equal(sort(table$tas), as.double(271:286))
+        expect_equal(
+            sort(unique(table$time_value)),
+            sort(as.double(axis$raw_values))
+        )
+        expect_equal(
+            unique(table$climatology_bound_start_value),
+            native[, 1L]
         )
         expect_error(
-            ds$read_neighborhood(
+            ds$read_region(
                 "tas",
-                data.frame(site_id = "a", lon = 10.25, lat = .25)
+                lon = 10.25,
+                lat = .25,
+                time = c("1960-01-01", "1961-12-31")
             ),
-            "climatolog|cell_methods"
+            "climatolog"
         )
-        ds$close()
-        unlink(path)
     }
-    path <- dataset_test__climatology_fixture()
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "climatology_bounds")
-    RNetCDF::close.nc(nc)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    expect_error(ds$get_time_axis(), "climatolog.*bounds|bounds.*climatolog")
-    ds$close()
-    unlink(path)
 })
 
-# Daily climatologies preserve native clock ranges, including a whole day
-# with equal clock endpoints and a range that crosses midnight.
-test_that("CF climatology interprets daily and combined statistical cycles", {
+# Daily and combined climatologies preserve native clock ranges and separate
+# annual day spans from daily wraps.
+test_that("CF climatology interprets daily, annual, and combined statistical cycles", {
+    bounds <- rbind(c(0, 30 * 24), c(23, 30 * 24 + 1))
     for (method in c(
         "time: mean within days time: mean over days",
         "area: mean time: mean within days (interval: 1 hour) time: sum over days time: mean over years"
     )) {
-        path <- dataset_test__climatology_fixture(
+        ds <- dataset_test__open_temp(dataset_test__climatology_fixture(
             method = method,
             units = "hours since 1995-04-01",
             times = c(12, 24),
-            bounds = rbind(c(0, 30 * 24), c(23, 30 * 24 + 1))
-        )
-        ds <- EsgDataset$new(path)
-        ds$open()
+            bounds = bounds
+        ))
         axis <- ds$get_time_axis(variable = "tas")
         expect_identical(
             axis$climatology$interpretation$full_day,
@@ -2792,49 +2224,30 @@ test_that("CF climatology interprets daily and combined statistical cycles", {
         expect_identical(axis$statistics$raw, method)
         expect_equal(
             as.numeric(axis$climatology$raw_values),
-            as.numeric(rbind(c(0, 30 * 24), c(23, 30 * 24 + 1)))
+            as.numeric(bounds)
         )
-        ds$close()
-        unlink(path)
     }
-})
 
-# Three-stage statistics keep the annual day span separate from daily clocks.
-test_that("CF climatology separates annual and daily wraps in combined statistics", {
-    path <- dataset_test__climatology_fixture(
+    combined <- dataset_test__open_temp(dataset_test__climatology_fixture(
         method = "time: mean within days time: sum over days time: mean over years"
-    )
-    on.exit(unlink(path), add = TRUE)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
-    axis <- ds$get_time_axis(variable = "tas")
-    expect_identical(
-        axis$climatology$interpretation$wraps_year,
-        c(FALSE, FALSE, FALSE, TRUE)
-    )
-    expect_identical(axis$climatology$interpretation$full_day, rep(TRUE, 4L))
-    expect_identical(axis$climatology$interpretation$wraps_day, rep(FALSE, 4L))
+    ))$get_time_axis(variable = "tas")$climatology$interpretation
+    expect_identical(combined$wraps_year, c(FALSE, FALSE, FALSE, TRUE))
+    expect_identical(combined$full_day, rep(TRUE, 4L))
+    expect_identical(combined$wraps_day, rep(FALSE, 4L))
 })
 
 # A shared coordinate cache must never reuse another variable's statistical
 # operator sequence, and each raw clock must remain joinable to its own values.
 test_that("CF climatology keeps statistics per variable through shared caches", {
-    path <- dataset_test__climatology_fixture()
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::var.def.nc(nc, "tasmax", "NC_DOUBLE", c("time", "lat", "lon"))
-    RNetCDF::att.put.nc(nc, "tasmax", "units", "NC_CHAR", "K")
-    RNetCDF::att.put.nc(
-        nc,
-        "tasmax",
-        "cell_methods",
-        "NC_CHAR",
-        "time: mean within years time: maximum over years"
+    path <- dataset_test__climatology_fixture(
+        extra_vars = list(
+            tasmax = list(
+                method = "time: mean within years time: maximum over years",
+                values = array(as.double(301:316), c(4L, 2L, 2L))
+            )
+        )
     )
-    RNetCDF::var.put.nc(nc, "tasmax", array(as.double(301:316), c(4L, 2L, 2L)))
-    RNetCDF::close.nc(nc)
-    ds <- EsgDataset$new(path)
-    ds$open()
+    ds <- dataset_test__open_temp(path)
     expect_identical(
         ds$get_time_axis(variable = "tas")$statistics$operations$method,
         c("minimum", "mean")
@@ -2843,10 +2256,7 @@ test_that("CF climatology keeps statistics per variable through shared caches", 
         ds$get_time_axis(variable = "tasmax")$statistics$operations$method,
         c("mean", "maximum")
     )
-    raw <- ds$read_neighborhood(
-        c("tas", "tasmax"),
-        data.frame(site_id = "a", lon = 10.25, lat = .25)
-    )
+    raw <- ds$read_neighborhood(c("tas", "tasmax"), dataset_test__point_site())
     expect_identical(sort(unique(raw$time$variable)), c("tas", "tasmax"))
     joined <- merge(
         raw$values,
@@ -2867,121 +2277,119 @@ test_that("CF climatology keeps statistics per variable through shared caches", 
         joined$climatology_cell_methods[joined$variable == "tasmax"],
         fixed = TRUE
     )))
-    ds$close()
-    unlink(path)
 })
 
-# Conflicting boundary attributes, dimensions, numbers and undeclared temporal
-# qualifiers must fail without returning an ordinary-looking weather payload.
-test_that("CF climatology validates boundary identity before weather reads", {
-    changes <- list(
-        function(nc) {
-            RNetCDF::att.put.nc(
-                nc,
-                "climatology_bounds",
-                "units",
-                "NC_CHAR",
-                "hours since 1960-01-01"
-            )
-        },
-        function(nc) {
-            RNetCDF::att.put.nc(
-                nc,
-                "climatology_bounds",
-                "calendar",
-                "NC_CHAR",
-                "360_day"
-            )
-        },
-        function(nc) {
+# Malformed statistical declarations, conflicting attributes/dimensions/numbers
+# must fail before any weather values are read.
+test_that("CF climatology validates statistical declarations and boundary identity before weather reads", {
+    sites <- dataset_test__point_site()
+    bad_methods <- list(
+        tas_null = list(method = NULL),
+        tas_mean = list(method = "time: mean"),
+        tas_rev = list(
+            method = "time: mean over years time: mean within years"
+        ),
+        tas_banana = list(
+            method = "time: banana within years time: mean over years"
+        ),
+        tas_mixed = list(
+            method = "time: mean within days time: mean over years"
+        )
+    )
+    ds_methods <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = bad_methods)
+    )
+    for (var_name in names(bad_methods)) {
+        expect_error(
+            ds_methods$get_time_axis(variable = var_name),
+            "climatolog|cell_methods"
+        )
+        expect_error(
+            ds_methods$read_neighborhood(var_name, sites),
+            "climatolog|cell_methods"
+        )
+    }
+
+    both_path <- dataset_test__climatology_fixture(
+        extra_edit = function(nc) {
             RNetCDF::att.put.nc(
                 nc,
                 "time",
-                "climatology",
+                "bounds",
                 "NC_CHAR",
-                "missing_boundary"
-            )
-        },
-        function(nc) {
-            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_CHAR", " ")
-        },
-        function(nc) {
-            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_INT", 1L)
-        },
-        function(nc) {
-            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_CHAR", "lat")
-        },
-        function(nc) {
-            RNetCDF::var.put.nc(
-                nc,
-                "climatology_bounds",
-                matrix(c(2, rep(1, 7)), 4L, 2L)
-            )
-        },
-        function(nc) {
-            RNetCDF::var.put.nc(
-                nc,
-                "climatology_bounds",
-                matrix(c(NA_real_, rep(1, 7)), 4L, 2L)
+                "climatology_bounds"
             )
         }
     )
-    for (change in changes) {
-        path <- dataset_test__climatology_fixture()
-        nc <- RNetCDF::open.nc(path, write = TRUE)
-        change(nc)
-        RNetCDF::close.nc(nc)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        weather <- 0L
-        reader <- RNetCDF::var.get.nc
-        testthat::with_mocked_bindings(
-            {
-                expect_error(ds$get_time_axis(variable = "tas"))
-                expect_error(ds$read_neighborhood(
-                    "tas",
-                    data.frame(site_id = "a", lon = 10.25, lat = .25)
-                ))
-                expect_identical(weather, 0L)
-            },
-            var.get.nc = function(...) {
-                args <- list(...)
-                if (length(args) >= 2L && identical(args[[2L]], "tas")) {
-                    weather <<- weather + 1L
-                }
-                reader(...)
-            },
-            .package = "RNetCDF"
-        )
-        ds$close()
-        unlink(path)
-    }
-    path <- dataset_test__climatology_fixture()
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::att.delete.nc(nc, "time", "climatology")
-    RNetCDF::close.nc(nc)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    expect_error(ds$get_time_axis(variable = "tas"), "climatolog")
     expect_error(
-        ds$read_neighborhood(
-            "tas",
-            data.frame(site_id = "a", lon = 10.25, lat = .25)
-        ),
-        "climatolog"
+        dataset_test__open_temp(both_path)$get_time_axis(),
+        "climatolog.*bounds|bounds.*climatolog"
     )
-    ds$close()
-    unlink(path)
+
+    att_edits <- list(
+        list(
+            "climatology_bounds",
+            "units",
+            "NC_CHAR",
+            "hours since 1960-01-01"
+        ),
+        list("climatology_bounds", "calendar", "NC_CHAR", "360_day"),
+        list("time", "climatology", "NC_CHAR", "missing_boundary"),
+        list("time", "climatology", "NC_CHAR", " "),
+        list("time", "climatology", "NC_INT", 1L),
+        list("time", "climatology", "NC_CHAR", "lat")
+    )
+    val_edits <- list(
+        matrix(c(2, rep(1, 7)), 4L, 2L),
+        matrix(c(NA_real_, rep(1, 7)), 4L, 2L)
+    )
+    for (ed in c(
+        lapply(att_edits, function(a) {
+            function(nc) {
+                RNetCDF::att.put.nc(nc, a[[1L]], a[[2L]], a[[3L]], a[[4L]])
+            }
+        }),
+        lapply(val_edits, function(m) {
+            function(nc) RNetCDF::var.put.nc(nc, "climatology_bounds", m)
+        })
+    )) {
+        ds <- dataset_test__open_temp(
+            dataset_test__climatology_fixture(extra_edit = ed)
+        )
+        dataset_test__assert_no_tas_read({
+            expect_error(ds$get_time_axis(variable = "tas"))
+            expect_error(ds$read_neighborhood("tas", sites))
+        })
+    }
+
+    deleted <- dataset_test__climatology_fixture(
+        extra_edit = function(nc) {
+            RNetCDF::att.delete.nc(nc, "time", "climatology")
+        }
+    )
+    ds_del <- dataset_test__open_temp(deleted)
+    expect_error(ds_del$get_time_axis(variable = "tas"), "climatolog")
+    expect_error(ds_del$read_neighborhood("tas", sites), "climatolog")
 })
 
-# An attribute read failure cannot erase a declared climatology association,
-# even when the axis kind was already cached successfully.
-test_that("CF climatology propagates declared attribute read failures", {
-    path <- dataset_test__climatology_fixture()
-    on.exit(unlink(path), add = TRUE)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    on.exit(ds$close(), add = TRUE)
+# Attribute read failures cannot erase a declared climatology association, and
+# custom variable names colliding with metadata columns must not be overwritten.
+test_that("CF climatology propagates attribute failures and isolates source value columns", {
+    col_names <- c("variable", "time_kind", "climatology_bound_start")
+    expected <- c(
+        "variable_value",
+        "time_kind_value",
+        "climatology_bound_start_value_value"
+    )
+    extra_cols <- stats::setNames(
+        lapply(col_names, function(...) {
+            list(method = "time: minimum within years time: mean over years")
+        }),
+        col_names
+    )
+    ds <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = extra_cols)
+    )
     expect_identical(dataset__time_kind(ds, 1L), "climatology")
     reader <- RNetCDF::att.get.nc
     testthat::with_mocked_bindings(
@@ -3000,59 +2408,27 @@ test_that("CF climatology propagates declared attribute read failures", {
         },
         .package = "RNetCDF"
     )
-})
 
-# Metadata columns must not overwrite source values when a custom variable name
-# collides with one or more generated climatology/coordinate column names.
-test_that("CF climatology isolates source value names from metadata columns", {
-    names <- c("variable", "time_kind", "climatology_bound_start")
-    expected <- c(
-        "variable_value",
-        "time_kind_value",
-        "climatology_bound_start_value_value"
-    )
-    for (i in seq_along(names)) {
-        path <- dataset_test__climatology_fixture()
-        nc <- RNetCDF::open.nc(path, write = TRUE)
-        RNetCDF::var.rename.nc(nc, "tas", names[[i]])
-        RNetCDF::close.nc(nc)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        table <- NULL
+    for (i in seq_along(col_names)) {
         expect_warning(
-            table <- ds$read_data_table(names[[i]], rbind = TRUE),
+            table <- ds$read_data_table(col_names[[i]], rbind = TRUE),
             "conflicts"
         )
         expect_equal(sort(table[[expected[[i]]]]), as.double(271:286))
         expect_identical(unique(table$time_kind), "climatology")
-        ds$close()
-        unlink(path)
     }
 })
 
-# Grouped cell-method headers have order-independent axis names, while NetCDF
-# identifiers remain case-sensitive and method keywords remain case-insensitive.
-test_that("CF review parses grouped point methods without changing axis identity", {
-    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
-    for (method in c(
+# Grouped cell-method headers keep axis names case-sensitive and method keywords
+# case-insensitive, while rejecting bare prefix tokens and stray identifiers.
+test_that("CF review parses grouped point and climatology cell_methods strictly", {
+    sites <- dataset_test__point_site()
+    valid_point <- c(
         "time: lat: point",
         "lat: time: POINT",
         "time: lat: point lon: mean"
-    )) {
-        path <- dataset_test__cf_point_fixture(
-            method = method,
-            calendar = "standard"
-        )
-        ds <- EsgDataset$new(path)
-        ds$open()
-        actual <- ds$read_neighborhood("tas", sites)
-        expect_equal(nrow(actual$values), 12L)
-        expect_identical(actual$time$bound_start_value, actual$time$time_value)
-        expect_identical(actual$time$bound_end_value, actual$time$time_value)
-        ds$close()
-        unlink(path)
-    }
-    for (method in c(
+    )
+    invalid_point <- c(
         "TIME: point",
         "lat: TIME: point",
         "time: lat: mean",
@@ -3061,63 +2437,73 @@ test_that("CF review parses grouped point methods without changing axis identity
         "time: lat: point-invalid",
         "lon: mean not-time: point",
         "lon: mean not.time: point"
-    )) {
-        path <- dataset_test__cf_point_fixture(
-            method = method,
-            calendar = "standard"
+    )
+    point_vars <- stats::setNames(
+        lapply(c(valid_point, invalid_point), function(m) list(method = m)),
+        c(
+            paste0("pt_ok_", seq_along(valid_point)),
+            paste0("pt_bad_", seq_along(invalid_point))
         )
-        ds <- EsgDataset$new(path)
-        ds$open()
-        expect_error(ds$read_neighborhood("tas", sites), "point|cell_methods")
-        ds$close()
-        unlink(path)
+    )
+    ds_point <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(
+            calendar = "standard",
+            extra_vars = point_vars
+        )
+    )
+    for (i in seq_along(valid_point)) {
+        actual <- ds_point$read_neighborhood(paste0("pt_ok_", i), sites)
+        expect_equal(nrow(actual$values), 12L)
+        expect_identical(actual$time$bound_start_value, actual$time$time_value)
+        expect_identical(actual$time$bound_end_value, actual$time$time_value)
     }
-})
+    for (i in seq_along(invalid_point)) {
+        expect_error(
+            ds_point$read_neighborhood(paste0("pt_bad_", i), sites),
+            "point|cell_methods"
+        )
+    }
 
-# Bare prefix tokens and a differently cased NetCDF axis cannot authorize
-# climatological time semantics, but method/qualifier keyword case is harmless.
-test_that("CF review rejects mismatched climatology axis names and stray tokens", {
-    for (method in c(
+    invalid_clim <- c(
         "TIME: mean within years TIME: mean over years",
         "garbage time: mean within years time: mean over years",
         "lon: mean not-time: minimum within years time: mean over years",
         "lon: mean not.time: minimum within years time: mean over years"
-    )) {
-        path <- dataset_test__climatology_fixture(method = method)
-        ds <- EsgDataset$new(path)
-        ds$open()
+    )
+    mixed <- "time: MINIMUM Within Years time: MEAN Over Years"
+    clim_vars <- stats::setNames(
+        lapply(c(invalid_clim, mixed), function(m) list(method = m)),
+        c(paste0("clim_bad_", seq_along(invalid_clim)), "clim_mixed")
+    )
+    ds_clim <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = clim_vars)
+    )
+    for (i in seq_along(invalid_clim)) {
         expect_error(
-            ds$get_time_axis(variable = "tas"),
+            ds_clim$get_time_axis(variable = paste0("clim_bad_", i)),
             "cell_methods|climatolog"
         )
-        ds$close()
-        unlink(path)
     }
-    method <- "time: MINIMUM Within Years time: MEAN Over Years"
-    path <- dataset_test__climatology_fixture(method = method)
-    ds <- EsgDataset$new(path)
-    ds$open()
-    statistics <- ds$get_time_axis(variable = "tas")$statistics
-    expect_identical(statistics$raw, method)
+    statistics <- ds_clim$get_time_axis(variable = "clim_mixed")$statistics
+    expect_identical(statistics$raw, mixed)
     expect_identical(statistics$operations$method, c("minimum", "mean"))
-    ds$close()
-    unlink(path)
 })
 
-# Normalized endpoint columns must retain enough provenance to recover the
-# original selected bounds matrix in its source dimension order losslessly.
-test_that("CF review preserves climatology boundary dimensions through raw reads", {
-    for (reversed in c(FALSE, TRUE)) {
-        path <- dataset_test__climatology_fixture(reversed = reversed)
-        ds <- EsgDataset$new(path)
-        ds$open()
+# Normalized endpoint columns retain provenance to reconstruct bounds losslessly
+# and refuse a replica with contradictory boundary layout before weather reads.
+test_that("CF review preserves climatology boundary dimensions and refuses contradictory replicas", {
+    sites <- dataset_test__point_site()
+    datasets <- vector("list", 2L)
+    for (idx in seq_len(2L)) {
+        reversed <- idx == 2L
+        ds <- dataset_test__open_temp(
+            dataset_test__climatology_fixture(reversed = reversed)
+        )
+        datasets[[idx]] <- ds
         axis <- ds$get_time_axis(variable = "tas")
         expected <- if (reversed) c("nv", "time") else c("time", "nv")
         expect_identical(axis$climatology$dimensions, expected)
-        raw <- ds$read_neighborhood(
-            "tas",
-            data.frame(site_id = "a", lon = 10.25, lat = .25)
-        )
+        raw <- ds$read_neighborhood("tas", sites)
         expect_identical(
             unique(raw$bounds$bounds_time_dimension),
             match("time", expected)
@@ -3142,93 +2528,60 @@ test_that("CF review preserves climatology boundary dimensions through raw reads
             reconstructed <- t(reconstructed)
         }
         expect_identical(reconstructed, axis$climatology$raw_values)
-        table <- ds$read_data_table("tas", rbind = TRUE)
         expect_identical(
-            unique(table$climatology_bounds_time_dimension),
+            unique(
+                ds$read_data_table(
+                    "tas",
+                    rbind = TRUE
+                )$climatology_bounds_time_dimension
+            ),
             match("time", expected)
         )
-        ds$close()
-        unlink(path)
     }
-})
 
-# A different boundary layout cannot silently replace a committed source, even
-# when its normalized interval numbers and weather values are identical.
-test_that("CF review refuses a replica with contradictory boundary provenance", {
-    paths <- c(
-        dataset_test__climatology_fixture(),
-        dataset_test__climatology_fixture(reversed = TRUE)
-    )
-    on.exit(unlink(paths), add = TRUE)
-    first <- EsgDataset$new(paths[[1L]])
-    first$open()
-    on.exit(first$close(), add = TRUE)
     captured <- NULL
-    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
-    first$read_neighborhood("tas", sites, on_chunk = function(chunk) {
+    datasets[[1L]]$read_neighborhood("tas", sites, on_chunk = function(chunk) {
         captured <<- chunk
     })
-    second <- EsgDataset$new(paths[[2L]])
-    second$open()
-    on.exit(second$close(), add = TRUE)
-    reads <- 0L
-    reader <- RNetCDF::var.get.nc
-    testthat::with_mocked_bindings(
-        {
-            expect_error(
-                dataset__read_neighborhood(
-                    second,
-                    "tas",
-                    sites,
-                    time = NULL,
-                    on_chunk = NULL,
-                    expected_contract = captured$contract,
-                    expected_bounds = captured$bounds
-                ),
-                "identity"
-            )
-            expect_identical(reads, 0L)
-        },
-        var.get.nc = function(...) {
-            args <- list(...)
-            if (length(args) >= 2L && identical(args[[2L]], "tas")) {
-                reads <<- reads + 1L
-            }
-            reader(...)
-        },
-        .package = "RNetCDF"
+    dataset_test__assert_no_tas_read(
+        expect_error(
+            dataset__read_neighborhood(
+                datasets[[2L]],
+                "tas",
+                sites,
+                time = NULL,
+                on_chunk = NULL,
+                expected_contract = captured$contract,
+                expected_bounds = captured$bounds
+            ),
+            "identity"
+        )
     )
 })
 
 # CMIP6 monthly extrema use ordinary contiguous bounds, even though their
 # ordered cell methods contain within-days and over-days statistics.
 test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
+    sites <- dataset_test__point_site()
     offsets <- c(60280.5, 60310, 60339.5)
     endpoints <- cbind(c(60265, 60296, 60324), c(60296, 60324, 60355))
-    for (method in c(
-        "area: mean time: maximum within days time: mean over days",
-        "area: mean time: minimum within days time: mean over days"
-    )) {
-        path <- dataset_test__climatology_fixture(
-            method = method,
-            calendar = "proleptic_gregorian",
-            units = "days since 1850-01-01",
-            times = offsets,
-            bounds = endpoints
-        )
-        nc <- RNetCDF::open.nc(path, write = TRUE)
-        RNetCDF::att.delete.nc(nc, "time", "climatology")
-        RNetCDF::att.put.nc(
-            nc,
-            "time",
-            "bounds",
-            "NC_CHAR",
-            "climatology_bounds"
-        )
-        RNetCDF::close.nc(nc)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        axis <- ds$get_time_axis(variable = "tas")
+    methods <- c(
+        tas = "area: mean time: maximum within days time: mean over days",
+        tasmin = "area: mean time: minimum within days time: mean over days"
+    )
+    path <- dataset_test__climatology_fixture(
+        method = methods[["tas"]],
+        calendar = "proleptic_gregorian",
+        units = "days since 1850-01-01",
+        times = offsets,
+        bounds = endpoints,
+        bounds_attr = "bounds",
+        extra_vars = list(tasmin = list(method = methods[["tasmin"]]))
+    )
+    ds <- dataset_test__open_temp(path)
+    for (var_name in names(methods)) {
+        method <- methods[[var_name]]
+        axis <- ds$get_time_axis(variable = var_name)
         expect_identical(axis$kind, "ordinary")
         expect_null(axis$climatology)
         expect_identical(as.double(axis$raw_values), offsets)
@@ -3238,32 +2591,29 @@ test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
             axis$statistics$operations$scope,
             c("within days", "over days")
         )
-        raw <- ds$read_neighborhood(
-            "tas",
-            data.frame(site_id = "a", lon = 10.25, lat = .25)
-        )
+        raw <- ds$read_neighborhood(var_name, sites)
         expect_equal(nrow(raw$values), 12L)
         expect_identical(unique(raw$values$cell_methods), method)
         expect_identical(raw$time$time_value, offsets)
         expect_equal(raw$time$bound_start_value, endpoints[, 1L])
         expect_equal(raw$time$bound_end_value, endpoints[, 2L])
         expect_false(any(startsWith(names(raw$time), "climatology_")))
-        ds$close()
-        nc <- RNetCDF::open.nc(path, write = TRUE)
+    }
+
+    ds$close()
+    dataset_test__edit_nc(path, function(nc) {
         RNetCDF::att.delete.nc(nc, "time", "bounds")
-        RNetCDF::close.nc(nc)
-        ds <- EsgDataset$new(path)
-        ds$open()
-        expect_error(ds$get_time_axis(variable = "tas"), "explicit time bounds")
+    })
+    ds$open()
+    for (var_name in names(methods)) {
         expect_error(
-            ds$read_neighborhood(
-                "tas",
-                data.frame(site_id = "a", lon = 10.25, lat = .25)
-            ),
+            ds$get_time_axis(variable = var_name),
             "explicit time bounds"
         )
-        ds$close()
-        unlink(path)
+        expect_error(
+            ds$read_neighborhood(var_name, sites),
+            "explicit time bounds"
+        )
     }
     # Year aggregation without a climatology declaration remains ambiguous.
     expect_error(
@@ -3273,5 +2623,519 @@ test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
         "climatology"
     )
 })
+
+# Exercise all spatial areas against one real local NetCDF axis. Distinct
+# values at every cell also detect reshaping or ordering errors across blocks.
+test_that("regional reads preserve values across long time axes and site groups", {
+    values <- array(seq_len(81000L), dim = c(9000L, 3L, 3L))
+    path <- dataset_test__write_nc(
+        0:8999,
+        "days since 2060-01-01",
+        calendar = "365_day",
+        lat = 0:2,
+        lon = 0:2,
+        tas = values,
+        path = withr::local_tempfile(fileext = ".nc")
+    )
+    dataset <- dataset_test__open(path)
+    sites <- data.table::data.table(
+        site_id = letters[1:5],
+        lon = c(0, 1, 0, 1, 2),
+        lat = c(0, 0, 1, 1, 2),
+        method = "nearest"
+    )
+    # Exercise different spatial shapes with actual local NetCDF reads.
+    for (size in c(1L, 2L, 4L, 5L)) {
+        actual <- dataset__read_regions(dataset, "tas", sites[seq_len(size)])
+        slices <- attr(actual, "read_slices")
+        expect_true(all(
+            slices$time_count * slices$lat_count * slices$lon_count <=
+                DATASET_REQUEST_MAX_VALUES
+        ))
+        for (site in seq_len(size)) {
+            expected <- values[, sites$lat[[site]] + 1L, sites$lon[[site]] + 1L]
+            expect_identical(
+                actual$value[actual$site_id == sites$site_id[[site]]],
+                as.numeric(expected)
+            )
+        }
+    }
+})
+
+# Metadata bounds, coordinate reuse, and backend isolation {{{
+# Check real native reads, including bounds-first and time-first CF layouts.
+test_that("selected CF bounds preserve native indices and dimension order", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    withr::defer(unlink(path))
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    raw <- RNetCDF::var.get.nc(nc, "time_bnds", collapse = FALSE)
+    RNetCDF::var.def.nc(nc, "alternate_bounds", "NC_DOUBLE", c("time", "bnds"))
+    RNetCDF::var.put.nc(nc, "alternate_bounds", t(raw), count = rev(dim(raw)))
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+    full <- ds$get_time_axis()
+    selected <- c(1L, 2L, 30L, 60L, 360L)
+    subset <- dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        selected
+    )
+    expect_equal(subset$start[seq_along(selected)], full$bounds$start[selected])
+    expect_equal(subset$end[seq_along(selected)], full$bounds$end[selected])
+    expect_equal(
+        data.table::as.data.table(subset$start_coordinates),
+        data.table::as.data.table(full$bounds$start_coordinates[selected, ])
+    )
+    expect_null(dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        integer()
+    ))
+    expect_error(dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        c(1L, 1L)
+    ))
+    expect_error(dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        NA_integer_
+    ))
+    expect_error(dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        361L
+    ))
+    ds$close()
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "alternate_bounds")
+    RNetCDF::close.nc(nc)
+    ds$open()
+    reordered <- dataset__time_bounds(
+        ds,
+        1L,
+        full$units,
+        full$calendar,
+        full$length,
+        selected
+    )
+    expect_equal(reordered$start, subset$start)
+    expect_equal(reordered$end, subset$end)
+})
+
+# Instrument the NetCDF wrapper to ensure the optimized path requests only
+# selected bounds; the public full-axis method still reads all intervals.
+test_that("multi-site reads fetch only selected CF bounds", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "365_day")
+    withr::defer(unlink(path))
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+    original <- RNetCDF::var.get.nc
+    bounds_counts <- list()
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.get.nc = function(ncfile, variable, ...) {
+            arguments <- list(...)
+            if (identical(variable, "time_bnds")) {
+                bounds_counts[[length(bounds_counts) + 1L]] <<- arguments$count
+            }
+            original(ncfile, variable, ...)
+        }
+    )
+    sites <- data.table::data.table(
+        site_id = c("first", "last"),
+        lon = c(104, 254),
+        lat = c(1, 41),
+        method = "nearest",
+        time_start = as.POSIXct(c("2060-01-01", "2060-12-31"), tz = "UTC"),
+        time_stop = as.POSIXct(
+            c("2060-01-01 23:59:59", "2060-12-31 23:59:59"),
+            tz = "UTC"
+        )
+    )
+    result <- dataset__read_regions(ds, "tas", sites)
+    expect_equal(nrow(result), 2L)
+    expect_equal(bounds_counts, list(c(2L, 1L), c(2L, 1L)))
+    full <- ds$get_time_axis()
+    expect_equal(length(full$bounds$start), 365L)
+    expect_equal(tail(bounds_counts, 1L), list(c(2L, 365L)))
+    expect_equal(result$time_bound_start, full$bounds$start[c(1L, 365L)])
+    empty <- dataset__read_regions(
+        ds,
+        "tas",
+        sites[, c("site_id", "lon", "lat", "method"), with = FALSE],
+        time = c("2059-01-01", "2059-01-31")
+    )
+    expect_equal(nrow(empty), 0L)
+    expect_length(bounds_counts, 3L)
+})
+
+# Coordinate reuse belongs to the opened dataset object. A separate object
+# reads its own native coordinates without publishing a cross-batch cache.
+test_that("native coordinates are reused only within a dataset object", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    withr::defer(unlink(path))
+    root <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_cache = root))
+    original <- RNetCDF::var.get.nc
+    reads <- character()
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.get.nc = function(ncfile, variable, ...) {
+            reads <<- c(reads, variable)
+            original(ncfile, variable, ...)
+        }
+    )
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+    axis <- dataset__time_axis(ds)
+    grid <- ds$get_spatial_grid()
+    expect_equal(reads, c("time", "lat", "lon"))
+    expect_null(axis$bounds)
+    reads <- character()
+    expect_identical(dataset__time_axis(ds), axis)
+    expect_identical(ds$get_spatial_grid(), grid)
+    expect_length(reads, 0L)
+
+    other <- EsgDataset$new(path)
+    other$open()
+    withr::defer(other$close())
+    expect_identical(dataset__time_axis(other), axis)
+    expect_identical(other$get_spatial_grid(), grid)
+    expect_equal(reads, c("time", "lat", "lon"))
+    expect_false(dir.exists(file.path(root, "source-metadata")))
+})
+
+# Bound metadata is shared across the acquisition's value windows, so a long
+# period does not add one metadata round trip per window.
+test_that("batch prefetch shares selected bounds across value windows", {
+    cache <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_cache = cache))
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        path,
+        2060L,
+        calendar = "365_day",
+        n_years = 24L
+    )
+    withr::defer(unlink(path))
+    acquisition <- data.table::data.table(
+        acquisition_id = "twenty-four-years",
+        physical_file_id = "twenty-four-years",
+        filename = basename(path),
+        variable_id = "tas",
+        source_id = "EC-Earth3",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        grid_label = "gr",
+        frequency = "day",
+        table_id = "day",
+        version = "v1",
+        tracking_id = "fixture",
+        checksum = store_hash_file(path, "sha256"),
+        checksum_type = "sha256",
+        url_opendap = path,
+        url_download = path,
+        time_start = as.POSIXct("2060-01-01", tz = "UTC"),
+        time_stop = as.POSIXct("2083-12-31 23:59:59", tz = "UTC")
+    )
+    consumer <- data.table::data.table(
+        acquisition_id = "twenty-four-years",
+        demand_id = "site",
+        child_key = "site",
+        site_id = "site",
+        role = "future",
+        variable_id = "tas",
+        lon = 104,
+        lat = 1,
+        spatial_method = "nearest",
+        time_start = acquisition$time_start,
+        time_stop = acquisition$time_stop,
+        requested_start = acquisition$time_start,
+        requested_stop = acquisition$time_stop
+    )
+    original <- RNetCDF::var.get.nc
+    bounds_counts <- list()
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.get.nc = function(ncfile, variable, ...) {
+            if (identical(variable, "time_bnds")) {
+                bounds_counts[[length(bounds_counts) + 1L]] <<- list(...)$count
+            }
+            original(ncfile, variable, ...)
+        }
+    )
+    expect_equal(
+        shift_batch_window__prefetch_acquisition(
+            withr::local_tempdir(),
+            acquisition,
+            consumer
+        ),
+        2L
+    )
+    expect_equal(bounds_counts, list(c(2L, 4096L), c(2L, 4096L), c(2L, 568L)))
+
+    expect_false(dir.exists(file.path(cache, "source-metadata")))
+})
+
+# Ordinary point reads must retain real, irregular intervals while avoiding
+# bounds outside the requested window. Repeated cities reuse the same subset.
+test_that("point reads reuse selected actual bounds without loading the full axis", {
+    skip_on_cran()
+    for (calendar in c("365_day", "360_day", "proleptic_gregorian")) {
+        path <- tempfile(fileext = ".nc")
+        write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
+        withr::defer(unlink(path))
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        raw <- RNetCDF::var.get.nc(nc, "time_bnds", collapse = FALSE)
+        # Deliberately nonuniform intervals rule out reconstruction from spacing.
+        raw[1L, 2:3] <- raw[1L, 2:3] + c(0.1, 0.2)
+        RNetCDF::var.put.nc(nc, "time_bnds", raw)
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        withr::defer(ds$close())
+        original <- RNetCDF::var.get.nc
+        counts <- list()
+        testthat::local_mocked_bindings(
+            .package = "RNetCDF",
+            var.get.nc = function(ncfile, variable, ...) {
+                if (identical(variable, "time_bnds")) {
+                    counts[[length(counts) + 1L]] <<- list(...)$count
+                }
+                original(ncfile, variable, ...)
+            }
+        )
+        window <- c("2060-01-02", "2060-01-03 23:59:59")
+        actual <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+        expect_equal(counts, list(c(2L, 2L)))
+        expect_equal(nrow(actual), 2L)
+        again <- ds$read_region("tas", lon = 254, lat = 41, time = window)
+        expect_equal(again$time_bound_start, actual$time_bound_start)
+        expect_length(counts, 1L)
+        ds$read_region(
+            "tas",
+            lon = 104,
+            lat = 1,
+            time = c("2060-01-03", "2060-01-03 23:59:59")
+        )
+        expect_length(counts, 1L)
+        empty <- ds$read_region(
+            "tas",
+            lon = 104,
+            lat = 1,
+            time = c("2059-01-01", "2059-01-02")
+        )
+        expect_equal(nrow(empty), 0L)
+        expect_length(counts, 1L)
+        full <- ds$get_time_axis()
+        expect_equal(tail(counts, 1L), list(c(2L, ncol(raw))))
+        expected <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+        expect_identical(actual, expected)
+        expect_equal(actual$time_bound_start, full$bounds$start[2:3])
+        expect_length(counts, 2L)
+        ds$close()
+        if (identical(calendar, "proleptic_gregorian")) {
+            nc <- RNetCDF::open.nc(path, write = TRUE)
+            raw[1L, 2L] <- raw[1L, 2L] + 0.1
+            RNetCDF::var.put.nc(nc, "time_bnds", raw)
+            RNetCDF::close.nc(nc)
+            ds$open()
+            reopened <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+            expect_false(identical(
+                reopened$time_bound_start,
+                actual$time_bound_start
+            ))
+            expect_equal(tail(counts, 1L), list(c(2L, 2L)))
+            expect_length(counts, 3L)
+            ds$close()
+        }
+        # Restore between calendars; do not stack wrappers through loop bindings.
+        testthat::local_mocked_bindings(
+            .package = "RNetCDF",
+            var.get.nc = original
+        )
+    }
+})
+
+# Independent Dataset objects must not reset each other's compute profiles.
+test_that("concurrent dataset tasks in one process retain separate backends", {
+    skip_on_cran()
+    datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
+    on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
+    tasks <- lapply(seq_along(datasets), function(index) {
+        private <- datasets[[index]]$.__enclos_env__$private
+        # No remote I/O is needed to exercise the task ownership boundary.
+        private$urls <- character()
+        private$start_async_operation(
+            "return task identity",
+            function(urls, nc_handles, value) {
+                Sys.sleep(0.1)
+                value
+            },
+            handler_args = list(value = index),
+            # The ownership contract has no startup-speed requirement; fresh
+            # workers may take longer to initialize on slower machines.
+            timeout = 60
+        )
+    })
+    expect_false(identical(
+        tasks[[1L]]$compute_profile,
+        tasks[[2L]]$compute_profile
+    ))
+    expect_identical(tasks[[2L]]$collect(), 2L)
+    expect_identical(tasks[[1L]]$collect(), 1L)
+    expect_true(all(vapply(
+        tasks,
+        function(task) task$backend_released,
+        logical(1L)
+    )))
+})
+# }}}
+
+# Loopback OPeNDAP transport smoke tests {{{
+# Use a real loopback DAP2 server so the transport tests are independent
+# of public data hosts. The dedicated ESGF service tests retain live coverage.
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$file_inq() / EsgDataset$var_inq() / EsgDataset$dim_inq() / EsgDataset$att_get() / EsgDataset$get_variables() / EsgDataset$get_dimensions() / EsgDataset$get_time_axis() / EsgDataset$get_spatial_grid() / EsgDataset$var_get() / EsgDataset$read_array() / EsgDataset$read_data_table() loopback OPeNDAP single-file smoke", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(
+        subset_test__dap_app(calendar = "standard")
+    )
+    on.exit(server$stop(), add = TRUE)
+
+    ds <- EsgDataset$new(paste0(server$url(), "fast.nc"))
+    expect_s3_class(ds, "EsgDataset")
+    expect_equal(ds$file_count, 1L)
+    expect_false(ds$is_aggregated)
+    expect_false(ds$is_open)
+
+    ds$open()
+    expect_true(ds$is_open)
+
+    ds$close()
+    expect_false(ds$is_open)
+
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    info <- ds$file_inq()
+    expect_type(info, "list")
+    expect_true("nvars" %in% names(info))
+    expect_true("ndims" %in% names(info))
+
+    var_info <- ds$var_inq("tas")
+    expect_type(var_info, "list")
+    expect_equal(var_info$name, "tas")
+
+    dim_info <- ds$dim_inq("time")
+    expect_type(dim_info, "list")
+    expect_equal(dim_info$name, "time")
+
+    expect_type(ds$att_get("tas", "units"), "character")
+    expect_true("tas" %in% ds$get_variables())
+    expect_true(all(c("time", "lat", "lon") %in% ds$get_dimensions()))
+    expect_s3_class(ds$get_time_axis()$values, "POSIXct")
+
+    grid <- ds$get_spatial_grid()
+    expect_true(all(c("lat", "lon") %in% names(grid)))
+
+    data <- ds$var_get(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(1, 2, 2),
+        collapse = TRUE
+    )
+    expect_type(data, "double")
+    expect_equal(dim(data), c(2, 2))
+
+    data <- ds$var_get(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(1, 2, 2),
+        collapse = FALSE
+    )
+    expect_type(data, "double")
+    expect_equal(dim(data), c(1, 2, 2))
+
+    arr <- ds$read_array(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(1, 2, 2),
+        collapse = TRUE
+    )[[1L]]
+    expect_type(arr, "double")
+    expect_equal(dim(arr), c(2, 2))
+
+    dt <- ds$read_data_table("tas", start = c(1, 1, 1), count = c(1, 2, 2))[[
+        1L
+    ]]
+    expect_s3_class(dt, "data.table")
+    expect_true("tas" %in% names(dt))
+    expect_equal(nrow(dt), 4L)
+})
+
+test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / EsgDataset$read_data_table() loopback OPeNDAP multi-file smoke", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(
+        subset_test__dap_app(calendar = "standard")
+    )
+    on.exit(server$stop(), add = TRUE)
+
+    ds <- EsgDataset$new(paste0(server$url(), c("fast.nc", "june.nc")))
+    expect_s3_class(ds, "EsgDataset")
+    expect_equal(ds$file_count, 2L)
+    expect_true(ds$is_aggregated)
+    expect_false(ds$is_open)
+
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    expect_s3_class(ds$get_time_axis(2)$values, "POSIXct")
+
+    start <- c(1, 1, 1)
+    count <- c(1, 2, 2)
+    dt_list <- ds$read_data_table("tas", start = start, count = count)
+    expect_type(dt_list, "list")
+    expect_length(dt_list, 2L)
+    expect_true(all(vapply(
+        dt_list,
+        function(x) inherits(x, "data.table"),
+        logical(1L)
+    )))
+
+    dt_all <- ds$read_data_table(
+        "tas",
+        start = start,
+        count = count,
+        rbind = TRUE
+    )
+    expect_s3_class(dt_all, "data.table")
+    expect_true("file_index" %in% names(dt_all))
+    expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
+    expect_equal(nrow(dt_all), 8L)
+})
+# }}}
 
 # vim: fdm=marker :

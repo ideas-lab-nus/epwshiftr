@@ -10,352 +10,6 @@ STORE_DOWNLOAD_LAYOUT_CHOICES <- c("flat", "dataset", "drs", "template")
 STORE_DOWNLOAD_COLLISION_CHOICES <- c("error", "checksum", "suffix")
 STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 
-# Build one initialization-local DDL executor from the current catalog. Keep the
-# CREATE/ALTER statements as the sole schema definition: skipping a known target
-# avoids DuckDB prepare/execute work without caching database state across opens.
-# store__schema_executor {{{
-store__schema_executor <- function(conn, tables) {
-    columns <- if (length(tables)) {
-        ddb_query(
-            conn,
-            paste(
-                "SELECT table_name, column_name FROM information_schema.columns",
-                "WHERE table_catalog = current_database()",
-                "AND table_schema = current_schema()"
-            )
-        )
-    } else {
-        data.frame(table_name = character(), column_name = character())
-    }
-    column_keys <- paste(columns$table_name, columns$column_name, sep = ".")
-    # Statements that still need to run are queued and sent to DuckDB as one
-    # multi-statement call by flush(). DuckDB stops at the first failing
-    # statement and keeps the earlier ones, which is the state sequential
-    # execution would leave. Callers flush before any read that depends on the
-    # queued DDL.
-    pending <- character()
-    exec <- function(sql) {
-        # Only recognize the package's unquoted, idempotent schema declarations;
-        # any other SQL still executes normally instead of being guessed at.
-        create <- regmatches(
-            sql,
-            regexec(
-                "^[[:space:]]*CREATE TABLE IF NOT EXISTS ([[:alnum:]_]+)[[:space:]]*[(]",
-                sql
-            )
-        )[[1L]]
-        if (length(create) && create[[2L]] %in% tables) {
-            return(invisible(NULL))
-        }
-        alter <- regmatches(
-            sql,
-            regexec(
-                paste0(
-                    "^[[:space:]]*ALTER TABLE ([[:alnum:]_]+)",
-                    " ADD COLUMN IF NOT EXISTS ([[:alnum:]_]+) "
-                ),
-                sql
-            )
-        )[[1L]]
-        if (
-            length(alter) &&
-                paste(alter[[2L]], alter[[3L]], sep = ".") %in% column_keys
-        ) {
-            return(invisible(NULL))
-        }
-        # Drop the statement's own terminator so joining never doubles it.
-        pending <<- c(pending, sub("[[:space:];]+$", "", sql))
-        invisible(NULL)
-    }
-    flush <- function() {
-        if (!length(pending)) {
-            return(invisible(NULL))
-        }
-        batch <- pending
-        # Clear first so a failed batch is not replayed by a later flush.
-        pending <<- character()
-        ddb_exec(conn, paste(batch, collapse = ";\n"))
-        invisible(NULL)
-    }
-    list(exec = exec, flush = flush)
-}
-# }}}
-
-# Wrap one access failure with the exact service, phase, target, duration, and
-# original condition needed by workflow diagnostics and final plan errors.
-# store__access_error {{{
-store__access_error <- function(error, phase, service, target, started_at) {
-    elapsed <- proc.time()[["elapsed"]] - started_at
-    message <- sprintf(
-        "%s %s failed for %s after %.3f seconds: %s",
-        service,
-        phase,
-        target,
-        elapsed,
-        conditionMessage(error)
-    )
-    structure(
-        list(
-            message = message,
-            call = NULL,
-            parent = error,
-            phase = phase,
-            service = service,
-            target = target,
-            elapsed_seconds = elapsed,
-            error_class = class(error)[[1L]],
-            error_message = conditionMessage(error)
-        ),
-        class = c("epwshiftr_store_access_error", "error", "condition")
-    )
-}
-# }}}
-
-# Preserve both remote and local failures when an automatic HTTP retry cannot
-# recover an OPeNDAP extraction attempt.
-# store__fallback_error {{{
-store__fallback_error <- function(remote, local) {
-    structure(
-        list(
-            message = paste(
-                "OPeNDAP extraction and HTTP fallback both failed.",
-                sprintf("Remote: %s", conditionMessage(remote)),
-                sprintf("Fallback: %s", conditionMessage(local))
-            ),
-            call = NULL,
-            parent = local,
-            remote_error = remote,
-            fallback_error = local
-        ),
-        class = c(
-            "epwshiftr_store_fallback_error",
-            "epwshiftr_store_access_error",
-            "error",
-            "condition"
-        )
-    )
-}
-# }}}
-
-# Record one structured access failure through the existing workflow reporter;
-# standalone store calls retain the same information in their condition text.
-# store__report_access_failure {{{
-store__report_access_failure <- function(
-    reporter,
-    file,
-    error,
-    attempt,
-    outcome = "fallback"
-) {
-    if (is.null(reporter)) {
-        return(invisible(NULL))
-    }
-    reporter$notice(
-        sprintf(
-            "%s %s failed for %s",
-            error$service,
-            error$phase,
-            file$filename[[1L]]
-        ),
-        outcome = outcome,
-        details = list(
-            unit_type = "extraction_plan",
-            variable = file$variable_id[[1L]],
-            access_method = error$service,
-            access_phase = error$phase,
-            target = error$target,
-            data_node = query_result__url_host(error$target),
-            elapsed_seconds = error$elapsed_seconds,
-            error_class = error$error_class,
-            error = error$error_message,
-            attempt = as.integer(attempt)
-        )
-    )
-    reporter$detail(
-        sprintf("  %s", conditionMessage(error)),
-        level = "detail"
-    )
-    invisible(NULL)
-}
-# }}}
-
-# Build a content-addressed path for one undecorated point-extraction payload.
-# Store-local plan IDs are excluded deliberately so method children requesting
-# the same immutable file, location, time range, and spatial method can share
-# the expensive NetCDF read while retaining independent manifests.
-# store__extract_cache_path {{{
-store__extract_cache_path <- function(plan, file) {
-    file <- data.table::as.data.table(file)
-    source_fields <- intersect(
-        c(
-            "checksum",
-            "checksum_type",
-            "size",
-            "version",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "frequency",
-            "table_id",
-            "variable_id",
-            "grid_label"
-        ),
-        names(file)
-    )
-    source <- as.list(file[1L, source_fields, with = FALSE])
-    checksum <- store__chr1(file[["checksum"]])
-    version <- store__chr1(file[["version"]])
-    if (
-        (is.na(checksum) || !nzchar(checksum)) &&
-            (is.na(version) || !nzchar(version))
-    ) {
-        # Generic records without immutable content/version metadata retain
-        # service URLs in the key so a provider replacement cannot reuse stale
-        # bytes under a weak logical identity.
-        source$service_urls <- c(
-            store__chr1(file[["url_opendap"]]),
-            store__chr1(file[["url_download"]])
-        )
-    }
-    key <- store__hash(
-        "site-extraction-v1",
-        store__logical_file_id(file)[[1L]],
-        source,
-        list(
-            variable_id = plan$variable_id[[1L]],
-            lon = as.numeric(plan$lon[[1L]]),
-            lat = as.numeric(plan$lat[[1L]]),
-            method = plan$method[[1L]],
-            time_start = as.numeric(plan$time_start[[1L]]),
-            time_stop = as.numeric(plan$time_stop[[1L]])
-        )
-    )
-    file.path(
-        cache__option("dir_cache", cache__default_dir()),
-        "site-extractions",
-        substr(key, 1L, 2L),
-        paste0(key, ".rds")
-    )
-}
-# }}}
-
-# Read a shared extraction only when its complete method-neutral payload is
-# present. Invalid or interrupted cache files are treated as misses and safely
-# replaced while the content-addressed lock is held.
-# store__extract_cache_read {{{
-store__extract_cache_read <- function(path) {
-    if (!file.exists(path)) {
-        return(NULL)
-    }
-    receipt <- paste0(path, ".json")
-    if (file.exists(receipt) && !store__extract_cache_available(path)) {
-        return(NULL)
-    }
-    payload <- tryCatch(readRDS(path), error = identity)
-    required <- c(
-        "data",
-        "grid_sources",
-        "available_time_count",
-        "actual_start",
-        "actual_end"
-    )
-    if (
-        inherits(payload, "error") ||
-            !is.list(payload) ||
-            !all(required %in% names(payload)) ||
-            !is.data.frame(payload$data)
-    ) {
-        return(NULL)
-    }
-    payload
-}
-# }}}
-
-# Verify a cache receipt without materializing all native values. Existing
-# payloads without a receipt still undergo their full structural check.
-# store__extract_cache_available {{{
-store__extract_cache_available <- function(path) {
-    if (!file.exists(path)) {
-        return(FALSE)
-    }
-    receipt <- paste0(path, ".json")
-    if (!file.exists(receipt)) {
-        return(!is.null(store__extract_cache_read(path)))
-    }
-    record <- tryCatch(
-        jsonlite::read_json(receipt, simplifyVector = TRUE),
-        error = function(e) NULL
-    )
-    is.list(record) && identical(record[["sha256"]], checksum_file(path))
-}
-# }}}
-
-# Atomically publish an undecorated extraction payload. Plan/query identities
-# are attached only after materialization in the requesting store.
-# store__extract_cache_write {{{
-store__extract_cache_write <- function(path, payload) {
-    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    # Keep staging on the same volume without adding to a long content address.
-    temporary <- tempfile(pattern = ".epw-", tmpdir = dirname(path))
-    on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
-    saveRDS(payload, temporary, version = 3L, compress = FALSE)
-    if (file.exists(path)) {
-        unlink(path)
-    }
-    if (!file.rename(temporary, path)) {
-        cli::cli_abort("Could not publish the shared extraction cache entry.")
-    }
-    store_write_json_atomic(
-        list(sha256 = checksum_file(path)),
-        paste0(path, ".json")
-    )
-    invisible(path)
-}
-# }}}
-
-# Resolve one shared extraction under a cross-process lock. The generator owns
-# all remote/local fallback behavior; this wrapper stores only successful,
-# fully-read payloads and identifies reuse without copying store-specific IDs.
-# store__extract_cache_resolve {{{
-store__extract_cache_resolve <- function(plan, file, generate) {
-    checkmate::assert_function(generate)
-    if (identical(cache__mode(), "off")) {
-        value <- generate()
-        value$cache_reused <- FALSE
-        return(value)
-    }
-    path <- store__extract_cache_path(plan, file)
-    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    manifest_with_lock(
-        path,
-        {
-            payload <- store__extract_cache_read(path)
-            if (!is.null(payload)) {
-                return(list(
-                    payload = payload,
-                    opened = list(
-                        access_method = "shared_cache",
-                        target = path
-                    ),
-                    recovery_error = NULL,
-                    cache_reused = TRUE
-                ))
-            }
-            if (identical(cache__mode(), "offline")) {
-                cli::cli_abort(
-                    "Shared extraction cache is missing in offline mode."
-                )
-            }
-            value <- generate()
-            store__extract_cache_write(path, value$payload)
-            value$cache_reused <- FALSE
-            value
-        },
-        timeout = 86400
-    )
-}
-# }}}
-
 # Canonicalize reset targets and reject broad directories whose replacement
 # could damage a user profile, R installation, temporary session, or project.
 # store__reset_path {{{
@@ -791,8 +445,7 @@ EsgStore <- R6::R6Class(
         #'         `downloads/`.
         # download_layout {{{
         download_layout = function() {
-            private$check_open()
-            private$download_layout_policy()
+            store_download__layout(self, private)
         },
         # }}}
         # set_download_layout
@@ -821,31 +474,15 @@ EsgStore <- R6::R6Class(
             collision = c("error", "checksum", "suffix"),
             missing = c("fallback", "error")
         ) {
-            private$check_open()
-            policy <- private$normalize_download_layout_policy(list(
-                layout = match.arg(layout),
+            store_download__set_layout(
+                self,
+                private,
+                layout = layout,
                 template = template,
                 include_version = include_version,
-                collision = match.arg(collision),
-                missing = match.arg(missing)
-            ))
-            private$with_store_lock({
-                private$replace_rows(
-                    "store_meta",
-                    data.frame(
-                        key = "download_layout",
-                        value = jsonlite::toJSON(
-                            policy,
-                            auto_unbox = TRUE,
-                            null = "null"
-                        ),
-                        updated_at = store__now(),
-                        stringsAsFactors = FALSE
-                    ),
-                    "key"
-                )
-            })
-            invisible(self)
+                collision = collision,
+                missing = missing
+            )
         },
         # }}}
         # register_artifact
@@ -887,106 +524,26 @@ EsgStore <- R6::R6Class(
             source_commit = NULL,
             metadata = list()
         ) {
-            private$check_open()
-            checkmate::assert_choice(
-                kind,
-                c(
-                    "query",
-                    "dict",
-                    "source",
-                    "cmip6_index",
-                    "netcdf",
-                    "extract",
-                    "output"
-                )
+            store_catalog__register_artifact(
+                self,
+                private,
+                kind = kind,
+                path = path,
+                role = role,
+                project = project,
+                status = status,
+                checksum = checksum,
+                checksum_type = checksum_type,
+                size = size,
+                query_id = query_id,
+                file_key = file_key,
+                dict_id = dict_id,
+                source_url = source_url,
+                source_repo = source_repo,
+                source_tag = source_tag,
+                source_commit = source_commit,
+                metadata = metadata
             )
-            checkmate::assert_string(path, min.chars = 1L)
-            checkmate::assert_choice(
-                status,
-                c("planned", "available", "failed", "missing")
-            )
-            checkmate::assert_choice(checksum_type, c("md5", "sha256"))
-            checkmate::assert_list(metadata, null.ok = TRUE)
-
-            private$with_store_lock({
-                path <- store_abs_path(path, root = private$store_path)
-                rel_path <- store_rel_path(path, root = private$store_path)
-                exists <- file.exists(path)
-                if (is.null(role)) {
-                    role <- switch(
-                        kind,
-                        query = "input",
-                        dict = "input",
-                        source = "source",
-                        cmip6_index = "input",
-                        netcdf = "download",
-                        extract = "derived",
-                        output = "output"
-                    )
-                }
-                checkmate::assert_choice(
-                    role,
-                    c("input", "source", "download", "derived", "output")
-                )
-
-                if (is.null(size) && exists) {
-                    size <- as.numeric(file.info(path, extra_cols = FALSE)$size)
-                }
-                if (
-                    is.null(checksum) &&
-                        exists &&
-                        identical(status, "available")
-                ) {
-                    checksum <- store_hash_file(path, checksum_type)
-                }
-                if (is.null(size)) {
-                    size <- NA_real_
-                }
-                if (is.null(checksum)) {
-                    checksum <- NA_character_
-                }
-                if (is.null(metadata)) {
-                    metadata <- list()
-                }
-
-                artifact_id <- store__hash(
-                    kind,
-                    rel_path,
-                    checksum,
-                    file_key,
-                    dict_id,
-                    source_commit
-                )
-                now <- store__now()
-                row <- data.frame(
-                    artifact_id = artifact_id,
-                    kind = kind,
-                    role = role,
-                    project = store__chr1(project),
-                    relative_path = rel_path,
-                    checksum = store__chr1(checksum),
-                    checksum_type = checksum_type,
-                    size = as.numeric(size),
-                    status = status,
-                    query_id = store__chr1(query_id),
-                    file_key = store__chr1(file_key),
-                    dict_id = store__chr1(dict_id),
-                    source_url = store__chr1(source_url),
-                    source_repo = store__chr1(source_repo),
-                    source_tag = store__chr1(source_tag),
-                    source_commit = store__chr1(source_commit),
-                    metadata_json = jsonlite::toJSON(
-                        metadata,
-                        auto_unbox = TRUE,
-                        null = "null"
-                    ),
-                    created_at = now,
-                    updated_at = now,
-                    stringsAsFactors = FALSE
-                )
-                private$replace_rows("artifact", row, "artifact_id")
-                artifact_id
-            })
         },
         # }}}
         # artifact_path
@@ -1000,21 +557,7 @@ EsgStore <- R6::R6Class(
         #' @return Absolute artifact path.
         # artifact_path {{{
         artifact_path = function(artifact_id) {
-            private$check_open()
-            checkmate::assert_character(
-                artifact_id,
-                any.missing = FALSE,
-                min.chars = 1L
-            )
-            rows <- store__artifact_rows(private$conn, artifact_id)
-            paths <- rows$relative_path[match(artifact_id, rows$artifact_id)]
-            vapply(
-                paths,
-                store_abs_path,
-                character(1L),
-                root = private$store_path,
-                USE.NAMES = FALSE
-            )
+            store_catalog__artifact_path(self, private, artifact_id)
         },
         # }}}
         # validate
@@ -1029,94 +572,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table with validation results.
         # validate {{{
         validate = function(artifact_id = NULL) {
-            private$check_open()
-            artifacts <- data.table::as.data.table(store__artifact_rows(
-                private$conn,
-                artifact_id
-            ))
-            if (!nrow(artifacts)) {
-                return(data.table::data.table(
-                    artifact_id = character(),
-                    kind = character(),
-                    expected_path = character(),
-                    exists = logical(),
-                    checksum_ok = logical(),
-                    size_ok = logical(),
-                    status = character()
-                ))
-            }
-
-            data.table::set(
-                artifacts,
-                j = "expected_path",
-                value = vapply(
-                    artifacts$relative_path,
-                    store_abs_path,
-                    character(1L),
-                    root = private$store_path,
-                    USE.NAMES = FALSE
-                )
-            )
-            data.table::set(
-                artifacts,
-                j = "exists",
-                value = file.exists(artifacts$expected_path)
-            )
-            data.table::set(
-                artifacts,
-                j = "checksum_ok",
-                value = mapply(
-                    function(path, ok, checksum, checksum_type) {
-                        if (
-                            !isTRUE(ok) || is.na(checksum) || !nzchar(checksum)
-                        ) {
-                            return(NA)
-                        }
-                        identical(
-                            tolower(store_hash_file(path, checksum_type)),
-                            tolower(checksum)
-                        )
-                    },
-                    artifacts$expected_path,
-                    artifacts$exists,
-                    artifacts$checksum,
-                    artifacts$checksum_type,
-                    USE.NAMES = FALSE
-                )
-            )
-            data.table::set(
-                artifacts,
-                j = "size_ok",
-                value = mapply(
-                    function(path, ok, size) {
-                        if (!isTRUE(ok) || is.na(size)) {
-                            return(NA)
-                        }
-                        identical(
-                            as.numeric(
-                                file.info(path, extra_cols = FALSE)$size
-                            ),
-                            as.numeric(size)
-                        )
-                    },
-                    artifacts$expected_path,
-                    artifacts$exists,
-                    artifacts$size,
-                    USE.NAMES = FALSE
-                )
-            )
-            artifacts[,
-                .SD,
-                .SDcols = c(
-                    "artifact_id",
-                    "kind",
-                    "expected_path",
-                    "exists",
-                    "checksum_ok",
-                    "size_ok",
-                    "status"
-                )
-            ]
+            store_catalog__validate(self, private, artifact_id = artifact_id)
         },
         # }}}
         # add_query
@@ -1130,67 +586,13 @@ EsgStore <- R6::R6Class(
         #' @return The stable query ID.
         # add_query {{{
         add_query = function(query, label = NULL, track = FALSE) {
-            private$check_open()
-            if (!inherits(query, "EsgQuery")) {
-                cli::cli_abort("`query` must be an {.cls EsgQuery} object.")
-            }
-            checkmate::assert_string(label, null.ok = TRUE)
-            checkmate::assert_flag(track)
-
-            private$with_store_lock({
-                payload <- private$query_payload(query)
-                query_id <- payload$query_id
-                qid <- query_id
-                query_file <- file.path(
-                    private$query_dir,
-                    sprintf("query-%s.json", query_id)
-                )
-                query$save(query_file)
-
-                now <- store__now()
-                queries <- private$read_table("esg_query")
-                existing <- queries[queries[["query_id"]] == qid]
-                created_at <- if (nrow(existing)) {
-                    existing$created_at[[1L]]
-                } else {
-                    now
-                }
-                tracked <- if (nrow(existing)) {
-                    store__flag(existing$tracked[[1L]]) || isTRUE(track)
-                } else {
-                    isTRUE(track)
-                }
-                if (is.null(label) && nrow(existing)) {
-                    label <- store__chr1(existing$label[[1L]])
-                    if (is.na(label)) label <- NULL
-                }
-
-                row <- data.frame(
-                    query_id = query_id,
-                    label = store__chr1(label),
-                    index_node = payload$index_node,
-                    query_file = store_rel_path(query_file, private$store_path),
-                    parameter_json = payload$parameter_json,
-                    tracked = tracked,
-                    created_at = created_at,
-                    updated_at = now,
-                    last_checked_at = as.POSIXct(NA),
-                    package_version = as.character(utils::packageVersion(
-                        "epwshiftr"
-                    )),
-                    stringsAsFactors = FALSE
-                )
-                private$replace_rows("esg_query", row, "query_id")
-                self$register_artifact(
-                    kind = "query",
-                    path = query_file,
-                    role = "input",
-                    project = "CMIP6",
-                    query_id = query_id,
-                    metadata = list(result_type = "EsgQuery")
-                )
-                query_id
-            })
+            store_catalog__add_query(
+                self,
+                private,
+                query,
+                label = label,
+                track = track
+            )
         },
         # }}}
         # track_query
@@ -1202,7 +604,7 @@ EsgStore <- R6::R6Class(
         #' @return The store object, invisibly.
         # track_query {{{
         track_query = function(query_id) {
-            private$set_query_tracked(query_id, TRUE)
+            store_catalog__set_query_tracked(self, private, query_id, TRUE)
             invisible(self)
         },
         # }}}
@@ -1215,7 +617,7 @@ EsgStore <- R6::R6Class(
         #' @return The store object, invisibly.
         # untrack_query {{{
         untrack_query = function(query_id) {
-            private$set_query_tracked(query_id, FALSE)
+            store_catalog__set_query_tracked(self, private, query_id, FALSE)
             invisible(self)
         },
         # }}}
@@ -1230,35 +632,13 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of tags for the query.
         # tag_query {{{
         tag_query = function(query_id, tag, replace = FALSE) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
+            store_catalog__tag_query(
+                self,
+                private,
+                query_id,
                 tag,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE
+                replace = replace
             )
-            checkmate::assert_flag(replace)
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                if (isTRUE(replace)) {
-                    private$delete_by_key("esg_query_tag", "query_id", query_id)
-                }
-                now <- store__now()
-                rows <- data.frame(
-                    tag_id = vapply(
-                        tag,
-                        function(value) store__hash(query_id, value),
-                        character(1L)
-                    ),
-                    query_id = query_id,
-                    tag = tag,
-                    created_at = now,
-                    stringsAsFactors = FALSE
-                )
-                private$append_new_rows("esg_query_tag", rows, "tag_id")
-                self$query_tags(query_id)
-            })
         },
         # }}}
         # untag_query
@@ -1271,33 +651,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of remaining tags for the query.
         # untag_query {{{
         untag_query = function(query_id, tag = NULL) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
-                tag,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                wanted_tag <- tag
-                wanted_query_id <- query_id
-                tags <- private$read_table("esg_query_tag")
-                remove <- tags[tags[["query_id"]] == wanted_query_id]
-                if (!is.null(wanted_tag) && nrow(remove)) {
-                    remove <- remove[remove[["tag"]] %in% wanted_tag]
-                }
-                if (nrow(remove)) {
-                    private$delete_by_key(
-                        "esg_query_tag",
-                        "tag_id",
-                        remove$tag_id
-                    )
-                }
-                self$query_tags(query_id)
-            })
+            store_catalog__untag_query(self, private, query_id, tag = tag)
         },
         # }}}
         # query_tags
@@ -1309,20 +663,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of query tags.
         # query_tags {{{
         query_tags = function(query_id = NULL) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            tags <- private$read_table("esg_query_tag")
-            if (!is.null(query_id) && nrow(tags)) {
-                wanted_query_id <- query_id
-                tags <- tags[tags[["query_id"]] %in% wanted_query_id]
-            }
-            tags[]
+            store_catalog__query_tags(self, private, query_id = query_id)
         },
         # }}}
         # require_query
@@ -1335,34 +676,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of query dependency edges.
         # require_query {{{
         require_query = function(query_id, parent_query_id) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_string(parent_query_id, min.chars = 1L)
-            if (identical(query_id, parent_query_id)) {
-                cli::cli_abort("A query cannot require itself.")
-            }
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                private$get_query_row(parent_query_id)
-                now <- store__now()
-                row <- data.frame(
-                    dependency_id = store__hash(query_id, parent_query_id),
-                    query_id = query_id,
-                    parent_query_id = parent_query_id,
-                    created_at = now,
-                    stringsAsFactors = FALSE
-                )
-                private$append_new_rows(
-                    "esg_query_dependency",
-                    row,
-                    "dependency_id"
-                )
-                self$query_graph(
-                    query_id = query_id,
-                    direction = "parents",
-                    recursive = FALSE
-                )
-            })
+            store_catalog__require_query(
+                self,
+                private,
+                query_id,
+                parent_query_id
+            )
         },
         # }}}
         # unrequire_query
@@ -1376,39 +695,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of remaining dependency edges for the query.
         # unrequire_query {{{
         unrequire_query = function(query_id, parent_query_id = NULL) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
-                parent_query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__unrequire_query(
+                self,
+                private,
+                query_id,
+                parent_query_id = parent_query_id
             )
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                wanted_parent_query_id <- parent_query_id
-                wanted_query_id <- query_id
-                edges <- private$read_table("esg_query_dependency")
-                remove <- edges[edges[["query_id"]] == wanted_query_id]
-                if (!is.null(wanted_parent_query_id) && nrow(remove)) {
-                    remove <- remove[
-                        remove[["parent_query_id"]] %in% wanted_parent_query_id
-                    ]
-                }
-                if (nrow(remove)) {
-                    private$delete_by_key(
-                        "esg_query_dependency",
-                        "dependency_id",
-                        remove$dependency_id
-                    )
-                }
-                self$query_graph(
-                    query_id = query_id,
-                    direction = "parents",
-                    recursive = FALSE
-                )
-            })
         },
         # }}}
         # query_graph
@@ -1426,24 +718,13 @@ EsgStore <- R6::R6Class(
             direction = c("children", "parents", "both"),
             recursive = TRUE
         ) {
-            private$check_open()
-            checkmate::assert_string(query_id, null.ok = TRUE)
-            checkmate::assert_flag(recursive)
-            direction <- match.arg(direction)
-            edges <- private$read_table("esg_query_dependency")
-            if (is.null(query_id) || !nrow(edges)) {
-                return(edges[])
-            }
-            ids <- private$query_related_ids(
-                query_id,
+            store_catalog__query_graph(
+                self,
+                private,
+                query_id = query_id,
                 direction = direction,
                 recursive = recursive
             )
-            edges[
-                edges[["query_id"]] %in%
-                    ids |
-                    edges[["parent_query_id"]] %in% ids
-            ][]
         },
         # }}}
         # queries
@@ -1455,16 +736,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of stored query records.
         # queries {{{
         queries = function(tracked = NULL) {
-            private$check_open()
-            checkmate::assert_flag(tracked, null.ok = TRUE)
-            queries <- private$read_table("esg_query")
-            if (!is.null(tracked) && nrow(queries)) {
-                want_tracked <- isTRUE(tracked)
-                queries <- queries[
-                    as.logical(queries[["tracked"]]) == want_tracked
-                ]
-            }
-            queries[]
+            store_catalog__queries(self, private, tracked = tracked)
         },
         # }}}
         # query_files
@@ -1477,45 +749,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of linked file records.
         # query_files {{{
         query_files = function(query_id, status = NULL) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
-                status,
-                any.missing = FALSE,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__query_files(
+                self,
+                private,
+                query_id,
+                status = status
             )
-            private$get_query_row(query_id)
-
-            qid <- query_id
-            links <- private$read_table("esg_query_file")
-            links <- links[links[["query_id"]] == qid]
-            if (!is.null(status) && nrow(links)) {
-                wanted_status <- status
-                links <- links[links[["status"]] %in% wanted_status]
-            }
-            if (!nrow(links)) {
-                return(data.table::data.table())
-            }
-
-            files <- private$read_table("esg_file")
-            out <- merge(
-                links,
-                files,
-                by = "file_key",
-                all.x = TRUE,
-                sort = FALSE
-            )
-            data.table::setcolorder(
-                out,
-                c(
-                    "query_id",
-                    "file_key",
-                    "status",
-                    setdiff(names(out), c("query_id", "file_key", "status"))
-                )
-            )
-            out[]
         },
         # }}}
         # preview_update_queries
@@ -1547,69 +786,19 @@ EsgStore <- R6::R6Class(
             fields = "*",
             ...
         ) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__preview_update_queries(
+                self,
+                private,
+                query_id = query_id,
+                tracked = tracked,
+                tag = tag,
+                children = children,
+                detail = detail,
+                all = all,
+                limit = limit,
+                fields = fields,
+                ...
             )
-            checkmate::assert_flag(tracked, null.ok = TRUE)
-            checkmate::assert_character(
-                tag,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_flag(children)
-            checkmate::assert_flag(detail)
-
-            rows <- private$select_query_rows(
-                query_id = private$resolve_query_selection(
-                    query_id = query_id,
-                    tag = tag,
-                    children = children
-                ),
-                tracked = if (is.null(query_id)) tracked else NULL
-            )
-            if (!nrow(rows)) {
-                empty <- data.table::data.table()
-                if (isTRUE(detail)) {
-                    return(list(summary = empty, changes = empty))
-                }
-                return(empty)
-            }
-
-            previews <- vector("list", nrow(rows))
-            for (i in seq_len(nrow(rows))) {
-                query <- private$load_query(rows[i])
-                files <- query$collect(
-                    type = "File",
-                    fields = fields,
-                    all = all,
-                    limit = limit,
-                    ...
-                )
-                previews[[i]] <- private$preview_query_update(
-                    row = rows[i],
-                    files = files
-                )
-            }
-
-            summary <- data.table::rbindlist(
-                lapply(previews, `[[`, "summary"),
-                fill = TRUE
-            )
-            if (!isTRUE(detail)) {
-                return(summary[])
-            }
-            changes <- data.table::rbindlist(
-                lapply(previews, `[[`, "changes"),
-                fill = TRUE
-            )
-            list(summary = summary[], changes = changes[])
         },
         # }}}
         # update_queries
@@ -1660,95 +849,27 @@ EsgStore <- R6::R6Class(
             fields = "*",
             ...
         ) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__update_queries(
+                self,
+                private,
+                query_id = query_id,
+                tracked = tracked,
+                tag = tag,
+                children = children,
+                enqueue = enqueue,
+                downloader = downloader,
+                replica = replica,
+                session_label = session_label,
+                service = service,
+                probe = probe,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds,
+                strategy = strategy,
+                all = all,
+                limit = limit,
+                fields = fields,
+                ...
             )
-            checkmate::assert_flag(tracked, null.ok = TRUE)
-            checkmate::assert_character(
-                tag,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_flag(children)
-            checkmate::assert_flag(enqueue)
-            strategy <- match.arg(strategy)
-            if (isTRUE(enqueue) && is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-            rows <- private$select_query_rows(
-                query_id = private$resolve_query_selection(
-                    query_id = query_id,
-                    tag = tag,
-                    children = children
-                ),
-                tracked = if (is.null(query_id)) tracked else NULL
-            )
-            if (!nrow(rows)) {
-                return(data.table::data.table())
-            }
-
-            updated <- vector("list", nrow(rows))
-            for (i in seq_len(nrow(rows))) {
-                # Network collection can be slow; keep it outside the store lock.
-                query <- private$load_query(rows[i])
-                files <- query$collect(
-                    type = "File",
-                    fields = fields,
-                    all = all,
-                    limit = limit,
-                    ...
-                )
-
-                # Only the manifest mutation needs the store lock.
-                updated[[i]] <- private$with_store_lock({
-                    private$update_query_files(
-                        rows$query_id[[i]],
-                        files,
-                        fields = fields,
-                        all = all,
-                        limit = limit
-                    )
-                })
-                if (isTRUE(enqueue)) {
-                    # Build and enqueue downloader work without holding the store lock.
-                    sid <- private$enqueue_query_download(
-                        query_id = rows$query_id[[i]],
-                        files = files,
-                        current = updated[[i]][
-                            updated[[i]][["status"]] %in% "current",
-                            ,
-                            drop = FALSE
-                        ],
-                        downloader = downloader,
-                        replica = replica,
-                        session_label = session_label,
-                        service = service,
-                        probe = probe,
-                        probe_concurrency = probe_concurrency,
-                        probe_cache_seconds = probe_cache_seconds,
-                        strategy = strategy,
-                        error_if_empty = FALSE
-                    )
-                    if (nrow(updated[[i]])) {
-                        updated[[i]]$download_session_id <- sid
-                        # Persist the session link with a short manifest write.
-                        private$with_store_lock({
-                            private$set_query_update_session(
-                                updated[[i]]$update_id[[1L]],
-                                sid
-                            )
-                        })
-                    }
-                }
-            }
-            data.table::rbindlist(updated, fill = TRUE)
         },
         # }}}
         # download_preflight
@@ -1783,72 +904,21 @@ EsgStore <- R6::R6Class(
             fields = "*",
             ...
         ) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            strategy <- match.arg(strategy)
-
-            row <- private$get_query_row(query_id)
-            query <- private$load_query(row)
-            files <- query$collect(
-                type = "File",
-                fields = fields,
-                all = all,
-                limit = limit,
-                ...
-            )
-            preview <- private$preview_query_update(
-                row = row,
-                files = files
-            )
-
-            node_stats <- if (!is.null(downloader)) {
-                tryCatch(
-                    downloader$data_nodes(service = service),
-                    error = function(e) NULL
-                )
-            } else {
-                NULL
-            }
-            network_policy <- if (!is.null(downloader)) {
-                tryCatch(downloader$network_policy, error = function(e) NULL)
-            } else {
-                NULL
-            }
-            node_policy <- if (!is.null(downloader)) {
-                tryCatch(downloader$node_policy, error = function(e) NULL)
-            } else {
-                NULL
-            }
-            probe_concurrency <- private$downloader_probe_concurrency(
-                downloader,
-                probe_concurrency
-            )
-            candidates <- files$download_plan(
+            store_download__preflight(
+                self,
+                private,
+                query_id = query_id,
+                downloader = downloader,
                 replica = replica,
                 service = service,
                 probe = probe,
-                strategy = strategy,
-                node_stats = node_stats,
-                network_policy = network_policy,
-                node_policy = node_policy,
                 probe_concurrency = probe_concurrency,
-                probe_cache_seconds = probe_cache_seconds
-            )
-            candidates <- private$decorate_download_plan(
-                candidates,
-                preview$file_rows
-            )
-            summary <- private$download_preflight_summary(
-                row,
-                preview$file_rows,
-                candidates,
-                downloader = downloader
-            )
-            list(
-                summary = summary[],
-                changes = preview$changes[],
-                files = private$preflight_files(preview$file_rows),
-                candidates = candidates[]
+                probe_cache_seconds = probe_cache_seconds,
+                strategy = strategy,
+                all = all,
+                limit = limit,
+                fields = fields,
+                ...
             )
         },
         # }}}
@@ -1905,105 +975,30 @@ EsgStore <- R6::R6Class(
             fields = "*",
             ...
         ) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_flag(dry_run)
-            checkmate::assert_flag(run)
-            checkmate::assert_flag(background)
-            checkmate::assert_flag(progress)
-            checkmate::assert_flag(overwrite)
-            checkmate::assert_flag(resume)
-            strategy <- match.arg(strategy)
-            mode <- match.arg(mode)
-            if (isTRUE(dry_run)) {
-                return(self$download_preflight(
-                    query_id = query_id,
-                    downloader = downloader,
-                    replica = replica,
-                    service = service,
-                    probe = probe,
-                    probe_concurrency = probe_concurrency,
-                    probe_cache_seconds = probe_cache_seconds,
-                    strategy = strategy,
-                    all = all,
-                    limit = limit,
-                    fields = fields,
-                    ...
-                ))
-            }
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-
-            row <- private$get_query_row(query_id)
-            # Network collection can be slow; keep it outside the store lock.
-            query <- private$load_query(row)
-            files <- query$collect(
-                type = "File",
-                fields = fields,
-                all = all,
-                limit = limit,
-                ...
-            )
-
-            # Commit the refreshed file links under a short lock.
-            links <- private$with_store_lock({
-                private$update_query_files(
-                    query_id,
-                    files,
-                    fields = fields,
-                    all = all,
-                    limit = limit
-                )
-            })
-
-            # Build and enqueue the downloader session after releasing the store lock.
-            session_id <- private$enqueue_query_download(
+            store_download__query(
+                self,
+                private,
                 query_id = query_id,
-                files = files,
-                current = links[
-                    links[["status"]] %in% "current",
-                    ,
-                    drop = FALSE
-                ],
                 downloader = downloader,
                 replica = replica,
+                dry_run = dry_run,
+                run = run,
+                background = background,
+                mode = mode,
                 session_label = session_label,
                 service = service,
                 probe = probe,
                 probe_concurrency = probe_concurrency,
                 probe_cache_seconds = probe_cache_seconds,
                 strategy = strategy,
-                error_if_empty = TRUE
+                progress = progress,
+                overwrite = overwrite,
+                resume = resume,
+                all = all,
+                limit = limit,
+                fields = fields,
+                ...
             )
-            if (nrow(links)) {
-                # Store only the downloader session reference under lock.
-                private$with_store_lock({
-                    private$set_query_update_session(
-                        links$update_id[[1L]],
-                        session_id
-                    )
-                })
-            }
-            if (isTRUE(run)) {
-                if (isTRUE(background)) {
-                    return(downloader$start(
-                        session_id = session_id,
-                        overwrite = overwrite,
-                        resume = resume,
-                        mode = mode,
-                        store_path = private$store_path
-                    ))
-                }
-                downloader$run(
-                    session_id = session_id,
-                    progress = progress,
-                    overwrite = overwrite,
-                    resume = resume
-                )
-                self$sync_downloads(downloader)
-            }
-            session_id
         },
         # }}}
         # download_status
@@ -2021,32 +1016,13 @@ EsgStore <- R6::R6Class(
             session_id = NULL,
             downloader = NULL
         ) {
-            private$check_open()
-            checkmate::assert_string(query_id, null.ok = TRUE)
-            checkmate::assert_string(session_id, null.ok = TRUE)
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-            tasks <- data.table::as.data.table(downloader$tasks(
-                session_id = session_id
-            ))
-            if (is.null(query_id)) {
-                return(tasks[])
-            }
-            links <- self$query_files(query_id)
-            if (!nrow(tasks) || !nrow(links)) {
-                return(data.table::data.table())
-            }
-            tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
-            if (!nrow(tasks)) {
-                return(tasks[])
-            }
-            link_cols <- links[, .(
-                file_key,
-                query_id,
-                query_file_status = status
-            )]
-            merge(tasks, link_cols, by = "file_key", all.x = TRUE, sort = FALSE)
+            store_download__status(
+                self,
+                private,
+                query_id = query_id,
+                session_id = session_id,
+                downloader = downloader
+            )
         },
         # }}}
         # query_status
@@ -2060,36 +1036,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table with one row per stored query.
         # query_status {{{
         query_status = function(query_id = NULL, downloader = NULL) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__query_status(
+                self,
+                private,
+                query_id = query_id,
+                downloader = downloader
             )
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-
-            queries <- private$select_query_rows(query_id = query_id)
-            if (!is.null(query_id)) {
-                missing <- setdiff(query_id, queries$query_id)
-                if (length(missing)) {
-                    cli::cli_abort(
-                        "Stored ESGF query ID(s) not found: {.val {missing}}."
-                    )
-                }
-            }
-            if (!nrow(queries)) {
-                return(data.table::data.table())
-            }
-
-            links <- private$read_table("esg_query_file")
-            files <- private$read_table("esg_file")
-            # A failed manifest read is not evidence that there are no tasks.
-            tasks <- data.table::as.data.table(downloader$tasks())
-            private$summarise_query_status(queries, links, files, tasks)
         },
         # }}}
         # query_updates
@@ -2102,28 +1054,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of update run summaries.
         # query_updates {{{
         query_updates = function(query_id = NULL, latest = FALSE) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__query_updates(
+                self,
+                private,
+                query_id = query_id,
+                latest = latest
             )
-            checkmate::assert_flag(latest)
-            updates <- private$read_table("esg_query_update")
-            if (!is.null(query_id) && nrow(updates)) {
-                wanted_query_id <- query_id
-                updates <- updates[updates[["query_id"]] %in% wanted_query_id]
-            }
-            if (isTRUE(latest) && nrow(updates)) {
-                data.table::setorderv(
-                    updates,
-                    c("query_id", "completed_at", "started_at")
-                )
-                updates <- updates[, .SD[.N], by = "query_id"]
-            }
-            updates[]
         },
         # }}}
         # query_changes
@@ -2141,42 +1077,13 @@ EsgStore <- R6::R6Class(
             query_id = NULL,
             change_type = NULL
         ) {
-            private$check_open()
-            checkmate::assert_character(
-                update_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_catalog__query_changes(
+                self,
+                private,
+                update_id = update_id,
+                query_id = query_id,
+                change_type = change_type
             )
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_subset(
-                change_type,
-                c("new", "current", "stale", "changed"),
-                empty.ok = TRUE
-            )
-            changes <- private$read_table("esg_query_update_file")
-            if (!is.null(update_id) && nrow(changes)) {
-                wanted_update_id <- update_id
-                changes <- changes[changes[["update_id"]] %in% wanted_update_id]
-            }
-            if (!is.null(query_id) && nrow(changes)) {
-                wanted_query_id <- query_id
-                changes <- changes[changes[["query_id"]] %in% wanted_query_id]
-            }
-            if (!is.null(change_type) && nrow(changes)) {
-                wanted_change_type <- change_type
-                changes <- changes[
-                    changes[["change_type"]] %in% wanted_change_type
-                ]
-            }
-            changes[]
         },
         # }}}
         # workflow_status
@@ -2189,131 +1096,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table with one row per stored query.
         # workflow_status {{{
         workflow_status = function(query_id = NULL, downloader = NULL) {
-            private$check_open()
-            status <- self$query_status(
+            store_catalog__workflow_status(
+                self,
+                private,
                 query_id = query_id,
                 downloader = downloader
             )
-            if (!nrow(status)) {
-                return(status)
-            }
-            updates <- self$query_updates(
-                query_id = status$query_id,
-                latest = TRUE
-            )
-            if (nrow(updates)) {
-                update_cols <- c(
-                    "query_id",
-                    "update_id",
-                    "status",
-                    "started_at",
-                    "completed_at",
-                    "new_count",
-                    "stale_count",
-                    "changed_count",
-                    "deprecated_count",
-                    "retracted_count",
-                    "version_changed_count",
-                    "download_session_id"
-                )
-                updates <- updates[,
-                    intersect(update_cols, names(updates)),
-                    with = FALSE
-                ]
-                data.table::setnames(
-                    updates,
-                    intersect(
-                        c("status", "started_at", "completed_at"),
-                        names(updates)
-                    ),
-                    paste0(
-                        "last_update_",
-                        intersect(
-                            c("status", "started_at", "completed_at"),
-                            names(updates)
-                        )
-                    )
-                )
-                status <- merge(
-                    status,
-                    updates,
-                    by = "query_id",
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-            }
-            # query_status() owns these numeric columns, including zero counts
-            # when no tasks exist. Only update/session metadata is optional.
-            data.table::set(
-                status,
-                j = "bytes_missing",
-                value = pmax(0, status$bytes_total - status$bytes_done)
-            )
-            data.table::set(
-                status,
-                j = "download_retryable",
-                value = rowSums(status[,
-                    c("download_error", "download_cancelled"),
-                    with = FALSE
-                ])
-            )
-            data.table::set(
-                status,
-                j = "download_incomplete",
-                value = status$download_retryable +
-                    status$download_queued +
-                    status$download_downloading >
-                    0 |
-                    status$local_available < status$file_current
-            )
-            if ("download_session_id" %in% names(status)) {
-                status[, last_download_session_id := download_session_id]
-            } else {
-                status[, last_download_session_id := NA_character_]
-            }
-
-            tags <- self$query_tags(query_id = status$query_id)
-            if (nrow(tags)) {
-                tag_summary <- tags[,
-                    .(tags = paste(sort(unique(tag)), collapse = ",")),
-                    by = query_id
-                ]
-                status <- merge(
-                    status,
-                    tag_summary,
-                    by = "query_id",
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-            }
-
-            plans <- private$read_table("extraction_plan")
-            if (nrow(plans)) {
-                plan_counts <- plans[
-                    plans[["query_id"]] %in% status$query_id,
-                    .N,
-                    by = .(query_id, status)
-                ]
-                plan_wide <- data.table::dcast(
-                    plan_counts,
-                    query_id ~ status,
-                    value.var = "N",
-                    fill = 0L
-                )
-                data.table::setnames(
-                    plan_wide,
-                    setdiff(names(plan_wide), "query_id"),
-                    paste0("extract_", setdiff(names(plan_wide), "query_id"))
-                )
-                status <- merge(
-                    status,
-                    plan_wide,
-                    by = "query_id",
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-            }
-            status[]
         },
         # }}}
         # workflow_report
@@ -2327,61 +1115,11 @@ EsgStore <- R6::R6Class(
         #'         and `nodes`.
         # workflow_report {{{
         workflow_report = function(query_id = NULL, downloader = NULL) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-            summary <- self$workflow_status(
+            store_catalog__workflow_report(
+                self,
+                private,
                 query_id = query_id,
                 downloader = downloader
-            )
-            if (!nrow(summary)) {
-                empty <- data.table::data.table()
-                return(list(
-                    summary = summary,
-                    updates = empty,
-                    changes = empty,
-                    downloads = empty,
-                    nodes = empty
-                ))
-            }
-
-            updates <- self$query_updates(query_id = summary$query_id)
-            latest_updates <- self$query_updates(
-                query_id = summary$query_id,
-                latest = TRUE
-            )
-            changes <- if (nrow(latest_updates)) {
-                out <- self$query_changes(update_id = latest_updates$update_id)
-                if (nrow(out)) {
-                    out <- out[out[["change_type"]] != "current"]
-                }
-                out[]
-            } else {
-                data.table::data.table()
-            }
-            downloads <- private$workflow_downloads(
-                summary$query_id,
-                downloader
-            )
-            nodes <- tryCatch(
-                data.table::as.data.table(downloader$data_nodes()),
-                error = function(e) data.table::data.table()
-            )
-
-            list(
-                summary = summary[],
-                updates = updates[],
-                changes = changes[],
-                downloads = downloads[],
-                nodes = nodes[]
             )
         },
         # }}}
@@ -2396,94 +1134,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table describing removed queries.
         # remove_query {{{
         remove_query = function(query_id, delete = c("none", "orphaned")) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE
+            store_catalog__remove_query(
+                self,
+                private,
+                query_id = query_id,
+                delete = delete
             )
-            delete <- match.arg(delete)
-
-            rows <- private$select_query_rows(query_id = query_id)
-            missing <- setdiff(query_id, rows$query_id)
-            if (length(missing)) {
-                cli::cli_abort(
-                    "Stored ESGF query ID(s) not found: {.val {missing}}."
-                )
-            }
-
-            private$with_store_lock({
-                links <- private$read_table("esg_query_file")
-                wanted_query_id <- query_id
-                touched <- links[links[["query_id"]] %in% wanted_query_id]
-                artifacts <- private$read_table("artifact")
-                query_artifacts <- artifacts[
-                    artifacts[["query_id"]] %in%
-                        wanted_query_id &
-                        artifacts[["kind"]] == "query"
-                ]
-
-                private$delete_by_key("esg_query_file", "query_id", query_id)
-                private$delete_by_key("esg_query_tag", "query_id", query_id)
-                private$delete_by_key(
-                    "esg_query_dependency",
-                    "query_id",
-                    query_id
-                )
-                private$delete_by_key(
-                    "esg_query_dependency",
-                    "parent_query_id",
-                    query_id
-                )
-                private$delete_by_key("esg_query", "query_id", query_id)
-                if (nrow(query_artifacts)) {
-                    paths <- vapply(
-                        query_artifacts$relative_path,
-                        store_abs_path,
-                        character(1L),
-                        root = private$store_path
-                    )
-                    unlink(
-                        paths[file.exists(paths)],
-                        recursive = FALSE,
-                        force = TRUE
-                    )
-                    private$delete_by_key(
-                        "artifact",
-                        "artifact_id",
-                        query_artifacts$artifact_id
-                    )
-                }
-
-                remaining_links <- private$read_table("esg_query_file")
-                orphan_keys <- setdiff(
-                    unique(touched$file_key),
-                    remaining_links$file_key
-                )
-                pruned <- if (
-                    identical(delete, "orphaned") && length(orphan_keys)
-                ) {
-                    private$remove_file_records(
-                        orphan_keys,
-                        delete_local = TRUE,
-                        force = TRUE
-                    )
-                } else {
-                    private$orphaned_files()[file_key %in% orphan_keys]
-                }
-
-                out <- data.table::as.data.table(rows)
-                out[,
-                    removed_file_links := vapply(
-                        query_id,
-                        function(id) sum(touched$query_id == id),
-                        integer(1L)
-                    )
-                ]
-                out[, orphaned_file_count := nrow(pruned)]
-                out[]
-            })
         },
         # }}}
         # remove_files
@@ -2499,22 +1155,13 @@ EsgStore <- R6::R6Class(
         #' @return A data.table describing removed file records.
         # remove_files {{{
         remove_files = function(file_key, delete_local = FALSE, force = FALSE) {
-            private$check_open()
-            checkmate::assert_character(
-                file_key,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE
+            store_catalog__remove_files(
+                self,
+                private,
+                file_key = file_key,
+                delete_local = delete_local,
+                force = force
             )
-            checkmate::assert_flag(delete_local)
-            checkmate::assert_flag(force)
-            private$with_store_lock({
-                private$remove_file_records(
-                    file_key,
-                    delete_local = delete_local,
-                    force = force
-                )
-            })
         },
         # }}}
         # prune_orphans
@@ -2527,19 +1174,11 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of orphaned file records.
         # prune_orphans {{{
         prune_orphans = function(delete_local = FALSE) {
-            private$check_open()
-            checkmate::assert_flag(delete_local)
-            orphans <- private$orphaned_files()
-            if (!isTRUE(delete_local) || !nrow(orphans)) {
-                return(orphans[])
-            }
-            private$with_store_lock({
-                private$remove_file_records(
-                    orphans$file_key,
-                    delete_local = TRUE,
-                    force = TRUE
-                )
-            })
+            store_catalog__prune_orphans(
+                self,
+                private,
+                delete_local = delete_local
+            )
         },
         # }}}
         # storage_report
@@ -2553,13 +1192,7 @@ EsgStore <- R6::R6Class(
         #' @return A summary data.table, or a list when `detail = TRUE`.
         # storage_report {{{
         storage_report = function(detail = FALSE) {
-            private$check_open()
-            checkmate::assert_flag(detail)
-            report <- private$download_storage_report()
-            if (isTRUE(detail)) {
-                return(report)
-            }
-            report$summary
+            store_download__storage_report(self, private, detail = detail)
         },
         # }}}
         # validate_files
@@ -2580,18 +1213,9 @@ EsgStore <- R6::R6Class(
             checksum = FALSE,
             layout = TRUE
         ) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_flag(checksum)
-            checkmate::assert_flag(layout)
-
-            private$validate_download_files(
+            store_download__validate_files(
+                self,
+                private,
                 query_id = query_id,
                 checksum = checksum,
                 layout = layout
@@ -2611,20 +1235,12 @@ EsgStore <- R6::R6Class(
         #' @return A data.table describing attempted repairs.
         # repair_files {{{
         repair_files = function(actions = NULL, dry_run = TRUE) {
-            private$check_open()
-            checkmate::assert_data_frame(actions, null.ok = TRUE)
-            checkmate::assert_flag(dry_run)
-
-            if (is.null(actions)) {
-                actions <- self$validate_files()$actions
-            }
-            actions <- data.table::as.data.table(actions)
-            if (isTRUE(dry_run)) {
-                return(private$repair_download_files(actions, dry_run = TRUE))
-            }
-            private$with_store_lock({
-                private$repair_download_files(actions, dry_run = FALSE)
-            })
+            store_download__repair_files(
+                self,
+                private,
+                actions = actions,
+                dry_run = dry_run
+            )
         },
         # }}}
         # cleanup_downloads
@@ -2652,57 +1268,13 @@ EsgStore <- R6::R6Class(
             dry_run = TRUE,
             older_than = NULL
         ) {
-            private$check_open()
-            checkmate::assert_subset(
-                scope,
-                c(
-                    "tmp",
-                    "orphan_records",
-                    "untracked_files",
-                    "missing_records"
-                ),
-                empty.ok = FALSE
+            store_download__cleanup_downloads(
+                self,
+                private,
+                scope = scope,
+                dry_run = dry_run,
+                older_than = older_than
             )
-            checkmate::assert_flag(dry_run)
-            cutoff <- private$cleanup_cutoff(older_than)
-            report <- private$download_storage_report()
-            collect_actions <- function() {
-                actions <- list()
-                if ("tmp" %in% scope) {
-                    actions$tmp <- private$cleanup_file_scope(
-                        "tmp",
-                        report$tmp,
-                        dry_run = dry_run,
-                        cutoff = cutoff
-                    )
-                }
-                if ("untracked_files" %in% scope) {
-                    actions$untracked_files <- private$cleanup_file_scope(
-                        "untracked_files",
-                        report$untracked_files,
-                        dry_run = dry_run,
-                        cutoff = cutoff
-                    )
-                }
-                if ("orphan_records" %in% scope) {
-                    actions$orphan_records <- private$cleanup_orphan_records(
-                        report$orphan_records,
-                        dry_run = dry_run
-                    )
-                }
-                if ("missing_records" %in% scope) {
-                    actions$missing_records <- private$cleanup_missing_records(
-                        report$missing_records,
-                        dry_run = dry_run
-                    )
-                }
-                data.table::rbindlist(actions, fill = TRUE)
-            }
-            if (isTRUE(dry_run)) {
-                collect_actions()
-            } else {
-                private$with_store_lock(collect_actions())
-            }
         },
         # }}}
         # retry_downloads
@@ -2726,46 +1298,16 @@ EsgStore <- R6::R6Class(
             run = TRUE,
             ...
         ) {
-            private$check_open()
-            checkmate::assert_string(query_id, null.ok = TRUE)
-            checkmate::assert_string(session_id, null.ok = TRUE)
-            checkmate::assert_subset(
-                status,
-                c("error", "cancelled"),
-                empty.ok = FALSE
-            )
-            checkmate::assert_flag(run)
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-
-            tasks <- data.table::as.data.table(downloader$tasks(
+            store_download__retry_downloads(
+                self,
+                private,
+                query_id = query_id,
                 session_id = session_id,
-                status = status
-            ))
-            if (!is.null(query_id) && nrow(tasks)) {
-                links <- self$query_files(query_id)
-                tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
-            }
-            if (!nrow(tasks)) {
-                return(tasks[])
-            }
-            task_id <- tasks$task_id
-            downloader$retry(
-                session_id = session_id,
-                task_id = task_id,
-                status = status
+                downloader = downloader,
+                status = status,
+                run = run,
+                ...
             )
-            out <- if (isTRUE(run)) {
-                downloader$run(session_id = session_id, task_id = task_id, ...)
-            } else {
-                downloader$status(session_id = session_id, task_id = task_id)
-            }
-            out <- data.table::as.data.table(out)
-            if (isTRUE(run)) {
-                self$sync_downloads(downloader)
-            }
-            out[]
         },
         # }}}
         # add_files
@@ -2778,82 +1320,7 @@ EsgStore <- R6::R6Class(
         #' @return The created or updated query ID.
         # add_files {{{
         add_files = function(files, label = NULL) {
-            checkmate::assert_string(label, null.ok = TRUE)
-
-            private$with_store_lock({
-                result_type <- store__result_type(files)
-                dt <- store__file_table(files)
-                query_id <- store__hash(
-                    result_type,
-                    priv(files)$index_node,
-                    jsonlite::toJSON(
-                        priv(files)$parameter$serialize(null = TRUE),
-                        auto_unbox = TRUE
-                    ),
-                    jsonlite::toJSON(
-                        dt,
-                        dataframe = "rows",
-                        POSIXt = "ISO8601",
-                        auto_unbox = TRUE,
-                        null = "null"
-                    )
-                )
-
-                query_file <- file.path(
-                    private$query_dir,
-                    sprintf("files-%s.json", query_id)
-                )
-                files$save(query_file)
-                self$register_artifact(
-                    kind = "query",
-                    path = query_file,
-                    role = "input",
-                    project = "CMIP6",
-                    query_id = query_id,
-                    metadata = list(result_type = result_type)
-                )
-
-                time_filter <- files$time_filter
-                query_run <- data.frame(
-                    query_id = query_id,
-                    label = store__chr1(label),
-                    result_type = result_type,
-                    query_file = store_rel_path(query_file, private$store_path),
-                    index_node = priv(files)$index_node,
-                    time_filter_start = store__time1(store__pluck(
-                        time_filter,
-                        "start"
-                    )),
-                    time_filter_stop = store__time1(store__pluck(
-                        time_filter,
-                        "stop"
-                    )),
-                    time_filter_method = store__chr1(store__pluck(
-                        time_filter,
-                        "method"
-                    )),
-                    created_at = store__now(),
-                    package_version = as.character(utils::packageVersion(
-                        "epwshiftr"
-                    )),
-                    stringsAsFactors = FALSE
-                )
-                private$replace_rows("query_run", query_run, "query_id")
-
-                if (nrow(dt)) {
-                    now <- store__now()
-                    file_rows <- private$file_rows(dt, now)
-                    private$replace_rows(
-                        "esg_file",
-                        as.data.frame(file_rows),
-                        "file_key"
-                    )
-                    private$sync_query_file_links(query_id, file_rows, now)
-                    private$sync_file_catalog(query_id, file_rows)
-                }
-
-                query_id
-            })
+            store_catalog__add_files(self, private, files, label = label)
         },
         # }}}
         # downloader
@@ -2865,17 +1332,7 @@ EsgStore <- R6::R6Class(
         #' @return A [Downloader] object.
         # downloader {{{
         downloader = function(...) {
-            private$check_open()
-            Downloader$new(
-                dest = private$download_dir,
-                temp = private$tmp_download_dir,
-                manifest = file.path(
-                    private$download_dir,
-                    "_downloader",
-                    "manifest.duckdb"
-                ),
-                ...
-            )
+            store_download__downloader(self, private, ...)
         },
         # }}}
         # download_files
@@ -2932,105 +1389,27 @@ EsgStore <- R6::R6Class(
             resume = TRUE,
             ...
         ) {
-            private$check_open()
-            checkmate::assert_character(
-                query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_download__files(
+                self,
+                private,
+                files = files,
+                query_id = query_id,
+                replica = replica,
+                downloader = downloader,
+                run = run,
+                background = background,
+                mode = mode,
+                session_label = session_label,
+                service = service,
+                probe = probe,
+                probe_concurrency = probe_concurrency,
+                probe_cache_seconds = probe_cache_seconds,
+                strategy = strategy,
+                progress = progress,
+                overwrite = overwrite,
+                resume = resume,
+                ...
             )
-            strategy <- match.arg(strategy)
-            mode <- match.arg(mode)
-            checkmate::assert_flag(run)
-            checkmate::assert_flag(background)
-            checkmate::assert_flag(progress)
-            checkmate::assert_flag(overwrite)
-            checkmate::assert_flag(resume)
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-
-            plan <- if (!is.null(files)) {
-                # Cataloging files mutates the store; plan construction itself stays unlocked.
-                query_id <- self$add_files(files, label = session_label)
-                current <- private$with_store_lock({
-                    # add_files() records file collections in file_catalog, not esg_query_file.
-                    catalog <- data.table::as.data.table(ddb_read_table(
-                        private$conn,
-                        "file_catalog"
-                    ))
-                    catalog[catalog[["query_id"]] == query_id]
-                })
-                node_stats <- tryCatch(
-                    downloader$data_nodes(service = service),
-                    error = function(e) NULL
-                )
-                network_policy <- tryCatch(
-                    downloader$network_policy,
-                    error = function(e) NULL
-                )
-                node_policy <- tryCatch(
-                    downloader$node_policy,
-                    error = function(e) NULL
-                )
-                resolved_probe_concurrency <- private$downloader_probe_concurrency(
-                    downloader,
-                    probe_concurrency
-                )
-                plan_args <- list(
-                    replica = replica,
-                    service = service,
-                    probe = probe,
-                    strategy = strategy,
-                    node_stats = node_stats,
-                    network_policy = network_policy,
-                    node_policy = node_policy,
-                    probe_concurrency = resolved_probe_concurrency,
-                    probe_cache_seconds = probe_cache_seconds,
-                    ...
-                )
-                plan <- do.call(files$download_plan, plan_args)
-                plan <- private$decorate_download_plan(plan, current)
-                plan <- plan[plan[["file_key"]] %in% current$file_key]
-                plan
-            } else {
-                # Catalog reads need a consistent snapshot, but downloader work does not.
-                private$with_store_lock({
-                    private$catalog_download_plan(query_id = query_id)
-                })
-            }
-            if (!nrow(plan)) {
-                return(NA_character_)
-            }
-            # Downloader manifest/probe operations must not hold the store lock.
-            tryCatch(
-                downloader$record_probes(plan, probed = probe),
-                error = function(e) NULL
-            )
-            session_id <- downloader$enqueue(
-                plan,
-                session_label = session_label
-            )
-            if (isTRUE(run)) {
-                if (isTRUE(background)) {
-                    return(downloader$start(
-                        session_id = session_id,
-                        overwrite = overwrite,
-                        resume = resume,
-                        mode = mode,
-                        store_path = private$store_path
-                    ))
-                }
-                downloader$run(
-                    session_id = session_id,
-                    progress = progress,
-                    overwrite = overwrite,
-                    resume = resume
-                )
-                self$sync_downloads(downloader)
-            }
-            session_id
         },
         # }}}
         # sync_downloads
@@ -3042,81 +1421,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of completed tasks.
         # sync_downloads {{{
         sync_downloads = function(downloader = NULL) {
-            private$check_open()
-            if (is.null(downloader)) {
-                downloader <- self$downloader()
-            }
-            private$with_store_lock({
-                tasks <- data.table::as.data.table(downloader$tasks(
-                    status = c("done", "skipped")
-                ))
-                if (!nrow(tasks)) {
-                    return(tasks)
-                }
-                catalog <- data.table::as.data.table(ddb_read_table(
-                    private$conn,
-                    "file_catalog"
-                ))
-                if (!nrow(catalog)) {
-                    return(tasks)
-                }
-                for (i in seq_len(nrow(tasks))) {
-                    task <- tasks[i]
-                    file_key <- private$match_download_task(task, catalog)
-                    if (is.na(file_key)) {
-                        next
-                    }
-                    local_path <- task$target_path[[1L]]
-                    if (!file.exists(local_path)) {
-                        next
-                    }
-                    fk <- file_key
-                    row <- catalog[catalog[["file_key"]] == fk]
-                    checksum <- store__chr1(task$checksum[[1L]])
-                    checksum_type <- tolower(store__chr1(task$checksum_type[[
-                        1L
-                    ]]))
-                    if (
-                        is.na(checksum_type) ||
-                            !checksum_type %in% c("md5", "sha256")
-                    ) {
-                        checksum_type <- "sha256"
-                    }
-                    if (is.na(checksum)) {
-                        checksum <- NULL
-                    }
-                    artifact_id <- self$register_artifact(
-                        kind = "netcdf",
-                        path = local_path,
-                        role = "download",
-                        project = "CMIP6",
-                        checksum = checksum,
-                        checksum_type = checksum_type,
-                        query_id = row$query_id[[1L]],
-                        file_key = file_key,
-                        source_url = store__chr1(task$selected_url[[1L]]),
-                        metadata = list(
-                            filename = store__chr1(task$filename[[1L]])
-                        )
-                    )
-                    row$local_path <- store_rel_path(
-                        local_path,
-                        private$store_path
-                    )
-                    row$local_artifact_id <- artifact_id
-                    private$replace_rows(
-                        "file_catalog",
-                        as.data.frame(row),
-                        "file_key"
-                    )
-                    private$sync_tracked_file_download(
-                        file_key,
-                        local_path,
-                        artifact_id
-                    )
-                }
-                tasks
-            })
+            store_download__sync(self, private, downloader = downloader)
         },
         # }}}
         # plan_region
@@ -3145,38 +1450,17 @@ EsgStore <- R6::R6Class(
             filters = list(),
             method = "nearest"
         ) {
-            checkmate::assert_string(query_id)
-            checkmate::assert_number(
-                lon,
-                lower = -180,
-                upper = 360,
-                finite = TRUE
-            )
-            checkmate::assert_number(
-                lat,
-                lower = -90,
-                upper = 90,
-                finite = TRUE
-            )
-            checkmate::assert_string(site_id)
-            checkmate::assert_character(
-                variable_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_list(filters, names = "unique")
-            method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
-            private$check_open()
-
-            private$plan_regions_from_sites(
-                query_id,
-                data.frame(site_id = site_id, lon = lon, lat = lat),
-                time,
-                variable_id,
-                filters,
-                method
+            store_extract__plan_region(
+                self,
+                private,
+                query_id = query_id,
+                lon = lon,
+                lat = lat,
+                time = time,
+                site_id = site_id,
+                variable_id = variable_id,
+                filters = filters,
+                method = method
             )
         },
         # }}}
@@ -3208,53 +1492,15 @@ EsgStore <- R6::R6Class(
             filters = list(),
             method = "nearest"
         ) {
-            checkmate::assert_string(query_id)
-            checkmate::assert_data_frame(sites)
-            required <- c("site_id", "lon", "lat")
-            if (
-                anyDuplicated(names(sites)) || !all(required %in% names(sites))
-            ) {
-                cli::cli_abort(
-                    "`sites` must have unambiguous site_id, lon and lat columns."
-                )
-            }
-            checkmate::assert_character(
-                sites$site_id,
-                min.chars = 1L,
-                any.missing = FALSE,
-                unique = TRUE
-            )
-            checkmate::assert_numeric(
-                sites$lon,
-                lower = -180,
-                upper = 360,
-                any.missing = FALSE,
-                finite = TRUE
-            )
-            checkmate::assert_numeric(
-                sites$lat,
-                lower = -90,
-                upper = 90,
-                any.missing = FALSE,
-                finite = TRUE
-            )
-            checkmate::assert_character(
-                variable_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            checkmate::assert_list(filters, names = "unique")
-            method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
-            private$check_open()
-            private$plan_regions_from_sites(
-                query_id,
-                sites,
-                time,
-                variable_id,
-                filters,
-                method
+            store_extract__plan_regions(
+                self,
+                private,
+                query_id = query_id,
+                sites = sites,
+                time = time,
+                variable_id = variable_id,
+                filters = filters,
+                method = method
             )
         },
         # }}}
@@ -3276,14 +1522,7 @@ EsgStore <- R6::R6Class(
         #'   not certify provider availability or scientific acceptance.
         # plan_sources {{{
         plan_sources = function(plan_id) {
-            checkmate::assert_character(
-                plan_id,
-                any.missing = FALSE,
-                min.chars = 1L,
-                unique = TRUE
-            )
-            private$check_open()
-            store__plan_source_rows(private$conn, plan_id)
+            store_extract__plan_sources(self, private, plan_id)
         },
         # }}}
         # extract
@@ -3300,6 +1539,15 @@ EsgStore <- R6::R6Class(
         #' at a time to bound memory. Complete ordinary extraction caches are
         #' consumed directly without starting workers. Speedup depends on the
         #' number of independent tasks and the remote service.
+        #'
+        #' Ordinary and pooled extraction share source ownership and recovery checks.
+        #' Complete outputs and extraction caches require matching saved acquisition
+        #' lineage and local integrity evidence, which can support offline reuse.
+        #' Missing evidence, source conflicts, and changed bytes identify the affected
+        #' result without replacing its original source receipt. After checking the
+        #' requested source, use `overwrite = TRUE` to recompute rejected results.
+        #' Download byte continuation is qualified separately from output `resume`;
+        #' saved transfer settings and existing pool limits are preserved.
         #'
         #' @param plan_id Optional plan IDs to run.
         #' @param status Plan statuses to run when `plan_id` is `NULL`.
@@ -3333,392 +1581,17 @@ EsgStore <- R6::R6Class(
             reporter = NULL,
             pool = NULL
         ) {
-            checkmate::assert_character(
-                plan_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            store_extract__run(
+                self,
+                private,
+                plan_id = plan_id,
+                status = status,
+                fallback = fallback,
+                overwrite = overwrite,
+                resume = resume,
+                reporter = reporter,
+                pool = pool
             )
-            checkmate::assert_subset(
-                status,
-                c("pending", "failed", "empty", "done")
-            )
-            checkmate::assert_flag(overwrite)
-            checkmate::assert_flag(resume)
-            fallback <- match.arg(fallback)
-            if (!is.null(pool)) {
-                stopifnot(
-                    inherits(pool, "epwshiftr_source_pool")
-                )
-            }
-            private$check_open()
-
-            plans <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "extraction_plan"
-            ))
-            if (is.null(plan_id)) {
-                plans <- plans[plans$status %in% status]
-            } else {
-                # Keep the requested IDs outside data.table evaluation. Using
-                # `plan_id` on both sides would resolve both names as the table
-                # column and accidentally execute every plan in the store.
-                requested_plan_id <- plan_id
-                plans <- plans[plans$plan_id %in% requested_plan_id]
-            }
-            if (!nrow(plans)) {
-                return(plans)
-            }
-
-            catalog <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "file_catalog"
-            ))
-            processed <- vector("list", nrow(plans))
-            resumed_outputs <- vector("list", nrow(plans))
-            file_rows <- match(plans$file_key, catalog$file_key)
-            # Persist and report each result only in the manifest-owning process.
-            finished <- 0L
-            process <- function(i, resolved = NULL) {
-                # Source files can finish out of order; UI counts follow actual
-                # processing, while result rows retain their original indices.
-                finished <<- finished + 1L
-                plan <- plans[i]
-                file <- catalog[
-                    if (is.na(file_rows[[i]])) integer() else file_rows[[i]]
-                ]
-                scenario <- if (nrow(file)) {
-                    store__chr1(file$experiment_id[[1L]])
-                } else {
-                    "unknown scenario"
-                }
-                if (!is.null(reporter)) {
-                    reporter$check_cancel()
-                    label <- sprintf(
-                        "%s \u00b7 %s \u00b7 %s to %s",
-                        scenario,
-                        plan$variable_id[[1L]],
-                        format(plan$time_start[[1L]], "%Y-%m-%d"),
-                        format(plan$time_stop[[1L]], "%Y-%m-%d")
-                    )
-                    reporter$unit_started(
-                        label,
-                        current = finished,
-                        total = nrow(plans),
-                        details = list(
-                            unit_type = "extraction_plan",
-                            scenario = scenario,
-                            variable = plan$variable_id[[1L]],
-                            period = sprintf(
-                                "%s/%s",
-                                format(plan$time_start[[1L]], "%Y"),
-                                format(plan$time_stop[[1L]], "%Y")
-                            ),
-                            access_method = "OPeNDAP"
-                        )
-                    )
-                    if (nrow(file)) {
-                        source_location <- if (
-                            !is.na(file$local_path[[1L]]) &&
-                                nzchar(file$local_path[[1L]])
-                        ) {
-                            file$local_path[[1L]]
-                        } else {
-                            file$url_opendap[[1L]]
-                        }
-                        reporter$detail(
-                            sprintf("  source: %s", source_location),
-                            level = "debug"
-                        )
-                    }
-                }
-                resumed <- resumed_outputs[[i]]
-                if (!is.null(resumed)) {
-                    processed[[i]] <<- resumed
-                    if (!is.null(reporter)) {
-                        reporter$unit_skipped(
-                            sprintf("Reused %s", plan$variable_id[[1L]]),
-                            current = finished,
-                            total = nrow(plans)
-                        )
-                    }
-                    return(invisible(NULL))
-                }
-                if (!nrow(file)) {
-                    processed[[i]] <<- private$mark_plan_failed(
-                        plan,
-                        "The cataloged file record no longer exists."
-                    )
-                    if (!is.null(reporter)) {
-                        reporter$unit_completed(
-                            sprintf(
-                                "Failed %s: catalog record missing",
-                                plan$variable_id[[1L]]
-                            ),
-                            current = finished,
-                            total = nrow(plans),
-                            outcome = "failed"
-                        )
-                    }
-                    return(invisible(NULL))
-                }
-
-                processed[[i]] <<- tryCatch(
-                    private$extract_one(
-                        plan,
-                        file[1L],
-                        fallback = fallback,
-                        overwrite = overwrite,
-                        reporter = reporter,
-                        resolved = resolved
-                    ),
-                    error = function(e) {
-                        if (inherits(e, "epwshiftr_store_extract_conflict")) {
-                            stop(e)
-                        }
-                        private$mark_plan_failed(plan, conditionMessage(e))
-                    }
-                )
-                if (!is.null(reporter)) {
-                    result_status <- processed[[i]]$status[[1L]]
-                    used_access <- attr(
-                        processed[[i]],
-                        "access_method",
-                        exact = TRUE
-                    )
-                    if (is.null(used_access)) {
-                        used_access <- if (
-                            !is.na(file$local_path[[1L]]) &&
-                                nzchar(file$local_path[[1L]])
-                        ) {
-                            "local"
-                        } else {
-                            "OPeNDAP"
-                        }
-                    }
-                    reporter$unit_completed(
-                        sprintf("%s %s", result_status, plan$variable_id[[1L]]),
-                        current = finished,
-                        total = nrow(plans),
-                        outcome = if (result_status %in% c("done", "empty")) {
-                            "completed"
-                        } else {
-                            "failed"
-                        },
-                        details = list(
-                            unit_type = "extraction_plan",
-                            scenario = store__chr1(file$experiment_id[[1L]]),
-                            variable = plan$variable_id[[1L]],
-                            period = sprintf(
-                                "%s/%s",
-                                format(plan$time_start[[1L]], "%Y"),
-                                format(plan$time_stop[[1L]], "%Y")
-                            ),
-                            access_method = used_access
-                        )
-                    )
-                }
-            }
-
-            # Only uncached remote work enters the pool. Local reads, complete
-            # plans and cached payloads keep their inexpensive synchronous path.
-            jobs <- vector("list", nrow(plans))
-            for (i in seq_len(nrow(plans))) {
-                plan <- plans[i]
-                resumed_outputs[i] <- list(
-                    if (!overwrite && resume) {
-                        private$resume_extract_plan(plan)
-                    } else {
-                        NULL
-                    }
-                )
-                if (!is.null(resumed_outputs[[i]]) || is.na(file_rows[[i]])) {
-                    process(i)
-                    next
-                }
-                file <- catalog[file_rows[[i]]]
-                endpoint <- store__chr1(file$url_opendap)
-                local <- store__chr1(file$local_path)
-                has_local <- !is.na(local) &&
-                    nzchar(local) &&
-                    file.exists(store_abs_path(
-                        local,
-                        root = private$store_path
-                    ))
-                if (!is.null(pool) && has_local) {
-                    file <- data.table::copy(file)
-                    data.table::set(
-                        file,
-                        j = "url_opendap",
-                        value = store_abs_path(
-                            local,
-                            root = private$store_path
-                        )
-                    )
-                }
-                cached <- if (!identical(cache__mode(), "off")) {
-                    store__extract_cache_read(store__extract_cache_path(
-                        plan,
-                        file
-                    ))
-                } else {
-                    NULL
-                }
-                if (!is.null(cached)) {
-                    process(
-                        i,
-                        list(
-                            payload = cached,
-                            opened = list(
-                                access_method = "shared_cache",
-                                target = store__extract_cache_path(plan, file)
-                            ),
-                            recovery_error = NULL,
-                            cache_reused = TRUE
-                        )
-                    )
-                } else if (
-                    (is.null(pool) &&
-                        (has_local ||
-                            is.na(endpoint) ||
-                            !grepl("^https?://", endpoint))) ||
-                        identical(cache__mode(), "offline")
-                ) {
-                    process(i)
-                } else {
-                    jobs[[i]] <- list(index = i, plan = plan, file = file)
-                }
-            }
-            failures <- vector("list", nrow(plans))
-            jobs <- Filter(Negate(is.null), jobs)
-            if (length(jobs)) {
-                # Without disk caching, return one plan per task so a file's
-                # entire city collection is never accumulated in worker memory.
-                group <- if (!is.null(pool)) {
-                    vapply(
-                        jobs,
-                        function(job) source__physical_key(job$file),
-                        character(1L)
-                    )
-                } else if (identical(cache__mode(), "off")) {
-                    seq_along(jobs)
-                } else {
-                    vapply(
-                        jobs,
-                        function(job) job$file$file_key[[1L]],
-                        character(1L)
-                    )
-                }
-                groups <- split(seq_along(jobs), group)
-                if (!is.null(pool)) {
-                    # Bound in-memory city payloads even with disk caching off.
-                    # Groups sharing one physical key are serialized by the pool.
-                    groups <- unlist(
-                        lapply(groups, function(rows) {
-                            split(rows, ceiling(seq_along(rows) / 8L))
-                        }),
-                        recursive = FALSE
-                    )
-                }
-                jobs <- lapply(groups, function(rows) {
-                    list(
-                        indices = vapply(
-                            jobs[rows],
-                            function(job) job$index,
-                            integer(1L)
-                        ),
-                        plans = data.table::rbindlist(lapply(
-                            jobs[rows],
-                            function(job) job$plan
-                        )),
-                        file = jobs[[rows[[1L]]]]$file
-                    )
-                })
-            }
-            collect_source <- function(job, value) {
-                # Register verified native downloads only in the manifest owner;
-                # readers never receive or write this store's DuckDB connection.
-                if (!is.null(value$download_manifest)) {
-                    stopifnot(identical(
-                        value$download_manifest,
-                        job$http$manifest
-                    ))
-                    store__sync_pool_download(self, value$download_manifest)
-                }
-                for (index in seq_along(job$indices)) {
-                    row <- job$indices[[index]]
-                    resolved <- value$results[[index]]
-                    if (inherits(resolved, "error")) {
-                        failures[[row]] <<- resolved
-                    } else {
-                        if (!is.null(resolved$cache_path)) {
-                            resolved$payload <- store__extract_cache_read(
-                                resolved$cache_path
-                            )
-                            if (is.null(resolved$payload)) {
-                                cli::cli_abort(
-                                    "A completed source payload is missing from the shared cache."
-                                )
-                            }
-                        }
-                        process(row, resolved)
-                    }
-                }
-            }
-            finish <- function() {
-                for (i in which(!vapply(failures, is.null, logical(1L)))) {
-                    process(i, failures[[i]])
-                }
-                data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
-            }
-            if (!is.null(pool)) {
-                jobs <- lapply(jobs, function(job) {
-                    job$source_key <- source__physical_key(job$file)
-                    if (identical(fallback, "auto")) {
-                        directory <- pool$download_dir
-                        if (is.null(directory)) {
-                            directory <- private$download_dir
-                        }
-                        job$http <- store__pool_download_config(
-                            job$file,
-                            directory,
-                            pool$download_timeout
-                        )
-                    }
-                    # Annual bounded windows prevent accidental whole-period
-                    # payload accumulation in the persistent reader.
-                    stopifnot(all(
-                        as.double(difftime(
-                            job$plans$time_stop,
-                            job$plans$time_start,
-                            units = "days"
-                        )) <=
-                            366
-                    ))
-                    job
-                })
-                return(pool$submit(
-                    jobs,
-                    store__read_task,
-                    collect_source,
-                    finish = finish,
-                    on_error = function(job, error) {
-                        for (i in job$indices) {
-                            failures[[i]] <<- error
-                        }
-                    }
-                ))
-            }
-            source__apply(
-                jobs,
-                store__read_task,
-                collect = collect_source,
-                reporter = reporter
-            )
-            # HTTP fallback owns the store manifest and starts only after the
-            # source pool has drained, so it cannot exceed the read limit.
-            finish()
         },
         # }}}
         # export_extracts
@@ -3819,49 +1692,7 @@ EsgStore <- R6::R6Class(
                 "year"
             )
         ) {
-            checkmate::assert_character(
-                by,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE
-            )
-            private$check_open()
-
-            map <- store__summary_cols()
-            unknown <- setdiff(by, names(map))
-            if (length(unknown)) {
-                cli::cli_abort(
-                    "Unknown extraction summary column(s): {.val {unknown}}."
-                )
-            }
-
-            groups <- unname(map[by])
-            select_groups <- paste(
-                sprintf("%s AS %s", groups, ddb_ident(private$conn, by)),
-                collapse = ", "
-            )
-            group_by <- paste(groups, collapse = ", ")
-            sql <- sprintf(
-                paste(
-                    "SELECT %s,",
-                    "COUNT(DISTINCT p.plan_id) AS plan_count,",
-                    "COUNT(DISTINCT r.output_path) AS file_count,",
-                    "COALESCE(SUM(r.row_count), 0) AS row_count,",
-                    "COALESCE(SUM(r.unique_time_count), 0) AS unique_time_count,",
-                    "MIN(r.time_min) AS time_min,",
-                    "MAX(r.time_max) AS time_max",
-                    "FROM extraction_plan p",
-                    "LEFT JOIN file_catalog f ON p.file_key = f.file_key",
-                    "LEFT JOIN extraction_result r ON p.plan_id = r.plan_id",
-                    "GROUP BY %s",
-                    "ORDER BY %s"
-                ),
-                select_groups,
-                group_by,
-                group_by
-            )
-
-            data.table::as.data.table(ddb_query(private$conn, sql))
+            store_extract__summarise(self, private, by = by)
         },
         # }}}
         # coverage
@@ -3873,155 +1704,7 @@ EsgStore <- R6::R6Class(
         #' @return A data.table with one row per plan.
         # coverage {{{
         coverage = function(plan_id = NULL) {
-            checkmate::assert_character(
-                plan_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
-            )
-            private$check_open()
-
-            plans <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "extraction_plan"
-            ))
-            if (!is.null(plan_id)) {
-                # Avoid data.table's column-name lookup on the RHS; the argument
-                # and the plan table both use the name `plan_id`.
-                target_plan_id <- plan_id
-                plans <- plans[plans[["plan_id"]] %in% target_plan_id]
-            }
-            if (!nrow(plans)) {
-                return(plans)
-            }
-
-            catalog <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "file_catalog"
-            ))
-            results <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "extraction_result"
-            ))
-            agg <- if (nrow(results)) {
-                results[,
-                    .(
-                        output_files = list(output_path),
-                        output_file_count = .N,
-                        output_rows = sum(row_count, na.rm = TRUE),
-                        output_time_count = sum(
-                            unique_time_count,
-                            na.rm = TRUE
-                        ),
-                        output_time_min = min(time_min, na.rm = TRUE),
-                        output_time_max = max(time_max, na.rm = TRUE)
-                    ),
-                    by = plan_id
-                ]
-            } else {
-                data.table::data.table(
-                    plan_id = character(),
-                    output_files = list(),
-                    output_file_count = integer(),
-                    output_rows = integer(),
-                    output_time_count = integer(),
-                    output_time_min = as.POSIXct(character(), tz = "UTC"),
-                    output_time_max = as.POSIXct(character(), tz = "UTC")
-                )
-            }
-
-            out <- merge(
-                plans,
-                catalog,
-                by = c("query_id", "file_key"),
-                all.x = TRUE,
-                suffixes = c("", "_file")
-            )
-            out <- merge(out, agg, by = "plan_id", all.x = TRUE)
-            out[
-                is.na(output_file_count),
-                `:=`(
-                    output_file_count = 0L,
-                    output_rows = 0L,
-                    output_time_count = 0L
-                )
-            ]
-            if (!"output_files" %in% names(out)) {
-                out[, output_files := list(character())]
-            }
-            out[,
-                output_files_exist := vapply(
-                    output_files,
-                    function(paths) {
-                        paths <- unlist(paths, use.names = FALSE)
-                        length(paths) > 0L &&
-                            all(file.exists(file.path(
-                                private$store_path,
-                                paths
-                            )))
-                    },
-                    logical(1L)
-                )
-            ]
-            out[,
-                complete := status == "done" &
-                    output_files_exist &
-                    (is.na(available_time_count) |
-                        available_time_count <= 0L |
-                        output_time_count >= available_time_count)
-            ]
-
-            data.table::setcolorder(
-                out,
-                c(
-                    "plan_id",
-                    "complete",
-                    "status",
-                    "query_id",
-                    "file_key",
-                    "site_id",
-                    "source_id",
-                    "experiment_id",
-                    "variant_label",
-                    "frequency",
-                    "variable_id",
-                    intersect(
-                        c(
-                            "available_time_count",
-                            "output_time_count",
-                            "output_rows",
-                            "output_file_count",
-                            "output_files_exist",
-                            "last_error"
-                        ),
-                        names(out)
-                    ),
-                    setdiff(
-                        names(out),
-                        c(
-                            "plan_id",
-                            "complete",
-                            "status",
-                            "query_id",
-                            "file_key",
-                            "site_id",
-                            "source_id",
-                            "experiment_id",
-                            "variant_label",
-                            "frequency",
-                            "variable_id",
-                            "available_time_count",
-                            "output_time_count",
-                            "output_rows",
-                            "output_file_count",
-                            "output_files_exist",
-                            "last_error"
-                        )
-                    )
-                )
-            )
-            out[]
+            store_extract__coverage(self, private, plan_id = plan_id)
         },
         # }}}
         # assert_complete
@@ -4074,168 +1757,6 @@ EsgStore <- R6::R6Class(
         # }}}
     ),
     private = list(
-        # Share catalogue selection across a batch and persist only absent IDs.
-        # Validations happen before this method, so a bad site cannot partially
-        # publish a multi-site batch. Empty work returns the native SQL schema.
-        plan_regions_from_sites = function(
-            query_id,
-            sites,
-            time,
-            variable_id,
-            filters,
-            method
-        ) {
-            time_range <- store__time_range(time)
-            if (!nrow(sites)) {
-                return(data.table::as.data.table(ddb_query(
-                    private$conn,
-                    "SELECT * FROM extraction_plan WHERE FALSE"
-                )))
-            }
-            # file_catalog stores one shared row per file; its query_id is
-            # only the latest writer. Use the many-to-many membership table
-            # and filter in DuckDB before materializing this query's catalog.
-            catalog <- data.table::as.data.table(ddb_query(
-                private$conn,
-                sprintf(
-                    paste(
-                        "SELECT catalog.* FROM file_catalog AS catalog",
-                        "INNER JOIN esg_query_file AS membership",
-                        "ON catalog.file_key = membership.file_key",
-                        "WHERE membership.query_id = %s",
-                        "AND membership.status = 'current'"
-                    ),
-                    ddb_literal(private$conn, query_id)
-                )
-            ))
-            if (!nrow(catalog)) {
-                cli::cli_abort(
-                    "No cataloged file records were found for query ID {.val {query_id}}."
-                )
-            }
-
-            data.table::set(catalog, j = "query_id", value = query_id)
-
-            filter_names <- names(filters)
-            if (length(filters)) {
-                if (is.null(filter_names) || any(!nzchar(filter_names))) {
-                    cli::cli_abort("All file catalog filters must be named.")
-                }
-                unknown <- setdiff(filter_names, names(catalog))
-                if (length(unknown)) {
-                    cli::cli_abort(
-                        "Unknown file catalog filter column(s): {.val {unknown}}."
-                    )
-                }
-
-                for (name in filter_names) {
-                    value <- filters[[name]]
-                    checkmate::assert_atomic_vector(
-                        value,
-                        any.missing = FALSE,
-                        min.len = 1L,
-                        .var.name = sprintf("filters$%s", name)
-                    )
-                    catalog <- catalog[
-                        as.character(get(name)) %in% as.character(value)
-                    ]
-                }
-            }
-
-            if (!nrow(catalog)) {
-                cli::cli_abort(
-                    "No cataloged file records match the requested extraction plan filters."
-                )
-            }
-
-            requested_variable_id <- variable_id
-            if (!is.null(requested_variable_id)) {
-                if (any(!is.na(catalog$variable_id))) {
-                    catalog <- catalog[
-                        catalog$variable_id %in% requested_variable_id
-                    ]
-                }
-            } else {
-                requested_variable_id <- unique(catalog$variable_id)
-                requested_variable_id <- requested_variable_id[
-                    !is.na(requested_variable_id) &
-                        nzchar(requested_variable_id)
-                ]
-                if (!length(requested_variable_id)) {
-                    cli::cli_abort(
-                        "Cannot plan extraction without `variable_id` because the file catalog does not contain variable IDs."
-                    )
-                }
-            }
-
-            plan <- data.table::as.data.table(catalog)
-            if (
-                !any(!is.na(plan$variable_id)) &&
-                    !is.null(requested_variable_id)
-            ) {
-                plan <- plan[rep(
-                    seq_len(nrow(plan)),
-                    each = length(requested_variable_id)
-                )]
-                plan$variable_id <- rep(
-                    requested_variable_id,
-                    times = nrow(catalog)
-                )
-            } else {
-                plan <- plan[plan$variable_id %in% requested_variable_id]
-            }
-            if (!nrow(plan)) {
-                cli::cli_abort(
-                    "No cataloged file records match the requested variable IDs."
-                )
-            }
-
-            out <- store__region_plan_rows(
-                plan,
-                query_id,
-                sites,
-                time_range,
-                method
-            )
-            private$with_store_lock({
-                # Restrict both lookups to this batch. Historical unrelated
-                # plans must not be materialized once per requested site.
-                ids <- paste(
-                    ddb_literal(private$conn, out$plan_id),
-                    collapse = ", "
-                )
-                sql <- paste0(
-                    "SELECT * FROM extraction_plan WHERE plan_id IN (",
-                    ids,
-                    ")"
-                )
-                existing <- data.table::as.data.table(ddb_query(
-                    private$conn,
-                    sql
-                ))
-                fresh <- out[
-                    !out$plan_id %in% existing$plan_id,
-                    intersect(names(existing), names(out)),
-                    with = FALSE
-                ]
-                if (nrow(fresh)) {
-                    ddb_append_table(
-                        private$conn,
-                        "extraction_plan",
-                        as.data.frame(fresh)
-                    )
-                    existing <- data.table::as.data.table(ddb_query(
-                        private$conn,
-                        sql
-                    ))
-                }
-                existing[
-                    order(match(existing$site_id, sites$site_id)),
-                    intersect(names(out), names(existing)),
-                    with = FALSE
-                ]
-            })
-        },
         store_path = NULL,
         manifest_path = NULL,
         query_dir = NULL,
@@ -4250,891 +1771,7 @@ EsgStore <- R6::R6Class(
         conn = NULL,
         lock_depth = 0L,
 
-        # download layout helpers
-        # normalize_download_layout_policy {{{
-        normalize_download_layout_policy = function(policy = NULL) {
-            if (is.null(policy)) {
-                policy <- list()
-            }
-            checkmate::assert_list(policy, names = "unique")
-            defaults <- STORE_DOWNLOAD_LAYOUT_DEFAULT
-            for (name in names(defaults)) {
-                if (!name %in% names(policy) || is.null(policy[[name]])) {
-                    policy[[name]] <- defaults[[name]]
-                }
-            }
-            checkmate::assert_choice(
-                policy$layout,
-                STORE_DOWNLOAD_LAYOUT_CHOICES
-            )
-            policy$template <- downloader__null_if_empty(policy$template)
-            if (
-                identical(policy$layout, "template") && is.null(policy$template)
-            ) {
-                cli::cli_abort(
-                    "{.arg template} is required when {.code layout = \"template\"}."
-                )
-            }
-            checkmate::assert_flag(policy$include_version)
-            checkmate::assert_choice(
-                policy$collision,
-                STORE_DOWNLOAD_COLLISION_CHOICES
-            )
-            checkmate::assert_choice(
-                policy$missing,
-                STORE_DOWNLOAD_MISSING_CHOICES
-            )
-            list(
-                layout = policy$layout,
-                template = policy$template,
-                include_version = isTRUE(policy$include_version),
-                collision = policy$collision,
-                missing = policy$missing
-            )
-        },
-        # }}}
-
-        # download_layout_policy {{{
-        download_layout_policy = function() {
-            meta <- private$read_table("store_meta")
-            row <- meta[meta[["key"]] == "download_layout"]
-            if (!nrow(row)) {
-                return(private$normalize_download_layout_policy())
-            }
-            policy <- tryCatch(
-                jsonlite::fromJSON(
-                    row$value[[1L]],
-                    simplifyVector = TRUE,
-                    simplifyMatrix = FALSE
-                ),
-                error = function(e) list()
-            )
-            private$normalize_download_layout_policy(policy)
-        },
-        # }}}
-
-        # apply_download_layout {{{
-        apply_download_layout = function(plan, file_rows = NULL) {
-            plan <- data.table::copy(data.table::as.data.table(plan))
-            plan <- data.table::setalloccol(plan)
-            if (!nrow(plan)) {
-                return(plan)
-            }
-            plan <- private$layout_download_plan_candidates(plan, file_rows)
-            policy <- private$download_layout_policy()
-            private$resolve_download_plan_collisions(plan, policy)
-        },
-        # }}}
-
-        # layout_download_plan_candidates {{{
-        layout_download_plan_candidates = function(plan, file_rows = NULL) {
-            plan <- data.table::copy(data.table::as.data.table(plan))
-            plan <- data.table::setalloccol(plan)
-            if (!nrow(plan)) {
-                return(plan)
-            }
-            policy <- private$download_layout_policy()
-            plan <- private$enrich_download_plan_layout_fields(plan, file_rows)
-            plan[["layout_missing_fields"]] <- rep("", nrow(plan))
-            if (identical(policy$layout, "flat")) {
-                plan[["subdir"]] <- rep(NA_character_, nrow(plan))
-            } else {
-                subdirs <- vapply(
-                    seq_len(nrow(plan)),
-                    function(i) {
-                        private$download_layout_subdir(plan[i], policy)
-                    },
-                    character(1L)
-                )
-                missing <- vapply(
-                    seq_len(nrow(plan)),
-                    function(i) {
-                        private$download_layout_missing_fields(plan[i], policy)
-                    },
-                    character(1L)
-                )
-                plan[["subdir"]] <- subdirs
-                plan[["layout_missing_fields"]] <- missing
-            }
-            plan <- private$decorate_download_plan_targets(plan)
-            plan[]
-        },
-        # }}}
-
-        # enrich_download_plan_layout_fields {{{
-        enrich_download_plan_layout_fields = function(plan, file_rows = NULL) {
-            fields <- c(
-                "activity_id",
-                "institution_id",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "frequency",
-                "table_id",
-                "variable_id",
-                "grid_label",
-                "version",
-                "dataset_id",
-                "checksum",
-                "filename"
-            )
-            for (field in fields) {
-                if (!field %in% names(plan)) {
-                    plan[[field]] <- NA_character_
-                }
-            }
-            if (is.null(file_rows) || !nrow(file_rows)) {
-                return(plan)
-            }
-            file_rows <- data.table::as.data.table(file_rows)
-            if (
-                !"file_key" %in% names(plan) ||
-                    !"file_key" %in% names(file_rows)
-            ) {
-                return(plan)
-            }
-            idx <- match(plan$file_key, file_rows$file_key)
-            for (field in intersect(fields, names(file_rows))) {
-                missing <- is.na(plan[[field]]) |
-                    !nzchar(as.character(plan[[field]]))
-                fill <- !is.na(idx) & missing
-                if (any(fill)) {
-                    plan[[field]][fill] <- as.character(file_rows[[field]][idx[
-                        fill
-                    ]])
-                }
-            }
-            plan[]
-        },
-        # }}}
-
-        # download_layout_subdir {{{
-        download_layout_subdir = function(row, policy) {
-            if (identical(policy$layout, "dataset")) {
-                return(private$download_layout_dataset_subdir(row))
-            }
-            if (identical(policy$layout, "drs")) {
-                missing <- private$download_layout_missing_fields(row, policy)
-                if (nzchar(missing)) {
-                    if (identical(policy$missing, "error")) {
-                        cli::cli_abort(
-                            "Cannot build DRS download path; missing field(s): {.field {strsplit(missing, ',')[[1L]]}}."
-                        )
-                    }
-                    return(private$download_layout_dataset_subdir(row))
-                }
-                parts <- c(
-                    "CMIP6",
-                    private$download_layout_component(row$activity_id),
-                    private$download_layout_component(row$institution_id),
-                    private$download_layout_component(row$source_id),
-                    private$download_layout_component(row$experiment_id),
-                    private$download_layout_component(row$variant_label),
-                    private$download_layout_component(row$table_id),
-                    private$download_layout_component(row$variable_id),
-                    private$download_layout_component(row$grid_label)
-                )
-                if (isTRUE(policy$include_version)) {
-                    parts <- c(
-                        parts,
-                        private$download_layout_version_component(row$version)
-                    )
-                }
-                return(private$download_layout_path(parts))
-            }
-            if (identical(policy$layout, "template")) {
-                return(private$download_layout_template_subdir(row, policy))
-            }
-            NA_character_
-        },
-        # }}}
-
-        # download_layout_dataset_subdir {{{
-        download_layout_dataset_subdir = function(row) {
-            dataset_id <- private$download_layout_component(row$dataset_id)
-            if (!is.na(dataset_id)) {
-                return(file.path("datasets", dataset_id))
-            }
-            pieces <- c(
-                private$download_layout_component(row$source_id),
-                private$download_layout_component(row$experiment_id),
-                private$download_layout_component(row$variant_label),
-                private$download_layout_component(row$table_id),
-                private$download_layout_component(row$variable_id),
-                private$download_layout_component(row$grid_label)
-            )
-            pieces <- pieces[!is.na(pieces) & nzchar(pieces)]
-            if (!length(pieces)) {
-                pieces <- paste0(
-                    "file-",
-                    substr(
-                        store__hash(
-                            row$logical_file_id,
-                            row$file_key,
-                            row$filename
-                        ),
-                        1L,
-                        12L
-                    )
-                )
-            }
-            private$download_layout_path(c("datasets", pieces))
-        },
-        # }}}
-
-        # download_layout_template_subdir {{{
-        download_layout_template_subdir = function(row, policy) {
-            out <- policy$template
-            fields <- unique(unlist(regmatches(
-                out,
-                gregexpr("\\{[^{}]+\\}", out)
-            )))
-            if (length(fields)) {
-                for (token in fields) {
-                    field <- sub("^\\{", "", sub("\\}$", "", token))
-                    value <- if (field %in% names(row)) {
-                        private$download_layout_component(row[[field]])
-                    } else {
-                        NA_character_
-                    }
-                    if (is.na(value)) {
-                        if (identical(policy$missing, "error")) {
-                            cli::cli_abort(
-                                "Cannot build template download path; missing field {.field {field}}."
-                            )
-                        }
-                        value <- "unknown"
-                    }
-                    out <- gsub(token, value, out, fixed = TRUE)
-                }
-            }
-            private$download_layout_clean_subdir(out)
-        },
-        # }}}
-
-        # download_layout_missing_fields {{{
-        download_layout_missing_fields = function(row, policy) {
-            if (!identical(policy$layout, "drs")) {
-                return("")
-            }
-            required <- c(
-                "activity_id",
-                "institution_id",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "table_id",
-                "variable_id",
-                "grid_label"
-            )
-            if (isTRUE(policy$include_version)) {
-                required <- c(required, "version")
-            }
-            missing <- required[vapply(
-                required,
-                function(field) {
-                    value <- if (field %in% names(row)) {
-                        row[[field]]
-                    } else {
-                        NA_character_
-                    }
-                    is.na(private$download_layout_component(value))
-                },
-                logical(1L)
-            )]
-            paste(missing, collapse = ",")
-        },
-        # }}}
-
-        # decorate_download_plan_targets {{{
-        decorate_download_plan_targets = function(plan) {
-            previous_collision <- if (
-                "target_path_collision" %in% names(plan)
-            ) {
-                plan$target_path_collision %in% TRUE
-            } else {
-                rep(FALSE, nrow(plan))
-            }
-            previous_collision_group <- if (
-                "target_path_collision_group" %in% names(plan)
-            ) {
-                plan$target_path_collision_group
-            } else {
-                rep(NA_character_, nrow(plan))
-            }
-            target_rel <- mapply(
-                function(subdir, filename) {
-                    filename <- private$download_layout_component(filename)
-                    if (is.na(filename)) {
-                        filename <- "download.nc"
-                    }
-                    if (is.na(subdir) || !nzchar(subdir)) {
-                        filename
-                    } else {
-                        file.path(subdir, filename)
-                    }
-                },
-                plan$subdir,
-                plan$filename,
-                USE.NAMES = FALSE
-            )
-            plan[["target_rel_path"]] <- target_rel
-            plan[["target_path"]] <- file.path(private$download_dir, target_rel)
-            plan[["target_path_collision"]] <- previous_collision
-            plan[["target_path_collision_group"]] <- previous_collision_group
-            plan[]
-        },
-        # }}}
-
-        # resolve_download_plan_collisions {{{
-        resolve_download_plan_collisions = function(plan, policy) {
-            collision <- plan[,
-                .(logical_count = data.table::uniqueN(logical_file_id)),
-                by = "target_rel_path"
-            ]
-            collision <- collision[logical_count > 1L]
-            if (!nrow(collision)) {
-                return(plan[])
-            }
-            plan[
-                target_rel_path %in% collision$target_rel_path,
-                target_path_collision := TRUE
-            ]
-            plan[
-                target_path_collision %in% TRUE,
-                target_path_collision_group := target_rel_path
-            ]
-            if (identical(policy$collision, "error")) {
-                cli::cli_abort(
-                    "Download layout maps multiple logical files to the same target path: {.path {collision$target_rel_path}}."
-                )
-            }
-            colliding <- plan[target_path_collision %in% TRUE]
-            disambiguators <- colliding[, .SD[1L], by = "logical_file_id"]
-            disambiguators[,
-                disambiguator := vapply(
-                    seq_len(.N),
-                    function(i) {
-                        if (identical(policy$collision, "checksum")) {
-                            checksum <- private$download_layout_component(checksum[[
-                                i
-                            ]])
-                            if (!is.na(checksum)) {
-                                return(paste0(
-                                    "checksum=",
-                                    substr(checksum, 1L, 12L)
-                                ))
-                            }
-                        }
-                        paste0(
-                            "file=",
-                            substr(
-                                store__hash(
-                                    logical_file_id[[i]],
-                                    file_key[[i]],
-                                    filename[[i]]
-                                ),
-                                1L,
-                                12L
-                            )
-                        )
-                    },
-                    character(1L)
-                )
-            ]
-            map <- stats::setNames(
-                disambiguators$disambiguator,
-                disambiguators$logical_file_id
-            )
-            hit <- plan$logical_file_id %in% names(map)
-            plan[
-                hit,
-                subdir := mapply(
-                    function(subdir, logical_file_id) {
-                        extra <- map[[logical_file_id]]
-                        if (is.na(subdir) || !nzchar(subdir)) {
-                            extra
-                        } else {
-                            file.path(subdir, extra)
-                        }
-                    },
-                    subdir,
-                    logical_file_id,
-                    USE.NAMES = FALSE
-                )
-            ]
-            private$decorate_download_plan_targets(plan)
-        },
-        # }}}
-
-        # download_layout_component {{{
-        download_layout_component = function(x) {
-            x <- store__chr1(x)
-            if (is.na(x) || !nzchar(x)) {
-                return(NA_character_)
-            }
-            x <- sub("\\|.*$", "", x)
-            x <- gsub("[/\\\\]+", "_", x)
-            x <- gsub("[[:cntrl:]]+", "_", x)
-            x <- gsub("^\\.+$", "_", x)
-            if (!nzchar(x)) NA_character_ else x
-        },
-        # }}}
-
-        # download_layout_version_component {{{
-        download_layout_version_component = function(x) {
-            x <- private$download_layout_component(x)
-            if (is.na(x)) {
-                return(NA_character_)
-            }
-            if (startsWith(x, "v")) x else paste0("v", x)
-        },
-        # }}}
-
-        # download_layout_clean_subdir {{{
-        download_layout_clean_subdir = function(x) {
-            x <- gsub("[/\\\\]+", "/", x)
-            parts <- strsplit(x, "/", fixed = TRUE)[[1L]]
-            parts <- vapply(
-                parts,
-                private$download_layout_component,
-                character(1L)
-            )
-            parts <- parts[!is.na(parts) & nzchar(parts)]
-            private$download_layout_path(parts)
-        },
-        # }}}
-
-        # download_layout_path {{{
-        download_layout_path = function(parts) {
-            parts <- parts[!is.na(parts) & nzchar(parts)]
-            if (!length(parts)) {
-                return(NA_character_)
-            }
-            do.call(file.path, as.list(parts))
-        },
-        # }}}
-        # download plan helpers
-        # catalog_download_plan {{{
-        catalog_download_plan = function(query_id = NULL) {
-            catalog <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "file_catalog"
-            ))
-            if (!nrow(catalog)) {
-                return(data.table::data.table())
-            }
-            if (!is.null(query_id)) {
-                wanted_query_id <- query_id
-                catalog <- catalog[catalog[["query_id"]] %in% wanted_query_id]
-                if (!nrow(catalog)) {
-                    return(data.table::data.table())
-                }
-            }
-            catalog <- catalog[is.na(local_path) | !nzchar(local_path)]
-            if (!nrow(catalog)) {
-                return(data.table::data.table())
-            }
-            plan <- store__download_plan_rows(catalog)
-            plan <- plan[!is.na(url) & nzchar(url)]
-            if (!nrow(plan)) {
-                return(plan)
-            }
-            extra <- intersect(
-                c(
-                    "latest",
-                    "replica",
-                    "retracted",
-                    "deprecated",
-                    "version",
-                    "url_download",
-                    "local_path",
-                    "local_artifact_id"
-                ),
-                names(catalog)
-            )
-            if (length(extra)) {
-                idx <- match(plan$file_key, catalog$file_key)
-                for (name in extra) {
-                    plan[[name]] <- catalog[[name]][idx]
-                }
-            }
-            plan <- private$layout_download_plan_candidates(plan, catalog)
-            plan <- private$select_catalog_download_candidates(plan)
-            private$apply_download_layout(plan, catalog)
-        },
-        # }}}
-
-        # rank_catalog_download_candidates {{{
-        rank_catalog_download_candidates = function(plan) {
-            plan <- data.table::copy(data.table::as.data.table(plan))
-            plan <- data.table::setalloccol(plan)
-            if (!nrow(plan)) {
-                plan[["candidate_rank"]] <- integer()
-                return(plan)
-            }
-            for (name in c("latest", "replica", "retracted", "deprecated")) {
-                if (!name %in% names(plan)) {
-                    data.table::set(plan, j = name, value = NA)
-                }
-            }
-            data.table::set(
-                plan,
-                j = "catalog_row_order",
-                value = seq_len(nrow(plan))
-            )
-            data.table::set(
-                plan,
-                j = "retracted_order",
-                value = data.table::fifelse(
-                    store__lgl(plan$retracted) %in% TRUE,
-                    1L,
-                    0L
-                )
-            )
-            data.table::set(
-                plan,
-                j = "deprecated_order",
-                value = data.table::fifelse(
-                    store__lgl(plan$deprecated) %in% TRUE,
-                    1L,
-                    0L
-                )
-            )
-            latest <- store__lgl(plan$latest)
-            data.table::set(
-                plan,
-                j = "latest_order",
-                value = data.table::fifelse(
-                    latest %in% TRUE,
-                    0L,
-                    data.table::fifelse(is.na(latest), 1L, 2L)
-                )
-            )
-            data.table::set(
-                plan,
-                j = "version_rank",
-                value = store__version_rank(plan$version)
-            )
-            data.table::set(
-                plan,
-                j = "version_missing",
-                value = is.na(plan$version_rank)
-            )
-            data.table::set(
-                plan,
-                j = "replica_order",
-                value = data.table::fifelse(
-                    store__lgl(plan$replica) %in% TRUE,
-                    1L,
-                    0L
-                )
-            )
-            data.table::set(
-                plan,
-                j = "https_order",
-                value = data.table::fifelse(
-                    grepl("^https://", plan$url),
-                    0L,
-                    1L
-                )
-            )
-            data.table::setorderv(
-                plan,
-                c(
-                    "target_rel_path",
-                    "retracted_order",
-                    "deprecated_order",
-                    "latest_order",
-                    "version_missing",
-                    "version_rank",
-                    "replica_order",
-                    "https_order",
-                    "data_node",
-                    "url",
-                    "catalog_row_order"
-                ),
-                c(1L, 1L, 1L, 1L, 1L, -1L, 1L, 1L, 1L, 1L, 1L)
-            )
-            plan[, candidate_rank := seq_len(.N), by = "target_rel_path"]
-            plan[]
-        },
-        # }}}
-
-        # select_catalog_download_candidates {{{
-        select_catalog_download_candidates = function(plan) {
-            plan <- private$rank_catalog_download_candidates(plan)
-            if (!nrow(plan)) {
-                return(plan)
-            }
-            ambiguous <- private$ambiguous_catalog_download_candidates(plan)
-            if (nrow(ambiguous)) {
-                cli::cli_abort(c(
-                    "Cataloged file candidates map to the same download target with different checksums.",
-                    "x" = "Cannot safely choose one candidate for {.path {ambiguous$target_rel_path[[1L]]}}.",
-                    "i" = "Use more specific file filters or a download layout that separates these files."
-                ))
-            }
-            plan[, candidate_count := .N, by = "target_rel_path"]
-            plan[,
-                candidate_selection := data.table::fifelse(
-                    candidate_count > 1L,
-                    "ranked_by_catalog_metadata",
-                    "single"
-                )
-            ]
-            selected <- plan[candidate_rank == 1L]
-            data.table::set(selected, j = "selected_candidate", value = TRUE)
-            selected[]
-        },
-        # }}}
-
-        # ambiguous_catalog_download_candidates {{{
-        ambiguous_catalog_download_candidates = function(plan) {
-            plan <- data.table::as.data.table(plan)
-            if (!nrow(plan)) {
-                return(data.table::data.table())
-            }
-            plan[,
-                rank_signature := paste(
-                    retracted_order,
-                    deprecated_order,
-                    latest_order,
-                    version_missing,
-                    version_rank,
-                    replica_order,
-                    https_order,
-                    sep = "\r"
-                )
-            ]
-            groups <- plan[,
-                .(
-                    n = .N,
-                    checksum_count = data.table::uniqueN(checksum[
-                        !is.na(checksum) & nzchar(checksum)
-                    ]),
-                    top_signature_count = data.table::uniqueN(rank_signature[
-                        candidate_rank %in% c(1L, 2L)
-                    ])
-                ),
-                by = "target_rel_path"
-            ]
-            plan[, rank_signature := NULL]
-            groups[n > 1L & checksum_count > 1L & top_signature_count == 1L]
-        },
-        # }}}
-
-        # decorate_download_plan {{{
-        decorate_download_plan = function(plan, file_rows) {
-            plan <- data.table::copy(data.table::as.data.table(plan))
-            file_rows <- data.table::copy(data.table::as.data.table(file_rows))
-            plan <- data.table::setalloccol(plan)
-            if (!nrow(plan) || !nrow(file_rows)) {
-                return(plan)
-            }
-            if (!"file_key" %in% names(plan)) {
-                plan$file_key <- NA_character_
-            }
-            for (i in seq_len(nrow(plan))) {
-                if (!is.na(plan$file_key[[i]]) && nzchar(plan$file_key[[i]])) {
-                    next
-                }
-                hit <- file_rows[file_rows[["esgf_id"]] == plan$esgf_id[[i]]]
-                if (!nrow(hit) && "checksum" %in% names(plan)) {
-                    hit <- file_rows[
-                        file_rows[["filename"]] == plan$filename[[i]] &
-                            file_rows[["checksum"]] == plan$checksum[[i]]
-                    ]
-                }
-                if (nrow(hit)) {
-                    plan$file_key[[i]] <- hit$file_key[[1L]]
-                }
-            }
-            private$apply_download_layout(plan, file_rows)
-        },
-        # }}}
-
-        # preflight_files {{{
-        preflight_files = function(file_rows) {
-            file_rows <- data.table::as.data.table(file_rows)
-            if (!nrow(file_rows)) {
-                return(file_rows)
-            }
-            file_rows[, status := private$file_link_status(file_rows)]
-            file_rows[]
-        },
-        # }}}
-
-        # downloader_probe_concurrency {{{
-        downloader_probe_concurrency = function(
-            downloader = NULL,
-            probe_concurrency = NULL
-        ) {
-            if (!is.null(probe_concurrency)) {
-                checkmate::assert_count(probe_concurrency, positive = TRUE)
-                return(as.integer(probe_concurrency))
-            }
-            if (is.null(downloader)) {
-                return(1L)
-            }
-            workers <- tryCatch(downloader$n_workers, error = function(e) 1L)
-            workers <- suppressWarnings(as.integer(workers))
-            if (is.na(workers) || workers < 1L) {
-                workers <- 1L
-            }
-            as.integer(min(workers, 8L))
-        },
-        # }}}
-
-        # download_preflight_summary {{{
-        download_preflight_summary = function(
-            row,
-            file_rows,
-            candidates,
-            downloader = NULL
-        ) {
-            files <- private$preflight_files(file_rows)
-            current <- if (nrow(files)) {
-                files[files[["status"]] == "current"]
-            } else {
-                files
-            }
-            local_available <- 0L
-            if (nrow(current) && "local_path" %in% names(current)) {
-                local_path <- current$local_path
-                has_path <- !is.na(local_path) & nzchar(local_path)
-                if (any(has_path)) {
-                    local_available <- sum(file.exists(vapply(
-                        local_path[has_path],
-                        store_abs_path,
-                        character(1L),
-                        root = private$store_path
-                    )))
-                }
-            }
-            candidate_keys <- if (
-                nrow(candidates) && "file_key" %in% names(candidates)
-            ) {
-                unique(candidates$file_key[
-                    !is.na(candidates$file_key) & nzchar(candidates$file_key)
-                ])
-            } else {
-                character()
-            }
-            current_keys <- if (nrow(current)) {
-                unique(current$file_key)
-            } else {
-                character()
-            }
-            cooling_nodes <- 0L
-            if (
-                nrow(candidates) && "node_cooldown_rank" %in% names(candidates)
-            ) {
-                cooling <- candidates[candidates[["node_cooldown_rank"]] > 0L]
-                if (nrow(cooling) && "data_node" %in% names(cooling)) {
-                    cooling_nodes <- length(unique(cooling$data_node[
-                        !is.na(cooling$data_node) & nzchar(cooling$data_node)
-                    ]))
-                }
-            }
-            bytes_total <- if (nrow(current) && "size" %in% names(current)) {
-                sum(suppressWarnings(as.numeric(current$size)), na.rm = TRUE)
-            } else {
-                0
-            }
-            target_collisions <- 0L
-            if (
-                nrow(candidates) &&
-                    "target_path_collision" %in% names(candidates)
-            ) {
-                collision_path <- if (
-                    "target_path_collision_group" %in% names(candidates)
-                ) {
-                    candidates$target_path_collision_group
-                } else {
-                    candidates$target_rel_path
-                }
-                target_collisions <- length(unique(collision_path[
-                    candidates$target_path_collision %in%
-                        TRUE &
-                        !is.na(collision_path) &
-                        nzchar(collision_path)
-                ]))
-            }
-            missing_layout <- 0L
-            if (
-                nrow(candidates) &&
-                    "layout_missing_fields" %in% names(candidates)
-            ) {
-                missing_layout <- data.table::uniqueN(candidates$logical_file_id[
-                    !is.na(candidates$layout_missing_fields) &
-                        nzchar(candidates$layout_missing_fields)
-                ])
-            }
-            summary <- data.table::data.table(
-                query_id = row$query_id[[1L]],
-                label = store__chr1(row$label[[1L]]),
-                file_total = as.integer(nrow(files)),
-                current_count = as.integer(nrow(current)),
-                candidate_count = as.integer(nrow(candidates)),
-                bytes_total = as.numeric(bytes_total),
-                local_available = as.integer(local_available),
-                needs_download = as.integer(max(
-                    0L,
-                    length(current_keys) - local_available
-                )),
-                no_httpserver = as.integer(length(setdiff(
-                    current_keys,
-                    candidate_keys
-                ))),
-                cooldown_nodes = as.integer(cooling_nodes),
-                target_path_collision_count = as.integer(target_collisions),
-                missing_layout_field_count = as.integer(missing_layout)
-            )
-            if (!is.null(downloader)) {
-                space <- tryCatch(
-                    downloader$preflight(plan = candidates, overwrite = FALSE),
-                    error = function(e) NULL
-                )
-                if (!is.null(space) && nrow(space)) {
-                    add <- c(
-                        "required_bytes",
-                        "size_unknown_count",
-                        "dest_free_bytes",
-                        "tmp_free_bytes",
-                        "min_free_space",
-                        "disk_ok",
-                        "disk_would_block",
-                        "disk_preflight"
-                    )
-                    for (col in intersect(add, names(space))) {
-                        summary[[col]] <- space[[col]][[1L]]
-                    }
-                }
-            }
-            summary[]
-        },
-        # }}}
-
-        # match_download_task {{{
-        match_download_task = function(task, catalog) {
-            file_key <- store__chr1(task$file_key[[1L]])
-            if (!is.na(file_key) && file_key %in% catalog$file_key) {
-                return(file_key)
-            }
-            esgf_id <- store__chr1(task$esgf_id[[1L]])
-            if (!is.na(esgf_id)) {
-                hit <- catalog[catalog[["esgf_id"]] == esgf_id]
-                if (nrow(hit)) return(hit$file_key[[1L]])
-            }
-            hit <- catalog[
-                catalog[["filename"]] == task$filename[[1L]] &
-                    catalog[["checksum"]] == task$checksum[[1L]]
-            ]
-            if (nrow(hit)) hit$file_key[[1L]] else NA_character_
-        },
-        # }}}
-        # connect
+        # Core DB, lock, transaction, and schema-init primitives
         # connect {{{
         connect = function() {
             private$conn <- ddb_connect(
@@ -5144,7 +1781,6 @@ EsgStore <- R6::R6Class(
             invisible(private$conn)
         },
         # }}}
-        # disconnect
         # disconnect {{{
         disconnect = function() {
             if (is.null(private$conn)) {
@@ -5160,808 +1796,21 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # Inspect persisted declarations on every open so external repairs or
-        # damage are visible without repeating already satisfied DDL.
-        # init_schema
         # init_schema {{{
         init_schema = function() {
-            # Capture whether this is a genuinely empty manifest before
-            # creating the metadata table. Existing manifests are never
-            # upgraded implicitly because workflow state must remain coherent.
-            existing_tables <- ddb_list_tables(private$conn)
-            schema <- store__schema_executor(private$conn, existing_tables)
-            exec <- schema$exec
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS store_meta (
-                    key VARCHAR PRIMARY KEY,
-                    value VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            # The version check below reads store_meta, so it must exist first.
-            schema$flush()
-            current_version <- private$assert_schema_version(existing_tables)
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS artifact (
-                    artifact_id VARCHAR PRIMARY KEY,
-                    kind VARCHAR,
-                    role VARCHAR,
-                    project VARCHAR,
-                    relative_path VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    status VARCHAR,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    dict_id VARCHAR,
-                    source_url VARCHAR,
-                    source_repo VARCHAR,
-                    source_tag VARCHAR,
-                    source_commit VARCHAR,
-                    metadata_json VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS query_run (
-                    query_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    result_type VARCHAR,
-                    query_file VARCHAR,
-                    index_node VARCHAR,
-                    time_filter_start TIMESTAMP,
-                    time_filter_stop TIMESTAMP,
-                    time_filter_method VARCHAR,
-                    created_at TIMESTAMP,
-                    package_version VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query (
-                    query_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    index_node VARCHAR,
-                    query_file VARCHAR,
-                    parameter_json VARCHAR,
-                    tracked BOOLEAN,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    last_checked_at TIMESTAMP,
-                    package_version VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_file (
-                    file_key VARCHAR PRIMARY KEY,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    master_id VARCHAR,
-                    instance_id VARCHAR,
-                    tracking_id VARCHAR,
-                    version VARCHAR,
-                    title VARCHAR,
-                    filename VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    latest BOOLEAN,
-                    replica BOOLEAN,
-                    retracted BOOLEAN,
-                    deprecated BOOLEAN,
-                    data_node VARCHAR,
-                    activity_id VARCHAR,
-                    institution_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    grid_label VARCHAR,
-                    datetime_start TIMESTAMP,
-                    datetime_end TIMESTAMP,
-                    url_opendap VARCHAR,
-                    url_download VARCHAR,
-                    local_path VARCHAR,
-                    local_artifact_id VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_file (
-                    link_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    status VARCHAR,
-                    first_seen_at TIMESTAMP,
-                    last_seen_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_update (
-                    update_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    status VARCHAR,
-                    started_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    fields VARCHAR,
-                    all_files BOOLEAN,
-                    limit_files BOOLEAN,
-                    file_total INTEGER,
-                    current_count INTEGER,
-                    new_count INTEGER,
-                    stale_count INTEGER,
-                    changed_count INTEGER,
-                    deprecated_count INTEGER,
-                    retracted_count INTEGER,
-                    version_changed_count INTEGER,
-                    download_session_id VARCHAR,
-                    last_error VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_update_file (
-                    update_file_id VARCHAR PRIMARY KEY,
-                    update_id VARCHAR,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    change_type VARCHAR,
-                    previous_status VARCHAR,
-                    current_status VARCHAR,
-                    previous_version VARCHAR,
-                    current_version VARCHAR,
-                    previous_checksum VARCHAR,
-                    current_checksum VARCHAR,
-                    previous_size DOUBLE,
-                    current_size DOUBLE,
-                    version_changed BOOLEAN,
-                    checksum_changed BOOLEAN,
-                    size_changed BOOLEAN,
-                    url_changed BOOLEAN,
-                    data_node_changed BOOLEAN,
-                    deprecated BOOLEAN,
-                    retracted BOOLEAN,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_tag (
-                    tag_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    tag VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_dependency (
-                    dependency_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    parent_query_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS file_catalog (
-                    file_key VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    master_id VARCHAR,
-                    instance_id VARCHAR,
-                    version VARCHAR,
-                    title VARCHAR,
-                    filename VARCHAR,
-                    tracking_id VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    latest BOOLEAN,
-                    replica BOOLEAN,
-                    retracted BOOLEAN,
-                    deprecated BOOLEAN,
-                    data_node VARCHAR,
-                    activity_id VARCHAR,
-                    institution_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    grid_label VARCHAR,
-                    datetime_start TIMESTAMP,
-                    datetime_end TIMESTAMP,
-                    actual_time_start TIMESTAMP,
-                    actual_time_end TIMESTAMP,
-                    url_opendap VARCHAR,
-                    url_download VARCHAR,
-                    local_path VARCHAR,
-                    local_artifact_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_plan (
-                    plan_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    site_id VARCHAR,
-                    variable_id VARCHAR,
-                    lon DOUBLE,
-                    lat DOUBLE,
-                    method VARCHAR,
-                    time_start TIMESTAMP,
-                    time_stop TIMESTAMP,
-                    status VARCHAR,
-                    available_time_count INTEGER,
-                    attempt_count INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_grid_source (
-                    source_row_id VARCHAR PRIMARY KEY,
-                    plan_id VARCHAR,
-                    file_key VARCHAR,
-                    query_id VARCHAR,
-                    variable_id VARCHAR,
-                    method VARCHAR,
-                    source_index INTEGER,
-                    role VARCHAR,
-                    grid_lon DOUBLE,
-                    grid_lat DOUBLE,
-                    grid_elevation_m DOUBLE,
-                    grid_dist_km DOUBLE,
-                    weight DOUBLE,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE extraction_grid_source ADD COLUMN IF NOT EXISTS grid_elevation_m DOUBLE"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_result (
-                    result_id VARCHAR PRIMARY KEY,
-                    plan_id VARCHAR,
-                    file_key VARCHAR,
-                    query_id VARCHAR,
-                    artifact_id VARCHAR,
-                    output_path VARCHAR,
-                    year INTEGER,
-                    row_count INTEGER,
-                    unique_time_count INTEGER,
-                    time_min TIMESTAMP,
-                    time_max TIMESTAMP,
-                    lon_actual DOUBLE,
-                    lat_actual DOUBLE,
-                    completed_at TIMESTAMP
-                )
-            "
-            )
-            private$init_epw_morph_schema(exec)
-            private$init_shift_run_schema(exec)
-            # Create every queued table and column before the version row is
-            # written and before any caller can read them.
-            schema$flush()
-
-            private$initialize_schema_version(current_version)
-
-            invisible(NULL)
+            store_catalog__init_schema(self, private)
         },
         # }}}
-        # schema version
-        # Reject old manifests before any current-schema tables are created.
-        # This deliberately replaces the former best-effort migration path.
-        # assert_schema_version {{{
-        assert_schema_version = function(existing_tables) {
-            # A manifest with no tables was just created, so its store_meta is
-            # empty and holds no version; there is nothing to read or reject.
-            if (!length(existing_tables)) {
-                return(invisible(NA_character_))
-            }
-            current <- private$store_schema_version()
-            if (is.na(current) || !identical(current, STORE_SCHEMA_VERSION)) {
-                shown <- if (is.na(current)) "missing" else current
-                path <- private$store_path
-                reset_command <- store__reset_command(path)
-                private$disconnect()
-                cli::cli_abort(c(
-                    "Store schema version {.val {shown}} does not match the required version {.val {STORE_SCHEMA_VERSION}}.",
-                    "i" = "Use a different {.arg store} path, or rebuild this one with {.code {reset_command}}.",
-                    "i" = "The reset helper preserves the previous store as a backup by default."
-                ))
-            }
-            # Return the version read here so init_schema() need not read it again.
-            invisible(current)
-        },
-        # }}}
-
-        # Record the schema only after every current table has been created.
-        # `current` is the version assert_schema_version() observed at the start
-        # of this same initialization; nothing writes store_meta in between.
-        # initialize_schema_version {{{
-        initialize_schema_version = function(current) {
-            if (is.na(current)) {
-                private$set_store_schema_version(STORE_SCHEMA_VERSION)
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # store_schema_version {{{
-        store_schema_version = function() {
-            meta <- tryCatch(
-                private$read_table("store_meta"),
-                error = function(e) data.table::data.table()
-            )
-            if (!nrow(meta)) {
-                return(NA_character_)
-            }
-            row <- meta[meta[["key"]] == "schema_version"]
-            if (!nrow(row)) {
-                return(NA_character_)
-            }
-            version <- as.character(row$value[[1L]])
-            if (is.na(version) || !nzchar(version)) NA_character_ else version
-        },
-        # }}}
-
-        # set_store_schema_version {{{
-        set_store_schema_version = function(version) {
-            private$replace_rows(
-                "store_meta",
-                data.frame(
-                    key = "schema_version",
-                    value = version,
-                    updated_at = store__now(),
-                    stringsAsFactors = FALSE
-                ),
-                "key"
-            )
-            invisible(NULL)
-        },
-        # }}}
-
-        # init_epw_morph_schema
-        # init_epw_morph_schema {{{
-        init_epw_morph_schema = function(exec = private$exec) {
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_source (
-                    epw_id VARCHAR PRIMARY KEY,
-                    artifact_id VARCHAR,
-                    label VARCHAR,
-                    site_id VARCHAR,
-                    path VARCHAR,
-                    checksum VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_baseline_summary (
-                    baseline_row_id VARCHAR PRIMARY KEY,
-                    baseline_id VARCHAR,
-                    epw_id VARCHAR,
-                    epw_field VARCHAR,
-                    month INTEGER,
-                    stat VARCHAR,
-                    value DOUBLE,
-                    units VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_climate_summary (
-                    summary_row_id VARCHAR PRIMARY KEY,
-                    summary_id VARCHAR,
-                    plan_id VARCHAR,
-                    site_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    stat VARCHAR,
-                    value DOUBLE,
-                    units VARCHAR,
-                    lon DOUBLE,
-                    lat DOUBLE,
-                    years_json VARCHAR,
-                    coverage DOUBLE,
-                    n_records INTEGER,
-                    n_valid INTEGER,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # A summary can combine several extraction files. Keep their plan
-            # lineage normalized so source fragments do not divide statistics.
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_climate_summary_plan (
-                    summary_plan_id VARCHAR PRIMARY KEY,
-                    summary_id VARCHAR,
-                    plan_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # Existing stores recorded total rows only. The nullable valid-row
-            # count enables exact pooling when old fragment summaries are read.
-            exec(
-                "ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS n_valid INTEGER"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_plan (
-                    morph_id VARCHAR PRIMARY KEY,
-                    epw_id VARCHAR,
-                    summary_id VARCHAR,
-                    reference_summary_id VARCHAR,
-                    baseline_id VARCHAR,
-                    label VARCHAR,
-                    by_json VARCHAR,
-                    recipe_json VARCHAR,
-                    strict BOOLEAN,
-                    status VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_observed_reference (
-                    morph_id VARCHAR PRIMARY KEY,
-                    observed_summary_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_factor (
-                    factor_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    epw_field VARCHAR,
-                    variable_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    method VARCHAR,
-                    baseline DOUBLE,
-                    reference DOUBLE,
-                    future DOUBLE,
-                    delta DOUBLE,
-                    alpha DOUBLE,
-                    units VARCHAR,
-                    status VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_case (
-                    morph_case_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    status VARCHAR,
-                    error_class VARCHAR,
-                    last_error VARCHAR,
-                    updated_at TIMESTAMP
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_diagnostic (
-                    diagnostic_id VARCHAR PRIMARY KEY,
-                    stage VARCHAR,
-                    severity VARCHAR,
-                    code VARCHAR,
-                    message VARCHAR,
-                    plan_id VARCHAR,
-                    summary_id VARCHAR,
-                    baseline_id VARCHAR,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    variable_id VARCHAR,
-                    epw_field VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    action VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_result (
-                    result_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    artifact_id VARCHAR,
-                    output_path VARCHAR,
-                    row_count INTEGER,
-                    output_type VARCHAR,
-                    sequence_id VARCHAR,
-                    weather_year INTEGER,
-                    calendar VARCHAR,
-                    stochastic_seed INTEGER,
-                    member_count INTEGER,
-                    provenance_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # Existing stores predate year-addressable result rows, so add each
-            # nullable identity column without rewriting their artifacts.
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS output_type VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS weather_year INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS calendar VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS member_count INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_output (
-                    output_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    result_id VARCHAR,
-                    artifact_id VARCHAR,
-                    path VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    output_type VARCHAR,
-                    sequence_id VARCHAR,
-                    weather_year INTEGER,
-                    calendar VARCHAR,
-                    stochastic_seed INTEGER,
-                    member_count INTEGER,
-                    provenance_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # Output rows mirror result identity so resume and export can map
-            # every generated year without relying on case-level uniqueness.
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS result_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS output_type VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS weather_year INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS calendar VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS member_count INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
-            )
-            invisible(NULL)
-        },
-        # }}}
-        # init_shift_run_schema
-        # Persist task intent, resolved inputs, case fulfilment, and stage
-        # events so a failed workflow can be inspected and resumed later.
-        # init_shift_run_schema {{{
-        init_shift_run_schema = function(exec = private$exec) {
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run (
-                    run_id VARCHAR PRIMARY KEY,
-                    task VARCHAR,
-                    spec_hash VARCHAR,
-                    spec_json VARCHAR,
-                    resolved_spec_json VARCHAR,
-                    status VARCHAR,
-                    current_stage VARCHAR,
-                    query_id VARCHAR,
-                    reference_query_id VARCHAR,
-                    plan_ids_json VARCHAR,
-                    reference_plan_ids_json VARCHAR,
-                    morph_id VARCHAR,
-                    output_dir VARCHAR,
-                    package_version VARCHAR,
-                    started_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_case (
-                    run_case_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    case_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    grid_label VARCHAR,
-                    period VARCHAR,
-                    years_json VARCHAR,
-                    required BOOLEAN,
-                    status VARCHAR,
-                    output_id VARCHAR,
-                    export_path VARCHAR,
-                    missing_reason VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_event (
-                    event_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    step_id VARCHAR,
-                    stage VARCHAR,
-                    status VARCHAR,
-                    message VARCHAR,
-                    details_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-                "
-            )
-            # A run can have multiple foreground/background attempts. Keeping
-            # jobs separate preserves process and log history across resume.
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_job (
-                    job_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    step_id VARCHAR,
-                    attempt INTEGER,
-                    mode VARCHAR,
-                    status VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    log_path VARCHAR,
-                    ui_json VARCHAR,
-                    cancel_requested_at TIMESTAMP,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    exit_code INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            # A step records one independently inspectable stage invocation.
-            # The returned stage carries run/step identity into the next call;
-            # stale or terminal inputs fork a child run instead of mutating it.
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_step (
-                    step_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    ordinal INTEGER,
-                    task VARCHAR,
-                    spec_hash VARCHAR,
-                    spec_json VARCHAR,
-                    input_stage_json VARCHAR,
-                    output_stage_json VARCHAR,
-                    status VARCHAR,
-                    resumable BOOLEAN,
-                    nonresumable_reason VARCHAR,
-                    started_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-            "
-            )
-            invisible(NULL)
-        },
-        # }}}
-        # exec
         # exec {{{
         exec = function(sql) {
             ddb_exec(private$conn, sql)
         },
         # }}}
-        # read_table
         # read_table {{{
         read_table = function(table) {
             data.table::as.data.table(ddb_read_table(private$conn, table))
         },
         # }}}
-        # check_open
         # check_open {{{
         check_open = function() {
             if (!isTRUE(self$is_open)) {
@@ -5971,7 +1820,6 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # with_store_lock
         # with_store_lock {{{
         with_store_lock = function(expr) {
             private$check_open()
@@ -5988,2571 +1836,6 @@ EsgStore <- R6::R6Class(
             manifest_with_lock(private$manifest_path, force(expr))
         },
         # }}}
-        # query_payload
-        # query_payload {{{
-        query_payload = function(query) {
-            state <- query$state(null = TRUE)
-            parameter <- priv(query)$parameter$serialize(null = TRUE)
-            parameter_json <- jsonlite::toJSON(
-                parameter,
-                auto_unbox = TRUE,
-                null = "null",
-                digits = 6
-            )
-            list(
-                query_id = store__hash(
-                    "EsgQuery",
-                    state$index_node,
-                    parameter_json
-                ),
-                index_node = state$index_node,
-                parameter_json = as.character(parameter_json)
-            )
-        },
-        # }}}
-        # set_query_tracked
-        # set_query_tracked {{{
-        set_query_tracked = function(query_id, tracked) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_flag(tracked)
-            qid <- query_id
-            queries <- private$read_table("esg_query")
-            row <- queries[queries[["query_id"]] == qid]
-            if (!nrow(row)) {
-                cli::cli_abort(
-                    "Stored ESGF query {.val {query_id}} was not found."
-                )
-            }
-            private$with_store_lock({
-                row$tracked <- isTRUE(tracked)
-                row$updated_at <- store__now()
-                private$replace_rows(
-                    "esg_query",
-                    as.data.frame(row),
-                    "query_id"
-                )
-            })
-            invisible(NULL)
-        },
-        # }}}
-        # select_query_rows
-        # select_query_rows {{{
-        select_query_rows = function(query_id = NULL, tracked = NULL) {
-            queries <- private$read_table("esg_query")
-            if (!nrow(queries)) {
-                return(queries[])
-            }
-            if (!is.null(query_id) && !length(query_id)) {
-                return(queries[0])
-            }
-            if (!is.null(query_id)) {
-                qids <- query_id
-                queries <- queries[queries[["query_id"]] %in% qids]
-            }
-            if (!is.null(tracked) && nrow(queries)) {
-                want_tracked <- isTRUE(tracked)
-                queries <- queries[
-                    as.logical(queries[["tracked"]]) == want_tracked
-                ]
-            }
-            queries[]
-        },
-        # }}}
-        # resolve_query_selection
-        # resolve_query_selection {{{
-        resolve_query_selection = function(
-            query_id = NULL,
-            tag = NULL,
-            children = FALSE
-        ) {
-            ids <- query_id
-            if (is.null(ids) && !is.null(tag)) {
-                wanted_tag <- tag
-                tags <- private$read_table("esg_query_tag")
-                tags <- tags[tags[["tag"]] %in% wanted_tag]
-                ids <- unique(tags$query_id)
-            }
-            if (isTRUE(children) && !is.null(ids) && length(ids)) {
-                ids <- unique(c(
-                    ids,
-                    private$query_related_ids(
-                        ids,
-                        direction = "children",
-                        recursive = TRUE
-                    )
-                ))
-            }
-            ids
-        },
-        # }}}
-        # query_related_ids
-        # query_related_ids {{{
-        query_related_ids = function(
-            query_id,
-            direction = c("children", "parents", "both"),
-            recursive = TRUE
-        ) {
-            direction <- match.arg(direction)
-            edges <- private$read_table("esg_query_dependency")
-            if (!nrow(edges)) {
-                return(unique(query_id))
-            }
-            seen <- unique(query_id)
-            frontier <- seen
-            repeat {
-                next_ids <- character()
-                if (direction %in% c("children", "both")) {
-                    next_ids <- c(
-                        next_ids,
-                        edges[edges[["parent_query_id"]] %in% frontier]$query_id
-                    )
-                }
-                if (direction %in% c("parents", "both")) {
-                    next_ids <- c(
-                        next_ids,
-                        edges[edges[["query_id"]] %in% frontier]$parent_query_id
-                    )
-                }
-                next_ids <- setdiff(unique(next_ids), seen)
-                if (!length(next_ids)) {
-                    break
-                }
-                seen <- unique(c(seen, next_ids))
-                if (!isTRUE(recursive)) {
-                    break
-                }
-                frontier <- next_ids
-            }
-            seen
-        },
-        # }}}
-        # get_query_row
-        # get_query_row {{{
-        get_query_row = function(query_id) {
-            rows <- private$select_query_rows(query_id = query_id)
-            if (!nrow(rows)) {
-                cli::cli_abort(
-                    "Stored ESGF query {.val {query_id}} was not found."
-                )
-            }
-            rows[1L]
-        },
-        # }}}
-        # summarise_query_status
-        # summarise_query_status {{{
-        summarise_query_status = function(queries, links, files, tasks) {
-            empty_counts <- stats::setNames(
-                as.list(rep(0L, length(DOWNLOADER_TASK_STATUS))),
-                paste0("download_", DOWNLOADER_TASK_STATUS)
-            )
-            rows <- vector("list", nrow(queries))
-            for (i in seq_len(nrow(queries))) {
-                query <- queries[i]
-                qid <- query$query_id[[1L]]
-                q_links <- links[links[["query_id"]] == qid]
-                q_files <- if (nrow(q_links) && nrow(files)) {
-                    merge(
-                        q_links,
-                        files,
-                        by = "file_key",
-                        all.x = TRUE,
-                        sort = FALSE
-                    )
-                } else {
-                    data.table::data.table()
-                }
-                current <- q_files[q_files[["status"]] == "current"]
-
-                local_available <- 0L
-                if (nrow(current) && "local_path" %in% names(current)) {
-                    local_paths <- current$local_path
-                    has_path <- !is.na(local_paths) & nzchar(local_paths)
-                    if (any(has_path)) {
-                        local_available <- sum(file.exists(vapply(
-                            local_paths[has_path],
-                            store_abs_path,
-                            character(1L),
-                            root = private$store_path
-                        )))
-                    }
-                }
-
-                q_tasks <- if (
-                    nrow(tasks) && nrow(q_links) && "file_key" %in% names(tasks)
-                ) {
-                    tasks[tasks[["file_key"]] %in% q_links$file_key]
-                } else {
-                    data.table::data.table()
-                }
-                if (nrow(q_tasks)) {
-                    data.table::setorderv(
-                        q_tasks,
-                        intersect(
-                            c("file_key", "updated_at", "created_at"),
-                            names(q_tasks)
-                        )
-                    )
-                    q_tasks <- q_tasks[, .SD[.N], by = "file_key"]
-                }
-                task_counts <- empty_counts
-                if (nrow(q_tasks)) {
-                    counted <- table(factor(
-                        q_tasks$status,
-                        levels = DOWNLOADER_TASK_STATUS
-                    ))
-                    task_counts <- as.list(as.integer(counted))
-                    names(task_counts) <- paste0(
-                        "download_",
-                        DOWNLOADER_TASK_STATUS
-                    )
-                }
-
-                bytes_total <- if (
-                    nrow(current) && "size" %in% names(current)
-                ) {
-                    sum(
-                        suppressWarnings(as.numeric(current$size)),
-                        na.rm = TRUE
-                    )
-                } else {
-                    0
-                }
-                bytes_done <- if (
-                    nrow(q_tasks) && "bytes_done" %in% names(q_tasks)
-                ) {
-                    sum(
-                        suppressWarnings(as.numeric(q_tasks$bytes_done[
-                            q_tasks$status %in% c("done", "skipped")
-                        ])),
-                        na.rm = TRUE
-                    )
-                } else {
-                    0
-                }
-
-                current_count <- sum(q_links$status == "current", na.rm = TRUE)
-                complete <- current_count > 0L &&
-                    local_available >= current_count &&
-                    sum(unlist(task_counts[c(
-                        "download_downloading",
-                        "download_error",
-                        "download_cancelled"
-                    )])) ==
-                        0L
-
-                rows[[i]] <- data.table::as.data.table(c(
-                    list(
-                        query_id = qid,
-                        label = store__chr1(query$label[[1L]]),
-                        tracked = store__flag(query$tracked[[1L]]),
-                        file_total = nrow(q_links),
-                        file_current = current_count,
-                        file_missing = sum(
-                            q_links$status == "missing",
-                            na.rm = TRUE
-                        ),
-                        file_retracted = sum(
-                            q_links$status == "retracted",
-                            na.rm = TRUE
-                        ),
-                        file_deprecated = sum(
-                            q_links$status == "deprecated",
-                            na.rm = TRUE
-                        )
-                    ),
-                    task_counts,
-                    list(
-                        local_available = as.integer(local_available),
-                        bytes_total = as.numeric(bytes_total),
-                        bytes_done = as.numeric(bytes_done),
-                        complete = isTRUE(complete),
-                        last_checked_at = query$last_checked_at[[1L]],
-                        updated_at = query$updated_at[[1L]]
-                    )
-                ))
-            }
-
-            data.table::rbindlist(rows, fill = TRUE)
-        },
-        # }}}
-        # workflow_downloads
-        # workflow_downloads {{{
-        workflow_downloads = function(query_id, downloader) {
-            # A failed manifest read is not evidence that there are no tasks.
-            tasks <- data.table::as.data.table(downloader$tasks())
-            if (!nrow(tasks)) {
-                return(tasks)
-            }
-            links <- private$read_table("esg_query_file")
-            links <- links[links[["query_id"]] %in% query_id]
-            if (!nrow(links) || !"file_key" %in% names(tasks)) {
-                return(tasks[0])
-            }
-            tasks <- tasks[tasks[["file_key"]] %in% links$file_key]
-            if (!nrow(tasks)) {
-                return(tasks[])
-            }
-            link_cols <- links[, .(
-                query_id,
-                file_key,
-                query_file_status = status
-            )]
-            tasks <- merge(
-                tasks,
-                link_cols,
-                by = "file_key",
-                all.x = TRUE,
-                sort = FALSE
-            )
-            order_cols <- intersect(
-                c("file_key", "updated_at", "created_at"),
-                names(tasks)
-            )
-            if (length(order_cols)) {
-                data.table::setorderv(tasks, order_cols)
-            }
-            tasks[, .SD[.N], by = "file_key"][]
-        },
-        # }}}
-        # load_query
-        # load_query {{{
-        load_query = function(row) {
-            file <- store_abs_path(
-                row$query_file[[1L]],
-                root = private$store_path
-            )
-            esg_query()$load(file)
-        },
-        # }}}
-        # update_query_files
-        # update_query_files {{{
-        update_query_files = function(
-            query_id,
-            files,
-            fields = "*",
-            all = TRUE,
-            limit = FALSE
-        ) {
-            store__result_type(files)
-            dt <- store__file_table(files)
-            now <- store__now()
-            existing_links <- private$read_table("esg_query_file")
-            wanted_query_id <- query_id
-            existing_links <- existing_links[
-                existing_links[["query_id"]] == wanted_query_id
-            ]
-            existing_files <- private$read_table("esg_file")
-            existing_files <- existing_files[
-                existing_files[["file_key"]] %in% existing_links$file_key
-            ]
-            file_rows <- private$file_rows(dt, now)
-            update_id <- store__hash(
-                query_id,
-                now,
-                nrow(file_rows),
-                stats::runif(1L)
-            )
-            changes <- private$query_update_changes(
-                update_id,
-                query_id,
-                existing_links,
-                existing_files,
-                file_rows,
-                now
-            )
-
-            if (nrow(file_rows)) {
-                private$replace_rows(
-                    "esg_file",
-                    as.data.frame(file_rows),
-                    "file_key"
-                )
-                private$sync_file_catalog(query_id, file_rows)
-            }
-
-            private$sync_query_file_links(query_id, file_rows, now)
-            query <- private$get_query_row(query_id)
-            query$last_checked_at <- now
-            query$updated_at <- now
-            private$replace_rows("esg_query", as.data.frame(query), "query_id")
-            private$record_query_update(
-                update_id = update_id,
-                query_id = query_id,
-                changes = changes,
-                fields = fields,
-                all = all,
-                limit = limit,
-                started_at = now,
-                completed_at = now
-            )
-            links <- self$query_files(query_id)
-            if (nrow(changes) && nrow(links)) {
-                change_cols <- c(
-                    "query_id",
-                    "file_key",
-                    "update_id",
-                    "change_type",
-                    "previous_status",
-                    "current_status",
-                    "previous_version",
-                    "current_version",
-                    "previous_checksum",
-                    "current_checksum",
-                    "version_changed",
-                    "checksum_changed",
-                    "size_changed",
-                    "url_changed",
-                    "data_node_changed"
-                )
-                links <- merge(
-                    links,
-                    changes[,
-                        intersect(change_cols, names(changes)),
-                        with = FALSE
-                    ],
-                    by = c("query_id", "file_key"),
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-            } else {
-                links$update_id <- update_id
-            }
-            links[]
-        },
-        # }}}
-        # preview_query_update
-        # preview_query_update {{{
-        preview_query_update = function(row, files) {
-            store__result_type(files)
-            dt <- store__file_table(files)
-            now <- store__now()
-            query_id <- row$query_id[[1L]]
-            existing_links <- private$read_table("esg_query_file")
-            wanted_query_id <- query_id
-            existing_links <- existing_links[
-                existing_links[["query_id"]] == wanted_query_id
-            ]
-            existing_files <- private$read_table("esg_file")
-            existing_files <- existing_files[
-                existing_files[["file_key"]] %in% existing_links$file_key
-            ]
-            file_rows <- private$file_rows(dt, now)
-            update_id <- store__hash(
-                "preview",
-                query_id,
-                now,
-                nrow(file_rows),
-                stats::runif(1L)
-            )
-            changes <- private$query_update_changes(
-                update_id,
-                query_id,
-                existing_links,
-                existing_files,
-                file_rows,
-                now
-            )
-            summary <- private$query_update_preview_summary(row, changes)
-            list(
-                summary = summary,
-                changes = changes,
-                files = files,
-                file_rows = file_rows
-            )
-        },
-        # }}}
-        # query_update_preview_summary
-        # query_update_preview_summary {{{
-        query_update_preview_summary = function(row, changes) {
-            count_type <- function(type) {
-                as.integer(sum(changes$change_type == type, na.rm = TRUE))
-            }
-            count_flag <- function(column) {
-                as.integer(sum(changes[[column]] %in% TRUE, na.rm = TRUE))
-            }
-            sum_size <- function(rows) {
-                sum(
-                    suppressWarnings(as.numeric(rows$current_size)),
-                    na.rm = TRUE
-                )
-            }
-
-            active <- changes[changes[["current_status"]] == "current"]
-            data.table::data.table(
-                query_id = row$query_id[[1L]],
-                label = store__chr1(row$label[[1L]]),
-                file_total = as.integer(nrow(changes)),
-                current_count = count_type("current"),
-                new_count = count_type("new"),
-                stale_count = count_type("stale"),
-                changed_count = count_type("changed"),
-                deprecated_count = count_flag("deprecated"),
-                retracted_count = count_flag("retracted"),
-                version_changed_count = count_flag("version_changed"),
-                bytes_total = as.numeric(sum_size(active)),
-                bytes_new = as.numeric(sum_size(active[
-                    active[["change_type"]] == "new"
-                ])),
-                bytes_changed = as.numeric(sum_size(active[
-                    active[["change_type"]] == "changed"
-                ]))
-            )
-        },
-        # }}}
-        # query_update_changes
-        # query_update_changes {{{
-        query_update_changes = function(
-            update_id,
-            query_id,
-            existing_links,
-            existing_files,
-            file_rows,
-            now
-        ) {
-            current_keys <- if (nrow(file_rows)) {
-                unique(file_rows$file_key)
-            } else {
-                character()
-            }
-            previous_keys <- if (nrow(existing_links)) {
-                unique(existing_links$file_key)
-            } else {
-                character()
-            }
-            keys <- unique(c(previous_keys, current_keys))
-            if (!length(keys)) {
-                return(data.table::data.table())
-            }
-            rows <- vector("list", length(keys))
-            for (i in seq_along(keys)) {
-                key <- keys[[i]]
-                previous_link <- existing_links[
-                    existing_links[["file_key"]] == key
-                ][1L]
-                previous_file <- existing_files[
-                    existing_files[["file_key"]] == key
-                ][1L]
-                current_file <- if (nrow(file_rows)) {
-                    file_rows[file_rows[["file_key"]] == key][1L]
-                } else {
-                    file_rows
-                }
-                has_previous <- nrow(previous_link) &&
-                    !is.na(previous_link$file_key[[1L]])
-                has_current <- nrow(current_file) &&
-                    !is.na(current_file$file_key[[1L]])
-                previous_status <- if (has_previous) {
-                    previous_link$status[[1L]]
-                } else {
-                    NA_character_
-                }
-                current_status <- if (has_current) {
-                    private$file_link_status(current_file)[[1L]]
-                } else {
-                    "missing"
-                }
-
-                version_changed <- private$query_update_changed(
-                    previous_file,
-                    current_file,
-                    "version"
-                )
-                checksum_changed <- private$query_update_changed(
-                    previous_file,
-                    current_file,
-                    "checksum"
-                )
-                size_changed <- private$query_update_changed(
-                    previous_file,
-                    current_file,
-                    "size"
-                )
-                url_changed <- private$query_update_changed(
-                    previous_file,
-                    current_file,
-                    "url_download"
-                )
-                data_node_changed <- private$query_update_changed(
-                    previous_file,
-                    current_file,
-                    "data_node"
-                )
-                changed <- any(
-                    c(
-                        version_changed,
-                        checksum_changed,
-                        size_changed,
-                        url_changed,
-                        data_node_changed
-                    ),
-                    na.rm = TRUE
-                )
-                change_type <- if (!has_previous && has_current) {
-                    "new"
-                } else if (has_previous && !has_current) {
-                    "stale"
-                } else if (isTRUE(changed)) {
-                    "changed"
-                } else {
-                    "current"
-                }
-
-                rows[[i]] <- data.table::data.table(
-                    update_file_id = store__hash(update_id, key),
-                    update_id = update_id,
-                    query_id = query_id,
-                    file_key = key,
-                    change_type = change_type,
-                    previous_status = previous_status,
-                    current_status = current_status,
-                    previous_version = private$query_update_value(
-                        previous_file,
-                        "version"
-                    ),
-                    current_version = private$query_update_value(
-                        current_file,
-                        "version"
-                    ),
-                    previous_checksum = private$query_update_value(
-                        previous_file,
-                        "checksum"
-                    ),
-                    current_checksum = private$query_update_value(
-                        current_file,
-                        "checksum"
-                    ),
-                    previous_size = suppressWarnings(as.numeric(private$query_update_value(
-                        previous_file,
-                        "size"
-                    ))),
-                    current_size = suppressWarnings(as.numeric(private$query_update_value(
-                        current_file,
-                        "size"
-                    ))),
-                    version_changed = isTRUE(version_changed),
-                    checksum_changed = isTRUE(checksum_changed),
-                    size_changed = isTRUE(size_changed),
-                    url_changed = isTRUE(url_changed),
-                    data_node_changed = isTRUE(data_node_changed),
-                    deprecated = has_current &&
-                        store__flag(current_file$deprecated[[1L]]),
-                    retracted = has_current &&
-                        store__flag(current_file$retracted[[1L]]),
-                    created_at = now
-                )
-            }
-            data.table::rbindlist(rows, fill = TRUE)
-        },
-        # }}}
-        # query_update_value
-        # query_update_value {{{
-        query_update_value = function(row, column) {
-            if (!nrow(row) || !column %in% names(row)) {
-                return(NA_character_)
-            }
-            store__chr1(row[[column]][[1L]])
-        },
-        # }}}
-        # query_update_changed
-        # query_update_changed {{{
-        query_update_changed = function(previous_row, current_row, column) {
-            if (!nrow(previous_row) || !nrow(current_row)) {
-                return(FALSE)
-            }
-            previous <- private$query_update_value(previous_row, column)
-            current <- private$query_update_value(current_row, column)
-            if (is.na(previous) && is.na(current)) {
-                return(FALSE)
-            }
-            !identical(as.character(previous), as.character(current))
-        },
-        # }}}
-        # record_query_update
-        # record_query_update {{{
-        record_query_update = function(
-            update_id,
-            query_id,
-            changes,
-            fields,
-            all,
-            limit,
-            started_at,
-            completed_at
-        ) {
-            if (nrow(changes)) {
-                private$append_rows(
-                    "esg_query_update_file",
-                    as.data.frame(changes)
-                )
-            }
-            summary <- data.frame(
-                update_id = update_id,
-                query_id = query_id,
-                status = "done",
-                started_at = started_at,
-                completed_at = completed_at,
-                fields = paste(as.character(fields), collapse = ","),
-                all_files = isTRUE(all),
-                limit_files = isTRUE(limit),
-                file_total = as.integer(nrow(changes)),
-                current_count = as.integer(sum(
-                    changes$change_type == "current",
-                    na.rm = TRUE
-                )),
-                new_count = as.integer(sum(
-                    changes$change_type == "new",
-                    na.rm = TRUE
-                )),
-                stale_count = as.integer(sum(
-                    changes$change_type == "stale",
-                    na.rm = TRUE
-                )),
-                changed_count = as.integer(sum(
-                    changes$change_type == "changed",
-                    na.rm = TRUE
-                )),
-                deprecated_count = as.integer(sum(
-                    changes$deprecated %in% TRUE,
-                    na.rm = TRUE
-                )),
-                retracted_count = as.integer(sum(
-                    changes$retracted %in% TRUE,
-                    na.rm = TRUE
-                )),
-                version_changed_count = as.integer(sum(
-                    changes$version_changed %in% TRUE,
-                    na.rm = TRUE
-                )),
-                download_session_id = NA_character_,
-                last_error = NA_character_,
-                stringsAsFactors = FALSE
-            )
-            private$replace_rows("esg_query_update", summary, "update_id")
-            invisible(summary)
-        },
-        # }}}
-        # set_query_update_session
-        # set_query_update_session {{{
-        set_query_update_session = function(update_id, session_id) {
-            if (
-                is.na(update_id) ||
-                    !nzchar(update_id) ||
-                    is.na(session_id) ||
-                    !nzchar(session_id)
-            ) {
-                return(invisible(NULL))
-            }
-            updates <- private$read_table("esg_query_update")
-            wanted_update_id <- update_id
-            row <- updates[updates[["update_id"]] == wanted_update_id]
-            if (!nrow(row)) {
-                return(invisible(NULL))
-            }
-            row$download_session_id <- session_id
-            private$replace_rows(
-                "esg_query_update",
-                as.data.frame(row),
-                "update_id"
-            )
-            invisible(row)
-        },
-        # }}}
-        # enqueue_query_download
-        # enqueue_query_download {{{
-        enqueue_query_download = function(
-            query_id,
-            files,
-            current,
-            downloader,
-            replica,
-            session_label,
-            service,
-            probe,
-            probe_concurrency,
-            probe_cache_seconds,
-            strategy,
-            error_if_empty = TRUE
-        ) {
-            current <- data.table::as.data.table(current)
-            if (!nrow(current)) {
-                if (isTRUE(error_if_empty)) {
-                    cli::cli_abort(
-                        "Stored ESGF query {.val {query_id}} has no current files to download."
-                    )
-                }
-                return(NA_character_)
-            }
-
-            # Use the committed current-file snapshot supplied by the caller.
-            node_stats <- tryCatch(
-                downloader$data_nodes(service = service),
-                error = function(e) NULL
-            )
-            network_policy <- tryCatch(
-                downloader$network_policy,
-                error = function(e) NULL
-            )
-            node_policy <- tryCatch(
-                downloader$node_policy,
-                error = function(e) NULL
-            )
-            probe_concurrency <- private$downloader_probe_concurrency(
-                downloader,
-                probe_concurrency
-            )
-            plan <- files$download_plan(
-                replica = replica,
-                service = service,
-                probe = probe,
-                strategy = strategy,
-                node_stats = node_stats,
-                network_policy = network_policy,
-                node_policy = node_policy,
-                probe_concurrency = probe_concurrency,
-                probe_cache_seconds = probe_cache_seconds
-            )
-            plan <- private$decorate_download_plan(plan, current)
-            plan <- plan[plan[["file_key"]] %in% current$file_key]
-            if (!nrow(plan)) {
-                if (isTRUE(error_if_empty)) {
-                    cli::cli_abort(
-                        "Stored ESGF query {.val {query_id}} has no downloadable HTTPServer URLs."
-                    )
-                }
-                return(NA_character_)
-            }
-            if (is.null(session_label)) {
-                session_label <- query_id
-            }
-            tryCatch(
-                downloader$record_probes(plan, probed = probe),
-                error = function(e) NULL
-            )
-            downloader$enqueue(plan, session_label = session_label)
-        },
-        # }}}
-        # file_rows
-        # file_rows {{{
-        file_rows = function(dt, now) {
-            if (!nrow(dt)) {
-                return(data.table::data.table())
-            }
-            dt <- data.table::as.data.table(dt)
-            dt[, file_key := store__file_keys(.SD)]
-            dt[, logical_file_id := store__logical_file_id(.SD)]
-
-            # A previously downloaded candidate outranks a fresh remote
-            # replica of the same logical file. Remaining ties prefer current,
-            # authoritative, newest records with both service URLs available.
-            existing <- private$read_table("esg_file")
-            existing <- existing[existing[["file_key"]] %in% dt$file_key]
-            existing_created <- stats::setNames(
-                existing$created_at,
-                existing$file_key
-            )
-            existing_local_path <- stats::setNames(
-                existing$local_path,
-                existing$file_key
-            )
-            existing_artifact <- stats::setNames(
-                existing$local_artifact_id,
-                existing$file_key
-            )
-            local_path <- store__match_chr(existing_local_path, dt$file_key)
-            dt[, `:=`(
-                row_order = seq_len(.N),
-                local_order = data.table::fifelse(
-                    !is.na(local_path) & nzchar(local_path),
-                    0L,
-                    1L
-                ),
-                latest_order = data.table::fifelse(
-                    store__lgl(latest) %in% FALSE,
-                    1L,
-                    0L
-                ),
-                replica_order = data.table::fifelse(
-                    store__lgl(replica) %in% TRUE,
-                    1L,
-                    0L
-                ),
-                retracted_order = data.table::fifelse(
-                    store__lgl(retracted) %in% TRUE,
-                    1L,
-                    0L
-                ),
-                deprecated_order = data.table::fifelse(
-                    store__lgl(deprecated) %in% TRUE,
-                    1L,
-                    0L
-                ),
-                version_order = store__version_rank(version),
-                service_order = as.integer(
-                    is.na(url_opendap) | !nzchar(url_opendap)
-                ) +
-                    as.integer(is.na(url_download) | !nzchar(url_download))
-            )]
-            data.table::setorderv(
-                dt,
-                c(
-                    "logical_file_id",
-                    "retracted_order",
-                    "deprecated_order",
-                    "latest_order",
-                    "local_order",
-                    "replica_order",
-                    "version_order",
-                    "service_order",
-                    "data_node",
-                    "file_key",
-                    "row_order"
-                ),
-                c(1L, 1L, 1L, 1L, 1L, 1L, -1L, 1L, 1L, 1L, 1L),
-                na.last = TRUE
-            )
-            dt <- dt[!duplicated(logical_file_id)]
-            existing <- existing[existing[["file_key"]] %in% dt$file_key]
-
-            data.table::data.table(
-                file_key = dt$file_key,
-                esgf_id = dt$id,
-                dataset_id = dt$dataset_id,
-                master_id = dt$master_id,
-                instance_id = dt$instance_id,
-                tracking_id = dt$tracking_id,
-                version = dt$version,
-                title = dt$title,
-                filename = dt$filename,
-                checksum = dt$checksum,
-                checksum_type = dt$checksum_type,
-                size = suppressWarnings(as.numeric(dt$size)),
-                latest = store__lgl(dt$latest),
-                replica = store__lgl(dt$replica),
-                retracted = store__lgl(dt$retracted),
-                deprecated = store__lgl(dt$deprecated),
-                data_node = dt$data_node,
-                activity_id = dt$activity_id,
-                institution_id = dt$institution_id,
-                source_id = dt$source_id,
-                experiment_id = dt$experiment_id,
-                variant_label = dt$variant_label,
-                frequency = dt$frequency,
-                table_id = dt$table_id,
-                variable_id = dt$variable_id,
-                grid_label = dt$grid_label,
-                datetime_start = store__time(dt$datetime_start),
-                datetime_end = store__time(dt$datetime_end),
-                url_opendap = dt$url_opendap,
-                url_download = dt$url_download,
-                local_path = store__match_chr(existing_local_path, dt$file_key),
-                local_artifact_id = store__match_chr(
-                    existing_artifact,
-                    dt$file_key
-                ),
-                created_at = store__match_time(
-                    existing_created,
-                    dt$file_key,
-                    now
-                ),
-                updated_at = now
-            )
-        },
-        # }}}
-        # sync_query_file_links
-        # sync_query_file_links {{{
-        sync_query_file_links = function(query_id, file_rows, now) {
-            qid <- query_id
-            current_keys <- if (nrow(file_rows)) {
-                unique(file_rows$file_key)
-            } else {
-                character()
-            }
-            links <- private$read_table("esg_query_file")
-            existing <- links[links[["query_id"]] == qid]
-
-            if (nrow(existing)) {
-                missing <- existing[!existing[["file_key"]] %in% current_keys]
-                if (nrow(missing)) {
-                    missing$status <- "missing"
-                    missing$last_seen_at <- now
-                    private$replace_rows(
-                        "esg_query_file",
-                        as.data.frame(missing),
-                        "link_id"
-                    )
-                }
-            }
-
-            if (!length(current_keys)) {
-                return(invisible(NULL))
-            }
-
-            existing_first_seen <- stats::setNames(
-                existing$first_seen_at,
-                existing$file_key
-            )
-            rows <- data.table::data.table(
-                link_id = vapply(
-                    current_keys,
-                    function(file_key) store__hash(qid, file_key),
-                    character(1L)
-                ),
-                query_id = qid,
-                file_key = current_keys,
-                status = private$file_link_status(file_rows[match(
-                    current_keys,
-                    file_rows$file_key
-                )]),
-                first_seen_at = store__match_time(
-                    existing_first_seen,
-                    current_keys,
-                    now
-                ),
-                last_seen_at = now
-            )
-            private$replace_rows(
-                "esg_query_file",
-                as.data.frame(rows),
-                "link_id"
-            )
-            invisible(NULL)
-        },
-        # }}}
-        # file_link_status
-        # file_link_status {{{
-        file_link_status = function(file_rows) {
-            status <- rep("current", nrow(file_rows))
-            deprecated <- store__lgl(file_rows$deprecated)
-            retracted <- store__lgl(file_rows$retracted)
-            status[deprecated %in% TRUE] <- "deprecated"
-            status[retracted %in% TRUE] <- "retracted"
-            status
-        },
-        # }}}
-        # sync_file_catalog
-        # sync_file_catalog {{{
-        sync_file_catalog = function(query_id, file_rows) {
-            if (!nrow(file_rows)) {
-                return(invisible(NULL))
-            }
-            active <- file_rows[
-                private$file_link_status(file_rows) == "current"
-            ]
-            if (!nrow(active)) {
-                return(invisible(NULL))
-            }
-            now <- store__now()
-            catalog <- data.frame(
-                file_key = active$file_key,
-                query_id = query_id,
-                esgf_id = active$esgf_id,
-                dataset_id = active$dataset_id,
-                master_id = active$master_id,
-                instance_id = active$instance_id,
-                version = active$version,
-                title = active$title,
-                filename = active$filename,
-                tracking_id = active$tracking_id,
-                checksum = active$checksum,
-                checksum_type = active$checksum_type,
-                size = suppressWarnings(as.numeric(active$size)),
-                latest = active$latest,
-                replica = active$replica,
-                retracted = active$retracted,
-                deprecated = active$deprecated,
-                data_node = active$data_node,
-                activity_id = active$activity_id,
-                institution_id = active$institution_id,
-                source_id = active$source_id,
-                experiment_id = active$experiment_id,
-                variant_label = active$variant_label,
-                frequency = active$frequency,
-                table_id = active$table_id,
-                variable_id = active$variable_id,
-                grid_label = active$grid_label,
-                datetime_start = active$datetime_start,
-                datetime_end = active$datetime_end,
-                actual_time_start = store__time(rep(
-                    NA_character_,
-                    nrow(active)
-                )),
-                actual_time_end = store__time(rep(NA_character_, nrow(active))),
-                url_opendap = active$url_opendap,
-                url_download = active$url_download,
-                local_path = active$local_path,
-                local_artifact_id = active$local_artifact_id,
-                created_at = rep(now, nrow(active)),
-                stringsAsFactors = FALSE
-            )
-            private$replace_rows("file_catalog", catalog, "file_key")
-            invisible(NULL)
-        },
-        # }}}
-        # sync_tracked_file_download
-        # sync_tracked_file_download {{{
-        sync_tracked_file_download = function(
-            file_key,
-            local_path,
-            artifact_id
-        ) {
-            files <- private$read_table("esg_file")
-            wanted_file_key <- file_key
-            hit <- files[files[["file_key"]] == wanted_file_key]
-            if (!nrow(hit)) {
-                return(invisible(NULL))
-            }
-            hit$local_path <- store_rel_path(local_path, private$store_path)
-            hit$local_artifact_id <- artifact_id
-            hit$updated_at <- store__now()
-            private$replace_rows("esg_file", as.data.frame(hit), "file_key")
-            invisible(NULL)
-        },
-        # }}}
-        # validate_download_files
-        # validate_download_files {{{
-        validate_download_files = function(
-            query_id = NULL,
-            checksum = FALSE,
-            layout = TRUE
-        ) {
-            catalog <- private$read_table("file_catalog")
-            esg_files <- private$read_table("esg_file")
-            links <- private$read_table("esg_query_file")
-            artifacts <- private$read_table("artifact")
-            artifacts <- artifacts[artifacts[["kind"]] == "netcdf"]
-
-            query_label <- NA_character_
-            if (!is.null(query_id)) {
-                query_label <- paste(query_id, collapse = ",")
-                wanted_query <- query_id
-                link_keys <- if (nrow(links)) {
-                    links[links[["query_id"]] %in% wanted_query]$file_key
-                } else {
-                    character()
-                }
-                catalog <- catalog[
-                    catalog[["query_id"]] %in%
-                        wanted_query |
-                        catalog[["file_key"]] %in% link_keys
-                ]
-                esg_files <- esg_files[esg_files[["file_key"]] %in% link_keys]
-                artifact_ids <- unique(c(
-                    catalog$local_artifact_id,
-                    esg_files$local_artifact_id
-                ))
-                artifact_ids <- artifact_ids[
-                    !is.na(artifact_ids) & nzchar(artifact_ids)
-                ]
-                artifacts <- artifacts[
-                    artifacts[["query_id"]] %in%
-                        wanted_query |
-                        artifacts[["file_key"]] %in% link_keys |
-                        artifacts[["artifact_id"]] %in% artifact_ids
-                ]
-            }
-
-            storage <- private$download_storage_report()
-            files <- private$validate_download_file_rows(
-                catalog,
-                esg_files,
-                artifacts,
-                checksum = checksum,
-                layout = layout
-            )
-            artifacts <- private$validate_download_artifact_rows(
-                artifacts,
-                catalog,
-                esg_files
-            )
-            actions <- private$validate_download_actions(files, artifacts)
-            summary <- data.table::data.table(
-                query_id = query_label,
-                file_count = as.integer(nrow(files)),
-                registered_file_count = as.integer(sum(
-                    !is.na(files$local_path) & nzchar(files$local_path),
-                    na.rm = TRUE
-                )),
-                existing_file_count = as.integer(sum(
-                    files$exists %in% TRUE,
-                    na.rm = TRUE
-                )),
-                missing_file_count = as.integer(sum(
-                    files$missing_local_ref %in% TRUE,
-                    na.rm = TRUE
-                )),
-                bad_size_count = as.integer(sum(
-                    files$bad_size %in% TRUE,
-                    na.rm = TRUE
-                )),
-                bad_checksum_count = as.integer(sum(
-                    files$bad_checksum %in% TRUE,
-                    na.rm = TRUE
-                )),
-                artifact_mismatch_count = as.integer(sum(
-                    files$artifact_mismatch %in% TRUE,
-                    na.rm = TRUE
-                )),
-                layout_mismatch_count = as.integer(sum(
-                    files$layout_mismatch %in% TRUE,
-                    na.rm = TRUE
-                )),
-                untracked_file_count = as.integer(nrow(
-                    storage$untracked_files
-                )),
-                action_count = as.integer(nrow(actions))
-            )
-            list(
-                summary = summary[],
-                files = files[],
-                artifacts = artifacts[],
-                untracked = storage$untracked_files[],
-                actions = actions[]
-            )
-        },
-        # }}}
-
-        # validate_download_file_rows {{{
-        validate_download_file_rows = function(
-            catalog,
-            esg_files,
-            artifacts,
-            checksum = FALSE,
-            layout = TRUE
-        ) {
-            catalog <- data.table::as.data.table(catalog)
-            esg_files <- data.table::as.data.table(esg_files)
-            artifacts <- data.table::as.data.table(artifacts)
-            if (!nrow(catalog)) {
-                return(private$validate_download_empty_files())
-            }
-
-            if (nrow(esg_files)) {
-                local_cols <- c("file_key", "local_path", "local_artifact_id")
-                esg_local <- esg_files[,
-                    intersect(local_cols, names(esg_files)),
-                    with = FALSE
-                ]
-                data.table::setnames(
-                    esg_local,
-                    intersect(
-                        c("local_path", "local_artifact_id"),
-                        names(esg_local)
-                    ),
-                    paste0(
-                        "esg_",
-                        intersect(
-                            c("local_path", "local_artifact_id"),
-                            names(esg_local)
-                        )
-                    )
-                )
-                catalog <- merge(
-                    catalog,
-                    esg_local,
-                    by = "file_key",
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-                if ("esg_local_path" %in% names(catalog)) {
-                    fill <- is.na(catalog$local_path) |
-                        !nzchar(catalog$local_path)
-                    catalog$local_path[fill] <- catalog$esg_local_path[fill]
-                }
-                if ("esg_local_artifact_id" %in% names(catalog)) {
-                    fill <- is.na(catalog$local_artifact_id) |
-                        !nzchar(catalog$local_artifact_id)
-                    catalog$local_artifact_id[
-                        fill
-                    ] <- catalog$esg_local_artifact_id[fill]
-                }
-            }
-
-            local_path <- store__chr(catalog$local_path)
-            actual_path <- vapply(
-                local_path,
-                function(path) {
-                    if (is.na(path) || !nzchar(path)) {
-                        return(NA_character_)
-                    }
-                    store_abs_path(path, root = private$store_path)
-                },
-                character(1L)
-            )
-            exists <- !is.na(actual_path) & file.exists(actual_path)
-            size_actual <- rep(NA_real_, nrow(catalog))
-            if (any(exists)) {
-                size_actual[exists] <- as.numeric(
-                    file.info(actual_path[exists], extra_cols = FALSE)$size
-                )
-            }
-            size_expected <- suppressWarnings(as.numeric(catalog$size))
-            size_ok <- rep(NA, nrow(catalog))
-            check_size <- exists & !is.na(size_expected)
-            size_ok[check_size] <- size_actual[check_size] ==
-                size_expected[check_size]
-
-            checksum_type <- tolower(store__chr(catalog$checksum_type))
-            checksum_type[
-                !checksum_type %in% c("md5", "sha256")
-            ] <- NA_character_
-            checksum_expected <- store__chr(catalog$checksum)
-            checksum_actual <- rep(NA_character_, nrow(catalog))
-            checksum_ok <- rep(NA, nrow(catalog))
-            if (isTRUE(checksum)) {
-                check_hash <- exists &
-                    !is.na(checksum_expected) &
-                    nzchar(checksum_expected) &
-                    !is.na(checksum_type)
-                if (any(check_hash)) {
-                    checksum_actual[check_hash] <- mapply(
-                        store_hash_file,
-                        actual_path[check_hash],
-                        checksum_type[check_hash],
-                        USE.NAMES = FALSE
-                    )
-                    checksum_ok[check_hash] <- tolower(checksum_actual[
-                        check_hash
-                    ]) ==
-                        tolower(checksum_expected[check_hash])
-                }
-            }
-
-            expected_path <- rep(NA_character_, nrow(catalog))
-            expected_rel_path <- rep(NA_character_, nrow(catalog))
-            if (isTRUE(layout)) {
-                plan <- private$validation_catalog_download_plan(catalog)
-                if (nrow(plan)) {
-                    idx <- match(catalog$file_key, plan$file_key)
-                    has <- !is.na(idx)
-                    expected_path[has] <- plan$target_path[idx[has]]
-                    expected_rel_path[has] <- vapply(
-                        expected_path[has],
-                        store_rel_path,
-                        character(1L),
-                        root = private$store_path
-                    )
-                }
-            }
-            layout_ok <- rep(NA, nrow(catalog))
-            check_layout <- isTRUE(layout) &
-                exists &
-                !is.na(expected_path) &
-                nzchar(expected_path)
-            if (any(check_layout)) {
-                layout_ok[check_layout] <- store_normalize_path(actual_path[
-                    check_layout
-                ]) ==
-                    store_normalize_path(expected_path[check_layout])
-            }
-
-            artifact_id <- store__chr(catalog$local_artifact_id)
-            artifact_idx <- match(artifact_id, artifacts$artifact_id)
-            artifact_record_exists <- !is.na(artifact_id) & !is.na(artifact_idx)
-            artifact_relative_path <- rep(NA_character_, nrow(catalog))
-            artifact_path <- rep(NA_character_, nrow(catalog))
-            artifact_path_exists <- rep(NA, nrow(catalog))
-            if (any(artifact_record_exists)) {
-                artifact_relative_path[
-                    artifact_record_exists
-                ] <- artifacts$relative_path[artifact_idx[
-                    artifact_record_exists
-                ]]
-                artifact_path[artifact_record_exists] <- vapply(
-                    artifact_relative_path[artifact_record_exists],
-                    store_abs_path,
-                    character(1L),
-                    root = private$store_path
-                )
-                artifact_path_exists[
-                    artifact_record_exists
-                ] <- file.exists(artifact_path[artifact_record_exists])
-            }
-            artifact_path_matches <- rep(NA, nrow(catalog))
-            check_artifact_path <- artifact_record_exists &
-                !is.na(local_path) &
-                nzchar(local_path)
-            artifact_path_matches[
-                check_artifact_path
-            ] <- artifact_relative_path[check_artifact_path] ==
-                local_path[check_artifact_path]
-
-            missing_local_ref <- !is.na(local_path) &
-                nzchar(local_path) &
-                !exists
-            bad_size <- size_ok %in% FALSE
-            bad_checksum <- checksum_ok %in% FALSE
-            artifact_mismatch <- (!is.na(artifact_id) &
-                nzchar(artifact_id) &
-                !artifact_record_exists) |
-                (artifact_path_matches %in% FALSE)
-            layout_mismatch <- layout_ok %in% FALSE
-            issue <- private$validate_issue_vector(
-                missing_local_ref = missing_local_ref,
-                bad_size = bad_size,
-                bad_checksum = bad_checksum,
-                artifact_mismatch = artifact_mismatch,
-                layout_mismatch = layout_mismatch
-            )
-
-            data.table::data.table(
-                file_key = catalog$file_key,
-                query_id = catalog$query_id,
-                filename = catalog$filename,
-                local_path = local_path,
-                local_artifact_id = artifact_id,
-                actual_path = actual_path,
-                exists = exists,
-                expected_path = expected_path,
-                expected_rel_path = expected_rel_path,
-                size_expected = size_expected,
-                size_actual = size_actual,
-                size_ok = size_ok,
-                checksum_expected = checksum_expected,
-                checksum_type = checksum_type,
-                checksum_actual = checksum_actual,
-                checksum_ok = checksum_ok,
-                artifact_record_exists = artifact_record_exists,
-                artifact_path = artifact_path,
-                artifact_path_exists = artifact_path_exists,
-                artifact_path_matches = artifact_path_matches,
-                layout_ok = layout_ok,
-                missing_local_ref = missing_local_ref,
-                bad_size = bad_size,
-                bad_checksum = bad_checksum,
-                artifact_mismatch = artifact_mismatch,
-                layout_mismatch = layout_mismatch,
-                issue = issue
-            )
-        },
-        # }}}
-
-        # validate_download_artifact_rows {{{
-        validate_download_artifact_rows = function(
-            artifacts,
-            catalog,
-            esg_files
-        ) {
-            artifacts <- data.table::as.data.table(artifacts)
-            if (!nrow(artifacts)) {
-                return(private$validate_download_empty_artifacts())
-            }
-            catalog <- data.table::as.data.table(catalog)
-            esg_files <- data.table::as.data.table(esg_files)
-            refs <- list()
-            if (nrow(catalog)) {
-                refs$catalog <- data.table::data.table(
-                    source = "catalog",
-                    artifact_id = store__chr(catalog$local_artifact_id),
-                    file_key = catalog$file_key,
-                    relative_path = store__chr(catalog$local_path)
-                )
-            }
-            if (nrow(esg_files)) {
-                refs$esg_file <- data.table::data.table(
-                    source = "esg_file",
-                    artifact_id = store__chr(esg_files$local_artifact_id),
-                    file_key = esg_files$file_key,
-                    relative_path = store__chr(esg_files$local_path)
-                )
-            }
-            refs <- if (length(refs)) {
-                data.table::rbindlist(refs, fill = TRUE)
-            } else {
-                data.table::data.table()
-            }
-            if (nrow(refs)) {
-                refs <- refs[!is.na(artifact_id) & nzchar(artifact_id)]
-            }
-
-            path <- vapply(
-                artifacts$relative_path,
-                store_abs_path,
-                character(1L),
-                root = private$store_path
-            )
-            exists <- file.exists(path)
-            referenced <- if (nrow(refs)) {
-                artifacts$artifact_id %in% refs$artifact_id
-            } else {
-                rep(FALSE, nrow(artifacts))
-            }
-            file_key_known <- artifacts$file_key %in%
-                unique(c(catalog$file_key, esg_files$file_key))
-            path_matches <- rep(NA, nrow(artifacts))
-            if (nrow(refs)) {
-                ref_split <- split(refs, refs$artifact_id)
-                for (i in seq_len(nrow(artifacts))) {
-                    ref <- ref_split[[artifacts$artifact_id[[i]]]]
-                    if (is.null(ref) || !nrow(ref)) {
-                        next
-                    }
-                    ref_path <- ref$relative_path[
-                        !is.na(ref$relative_path) & nzchar(ref$relative_path)
-                    ]
-                    if (length(ref_path)) {
-                        path_matches[[i]] <- any(
-                            ref_path == artifacts$relative_path[[i]]
-                        )
-                    }
-                }
-            }
-
-            issue <- private$validate_issue_vector(
-                missing_artifact_file = !exists,
-                unreferenced_artifact = !referenced,
-                unknown_file_key = !file_key_known,
-                artifact_path_mismatch = path_matches %in% FALSE
-            )
-            data.table::data.table(
-                artifact_id = artifacts$artifact_id,
-                file_key = artifacts$file_key,
-                query_id = artifacts$query_id,
-                relative_path = artifacts$relative_path,
-                path = path,
-                exists = exists,
-                size = suppressWarnings(as.numeric(artifacts$size)),
-                checksum = store__chr(artifacts$checksum),
-                checksum_type = tolower(store__chr(artifacts$checksum_type)),
-                referenced = referenced,
-                file_key_known = file_key_known,
-                path_matches = path_matches,
-                issue = issue
-            )
-        },
-        # }}}
-
-        # validate_download_actions {{{
-        validate_download_actions = function(files, artifacts) {
-            actions <- list()
-            files <- data.table::as.data.table(files)
-            artifacts <- data.table::as.data.table(artifacts)
-
-            if (nrow(files)) {
-                missing <- files[missing_local_ref %in% TRUE]
-                if (nrow(missing)) {
-                    actions$clear_missing <- data.table::data.table(
-                        action = "clear_missing_local_ref",
-                        file_key = missing$file_key,
-                        artifact_id = missing$local_artifact_id,
-                        from_path = missing$actual_path,
-                        to_path = NA_character_,
-                        relative_path = missing$local_path,
-                        reason = "registered local file is missing",
-                        safe = TRUE
-                    )
-                }
-                move <- files[
-                    layout_mismatch %in%
-                        TRUE &
-                        exists %in% TRUE &
-                        !is.na(expected_path) &
-                        nzchar(expected_path)
-                ]
-                if (nrow(move)) {
-                    move[, target_available := !file.exists(expected_path)]
-                    move <- move[target_available %in% TRUE]
-                }
-                if (nrow(move)) {
-                    actions$move_to_layout <- data.table::data.table(
-                        action = "move_to_layout",
-                        file_key = move$file_key,
-                        artifact_id = move$local_artifact_id,
-                        from_path = move$actual_path,
-                        to_path = move$expected_path,
-                        relative_path = move$expected_rel_path,
-                        reason = "registered local file does not match current download layout",
-                        safe = TRUE
-                    )
-                }
-            }
-
-            if (nrow(artifacts)) {
-                missing_artifact <- artifacts[exists %in% FALSE]
-                if (nrow(missing_artifact)) {
-                    actions$missing_artifact <- data.table::data.table(
-                        action = "remove_missing_artifact",
-                        file_key = missing_artifact$file_key,
-                        artifact_id = missing_artifact$artifact_id,
-                        from_path = missing_artifact$path,
-                        to_path = NA_character_,
-                        relative_path = missing_artifact$relative_path,
-                        reason = "artifact file is missing",
-                        safe = TRUE
-                    )
-                }
-                orphan_artifact <- artifacts[referenced %in% FALSE]
-                if (nrow(orphan_artifact)) {
-                    actions$orphan_artifact <- data.table::data.table(
-                        action = "remove_orphan_artifact",
-                        file_key = orphan_artifact$file_key,
-                        artifact_id = orphan_artifact$artifact_id,
-                        from_path = orphan_artifact$path,
-                        to_path = NA_character_,
-                        relative_path = orphan_artifact$relative_path,
-                        reason = "artifact is not referenced by file records",
-                        safe = TRUE
-                    )
-                }
-            }
-
-            if (!length(actions)) {
-                return(private$validate_download_empty_actions())
-            }
-            out <- unique(data.table::rbindlist(actions, fill = TRUE))
-            out[,
-                action_id := vapply(
-                    seq_len(.N),
-                    function(i) {
-                        store__hash(
-                            action[[i]],
-                            file_key[[i]],
-                            artifact_id[[i]],
-                            from_path[[i]],
-                            to_path[[i]],
-                            reason[[i]]
-                        )
-                    },
-                    character(1L)
-                )
-            ]
-            data.table::setcolorder(
-                out,
-                c(
-                    "action_id",
-                    "action",
-                    "file_key",
-                    "artifact_id",
-                    "from_path",
-                    "to_path",
-                    "relative_path",
-                    "reason",
-                    "safe"
-                )
-            )
-            out[]
-        },
-        # }}}
-
-        # validation_catalog_download_plan {{{
-        validation_catalog_download_plan = function(catalog) {
-            catalog <- data.table::as.data.table(catalog)
-            if (!nrow(catalog)) {
-                return(data.table::data.table())
-            }
-            plan <- store__download_plan_rows(catalog)
-            private$apply_download_layout(plan, catalog)
-        },
-        # }}}
-
-        # validate_issue_vector {{{
-        validate_issue_vector = function(...) {
-            flags <- list(...)
-            n <- if (length(flags)) length(flags[[1L]]) else 0L
-            if (!n) {
-                return(character())
-            }
-            vapply(
-                seq_len(n),
-                function(i) {
-                    hit <- names(flags)[vapply(
-                        flags,
-                        function(x) x[[i]] %in% TRUE,
-                        logical(1L)
-                    )]
-                    if (!length(hit)) {
-                        return(NA_character_)
-                    }
-                    paste(hit, collapse = ",")
-                },
-                character(1L)
-            )
-        },
-        # }}}
-
-        # validate_download_empty_files {{{
-        validate_download_empty_files = function() {
-            data.table::data.table(
-                file_key = character(),
-                query_id = character(),
-                filename = character(),
-                local_path = character(),
-                local_artifact_id = character(),
-                actual_path = character(),
-                exists = logical(),
-                expected_path = character(),
-                expected_rel_path = character(),
-                size_expected = numeric(),
-                size_actual = numeric(),
-                size_ok = logical(),
-                checksum_expected = character(),
-                checksum_type = character(),
-                checksum_actual = character(),
-                checksum_ok = logical(),
-                artifact_record_exists = logical(),
-                artifact_path = character(),
-                artifact_path_exists = logical(),
-                artifact_path_matches = logical(),
-                layout_ok = logical(),
-                missing_local_ref = logical(),
-                bad_size = logical(),
-                bad_checksum = logical(),
-                artifact_mismatch = logical(),
-                layout_mismatch = logical(),
-                issue = character()
-            )
-        },
-        # }}}
-
-        # validate_download_empty_artifacts {{{
-        validate_download_empty_artifacts = function() {
-            data.table::data.table(
-                artifact_id = character(),
-                file_key = character(),
-                query_id = character(),
-                relative_path = character(),
-                path = character(),
-                exists = logical(),
-                size = numeric(),
-                checksum = character(),
-                checksum_type = character(),
-                referenced = logical(),
-                file_key_known = logical(),
-                path_matches = logical(),
-                issue = character()
-            )
-        },
-        # }}}
-
-        # validate_download_empty_actions {{{
-        validate_download_empty_actions = function() {
-            data.table::data.table(
-                action_id = character(),
-                action = character(),
-                file_key = character(),
-                artifact_id = character(),
-                from_path = character(),
-                to_path = character(),
-                relative_path = character(),
-                reason = character(),
-                safe = logical()
-            )
-        },
-        # }}}
-        # repair_download_files
-        # repair_download_files {{{
-        repair_download_files = function(actions, dry_run = TRUE) {
-            actions <- data.table::as.data.table(actions)
-            if (!nrow(actions)) {
-                return(private$repair_download_empty_results())
-            }
-            required <- c(
-                "action_id",
-                "action",
-                "file_key",
-                "artifact_id",
-                "from_path",
-                "to_path",
-                "relative_path",
-                "reason",
-                "safe"
-            )
-            missing <- setdiff(required, names(actions))
-            if (length(missing)) {
-                cli::cli_abort(
-                    "Repair action table is missing required column(s): {.field {missing}}."
-                )
-            }
-            data.table::rbindlist(
-                lapply(seq_len(nrow(actions)), function(i) {
-                    private$repair_download_action(
-                        actions[i],
-                        dry_run = dry_run
-                    )
-                }),
-                fill = TRUE
-            )
-        },
-        # }}}
-
-        # repair_download_action {{{
-        repair_download_action = function(action, dry_run = TRUE) {
-            base <- data.table::data.table(
-                action_id = action$action_id[[1L]],
-                action = action$action[[1L]],
-                file_key = store__chr1(action$file_key[[1L]]),
-                artifact_id = store__chr1(action$artifact_id[[1L]]),
-                from_path = store__chr1(action$from_path[[1L]]),
-                to_path = store__chr1(action$to_path[[1L]]),
-                relative_path = store__chr1(action$relative_path[[1L]]),
-                done = FALSE,
-                dry_run = isTRUE(dry_run),
-                message = NA_character_
-            )
-            if (!isTRUE(action$safe[[1L]])) {
-                base$message <- "skipped unsafe action"
-                return(base[])
-            }
-            if (isTRUE(dry_run)) {
-                base$message <- "dry run"
-                return(base[])
-            }
-
-            result <- tryCatch(
-                switch(
-                    action$action[[1L]],
-                    clear_missing_local_ref = private$repair_clear_missing_local_ref(
-                        action
-                    ),
-                    remove_missing_artifact = private$repair_remove_artifact_record(
-                        action
-                    ),
-                    remove_orphan_artifact = private$repair_remove_artifact_record(
-                        action
-                    ),
-                    move_to_layout = private$repair_move_to_layout(action),
-                    list(
-                        done = FALSE,
-                        message = sprintf(
-                            "unsupported action: %s",
-                            action$action[[1L]]
-                        )
-                    )
-                ),
-                error = function(e) {
-                    list(done = FALSE, message = conditionMessage(e))
-                }
-            )
-            base$done <- isTRUE(result$done)
-            base$message <- store__chr1(result$message)
-            base[]
-        },
-        # }}}
-
-        # repair_clear_missing_local_ref {{{
-        repair_clear_missing_local_ref = function(action) {
-            file_key <- store__chr1(action$file_key[[1L]])
-            if (is.na(file_key) || !nzchar(file_key)) {
-                return(list(done = FALSE, message = "missing file_key"))
-            }
-            private$clear_file_local_reference(file_key)
-            list(done = TRUE, message = "cleared missing local reference")
-        },
-        # }}}
-
-        # repair_remove_artifact_record {{{
-        repair_remove_artifact_record = function(action) {
-            artifact_id <- store__chr1(action$artifact_id[[1L]])
-            if (is.na(artifact_id) || !nzchar(artifact_id)) {
-                return(list(done = FALSE, message = "missing artifact_id"))
-            }
-            private$delete_by_key("artifact", "artifact_id", artifact_id)
-            private$clear_file_artifact_reference(artifact_id)
-            list(done = TRUE, message = "removed artifact record")
-        },
-        # }}}
-
-        # repair_move_to_layout {{{
-        repair_move_to_layout = function(action) {
-            file_key <- store__chr1(action$file_key[[1L]])
-            artifact_id <- store__chr1(action$artifact_id[[1L]])
-            from_path <- store__chr1(action$from_path[[1L]])
-            to_path <- store__chr1(action$to_path[[1L]])
-            relative_path <- store__chr1(action$relative_path[[1L]])
-            if (is.na(file_key) || !nzchar(file_key)) {
-                return(list(done = FALSE, message = "missing file_key"))
-            }
-            if (
-                is.na(from_path) ||
-                    !nzchar(from_path) ||
-                    !file.exists(from_path)
-            ) {
-                return(list(done = FALSE, message = "source file is missing"))
-            }
-            if (is.na(to_path) || !nzchar(to_path)) {
-                return(list(done = FALSE, message = "missing target path"))
-            }
-            if (file.exists(to_path)) {
-                return(list(
-                    done = FALSE,
-                    message = "target path already exists"
-                ))
-            }
-            from_path <- store_abs_path(from_path, root = private$store_path)
-            to_path <- store_abs_path(to_path, root = private$store_path)
-            download_root <- paste0(
-                sub("/+$", "", store_normalize_path(private$download_dir)),
-                "/"
-            )
-            if (
-                !startsWith(store_normalize_path(from_path), download_root) ||
-                    !startsWith(store_normalize_path(to_path), download_root)
-            ) {
-                return(list(
-                    done = FALSE,
-                    message = "paths are outside the store downloads directory"
-                ))
-            }
-            dir.create(dirname(to_path), recursive = TRUE, showWarnings = FALSE)
-            moved <- file.rename(from_path, to_path)
-            if (!isTRUE(moved)) {
-                moved <- file.copy(from_path, to_path, overwrite = FALSE) &&
-                    unlink(from_path, recursive = FALSE, force = TRUE) == 0L
-            }
-            if (!isTRUE(moved)) {
-                return(list(done = FALSE, message = "failed to move file"))
-            }
-            if (is.na(relative_path) || !nzchar(relative_path)) {
-                relative_path <- store_rel_path(
-                    to_path,
-                    root = private$store_path
-                )
-            }
-            private$set_file_local_reference(
-                file_key,
-                relative_path,
-                artifact_id = artifact_id
-            )
-            if (!is.na(artifact_id) && nzchar(artifact_id)) {
-                artifacts <- private$read_table("artifact")
-                row <- artifacts[artifacts[["artifact_id"]] == artifact_id]
-                if (nrow(row)) {
-                    row$relative_path <- relative_path
-                    row$updated_at <- store__now()
-                    private$replace_rows(
-                        "artifact",
-                        as.data.frame(row),
-                        "artifact_id"
-                    )
-                }
-            }
-            private$remove_empty_download_dirs(dirname(from_path))
-            list(done = TRUE, message = "moved file to current layout")
-        },
-        # }}}
-
-        # clear_file_local_reference {{{
-        clear_file_local_reference = function(file_key) {
-            for (table in c("file_catalog", "esg_file")) {
-                rows <- private$read_table(table)
-                rows <- rows[rows[["file_key"]] == file_key]
-                if (!nrow(rows)) {
-                    next
-                }
-                rows$local_path <- NA_character_
-                rows$local_artifact_id <- NA_character_
-                if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- store__now()
-                }
-                private$replace_rows(table, as.data.frame(rows), "file_key")
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # clear_file_artifact_reference {{{
-        clear_file_artifact_reference = function(artifact_id) {
-            if (is.na(artifact_id) || !nzchar(artifact_id)) {
-                return(invisible(NULL))
-            }
-            for (table in c("file_catalog", "esg_file")) {
-                rows <- private$read_table(table)
-                rows <- rows[rows[["local_artifact_id"]] == artifact_id]
-                if (!nrow(rows)) {
-                    next
-                }
-                rows$local_artifact_id <- NA_character_
-                if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- store__now()
-                }
-                private$replace_rows(table, as.data.frame(rows), "file_key")
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # set_file_local_reference {{{
-        set_file_local_reference = function(
-            file_key,
-            relative_path,
-            artifact_id = NA_character_
-        ) {
-            for (table in c("file_catalog", "esg_file")) {
-                rows <- private$read_table(table)
-                rows <- rows[rows[["file_key"]] == file_key]
-                if (!nrow(rows)) {
-                    next
-                }
-                rows$local_path <- relative_path
-                rows$local_artifact_id <- artifact_id
-                if ("updated_at" %in% names(rows)) {
-                    rows$updated_at <- store__now()
-                }
-                private$replace_rows(table, as.data.frame(rows), "file_key")
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # remove_empty_download_dirs {{{
-        remove_empty_download_dirs = function(path) {
-            if (is.na(path) || !nzchar(path)) {
-                return(invisible(NULL))
-            }
-            path <- store_normalize_path(path)
-            root <- store_normalize_path(private$download_dir)
-            root_prefix <- paste0(sub("/+$", "", root), "/")
-            while (
-                dir.exists(path) &&
-                    startsWith(path, root_prefix) &&
-                    !identical(path, root)
-            ) {
-                if (length(list.files(path, all.files = TRUE, no.. = TRUE))) {
-                    break
-                }
-                unlink(path, recursive = TRUE, force = FALSE)
-                path <- dirname(path)
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # repair_download_empty_results {{{
-        repair_download_empty_results = function() {
-            data.table::data.table(
-                action_id = character(),
-                action = character(),
-                file_key = character(),
-                artifact_id = character(),
-                from_path = character(),
-                to_path = character(),
-                relative_path = character(),
-                done = logical(),
-                dry_run = logical(),
-                message = character()
-            )
-        },
-        # }}}
-        # download_storage_report
-        # download_storage_report {{{
-        download_storage_report = function() {
-            download_files <- private$list_store_files(private$download_dir)
-            if (nrow(download_files)) {
-                downloader_prefix <- paste0(
-                    file.path(private$download_dir, "_downloader"),
-                    "/"
-                )
-                download_files <- download_files[
-                    !startsWith(path, downloader_prefix)
-                ]
-            }
-            tmp_files <- private$list_store_files(private$tmp_download_dir)
-            registered <- private$registered_download_paths()
-            registered_paths <- unique(registered$path[
-                !is.na(registered$path) & nzchar(registered$path)
-            ])
-            registered_unique <- registered[!is.na(path) & nzchar(path)]
-            if (nrow(registered_unique)) {
-                registered_unique <- registered_unique[!duplicated(path)]
-            }
-            untracked <- if (nrow(download_files)) {
-                download_files[!path %in% registered_paths]
-            } else {
-                download_files
-            }
-            missing <- if (nrow(registered)) {
-                registered[is.na(path) | !nzchar(path) | !file.exists(path)]
-            } else {
-                registered
-            }
-            orphans <- private$orphaned_files()
-
-            summary <- data.table::data.table(
-                download_file_count = as.integer(nrow(download_files)),
-                download_bytes = as.numeric(sum(
-                    download_files$size,
-                    na.rm = TRUE
-                )),
-                registered_file_count = as.integer(nrow(registered_unique)),
-                registered_bytes = as.numeric(sum(
-                    registered_unique$size,
-                    na.rm = TRUE
-                )),
-                tmp_file_count = as.integer(nrow(tmp_files)),
-                tmp_bytes = as.numeric(sum(tmp_files$size, na.rm = TRUE)),
-                untracked_file_count = as.integer(nrow(untracked)),
-                untracked_bytes = as.numeric(sum(untracked$size, na.rm = TRUE)),
-                missing_record_count = as.integer(nrow(missing)),
-                orphan_record_count = as.integer(nrow(orphans))
-            )
-            list(
-                summary = summary[],
-                downloads = download_files[],
-                registered = registered[],
-                untracked_files = untracked[],
-                missing_records = missing[],
-                tmp = tmp_files[],
-                orphan_records = orphans[]
-            )
-        },
-        # }}}
-
-        # list_store_files {{{
-        list_store_files = function(root) {
-            empty <- data.table::data.table(
-                path = character(),
-                relative_path = character(),
-                size = numeric(),
-                mtime = as.POSIXct(character())
-            )
-            if (!dir.exists(root)) {
-                return(empty)
-            }
-            files <- list.files(
-                root,
-                recursive = TRUE,
-                full.names = TRUE,
-                all.files = TRUE,
-                no.. = TRUE
-            )
-            if (!length(files)) {
-                return(empty)
-            }
-            files <- files[file.exists(files) & !dir.exists(files)]
-            if (!length(files)) {
-                return(empty)
-            }
-            info <- file.info(files, extra_cols = FALSE)
-            rel <- vapply(
-                files,
-                store_rel_path,
-                character(1L),
-                root = private$store_path
-            )
-            data.table::data.table(
-                path = normalizePath(files, mustWork = FALSE, winslash = "/"),
-                relative_path = rel,
-                size = as.numeric(info$size),
-                mtime = as.POSIXct(info$mtime, tz = "UTC")
-            )
-        },
-        # }}}
-
-        # registered_download_paths {{{
-        registered_download_paths = function() {
-            rows <- list()
-            artifacts <- private$read_table("artifact")
-            if (nrow(artifacts)) {
-                artifacts <- artifacts[artifacts[["kind"]] == "netcdf"]
-                if (nrow(artifacts)) {
-                    rows$artifact <- data.table::data.table(
-                        source = "artifact",
-                        artifact_id = artifacts$artifact_id,
-                        file_key = artifacts$file_key,
-                        relative_path = artifacts$relative_path,
-                        size = suppressWarnings(as.numeric(artifacts$size))
-                    )
-                }
-            }
-            catalog <- private$read_table("file_catalog")
-            if (nrow(catalog)) {
-                catalog <- catalog[!is.na(local_path) & nzchar(local_path)]
-                if (nrow(catalog)) {
-                    rows$catalog <- data.table::data.table(
-                        source = "catalog",
-                        artifact_id = catalog$local_artifact_id,
-                        file_key = catalog$file_key,
-                        relative_path = catalog$local_path,
-                        size = suppressWarnings(as.numeric(catalog$size))
-                    )
-                }
-            }
-            if (!length(rows)) {
-                return(data.table::data.table(
-                    source = character(),
-                    artifact_id = character(),
-                    file_key = character(),
-                    relative_path = character(),
-                    path = character(),
-                    exists = logical(),
-                    size = numeric()
-                ))
-            }
-            out <- data.table::rbindlist(rows, fill = TRUE)
-            out[,
-                path := vapply(
-                    relative_path,
-                    function(path) {
-                        if (is.na(path) || !nzchar(path)) {
-                            return(NA_character_)
-                        }
-                        store_abs_path(path, root = private$store_path)
-                    },
-                    character(1L)
-                )
-            ]
-            out[, exists := !is.na(path) & file.exists(path)]
-            out[]
-        },
-        # }}}
-
-        # cleanup_cutoff {{{
-        cleanup_cutoff = function(older_than = NULL) {
-            if (is.null(older_than)) {
-                return(NULL)
-            }
-            if (inherits(older_than, "POSIXt")) {
-                return(as.POSIXct(older_than[[1L]], tz = "UTC"))
-            }
-            checkmate::assert_number(older_than, lower = 0)
-            as.POSIXct(Sys.time() - older_than, tz = "UTC")
-        },
-        # }}}
-
-        # cleanup_file_scope {{{
-        cleanup_file_scope = function(
-            scope,
-            files,
-            dry_run = TRUE,
-            cutoff = NULL
-        ) {
-            files <- data.table::as.data.table(files)
-            if (!is.null(cutoff) && "mtime" %in% names(files)) {
-                files <- files[mtime <= cutoff]
-            }
-            if (!nrow(files)) {
-                return(private$cleanup_empty())
-            }
-            deleted <- rep(FALSE, nrow(files))
-            if (!isTRUE(dry_run)) {
-                deleted <- file.exists(files$path) &
-                    unlink(files$path, recursive = FALSE, force = TRUE) == 0L
-            }
-            data.table::data.table(
-                scope = scope,
-                action = if (isTRUE(dry_run)) "delete_file" else "deleted_file",
-                path = files$path,
-                relative_path = files$relative_path,
-                file_key = NA_character_,
-                artifact_id = NA_character_,
-                size = files$size,
-                deleted = deleted,
-                dry_run = isTRUE(dry_run)
-            )
-        },
-        # }}}
-
-        # cleanup_orphan_records {{{
-        cleanup_orphan_records = function(orphans, dry_run = TRUE) {
-            orphans <- data.table::as.data.table(orphans)
-            if (!nrow(orphans)) {
-                return(private$cleanup_empty())
-            }
-            removed <- rep(FALSE, nrow(orphans))
-            deleted <- rep(FALSE, nrow(orphans))
-            if (!isTRUE(dry_run)) {
-                result <- private$remove_file_records(
-                    orphans$file_key,
-                    delete_local = TRUE,
-                    force = TRUE
-                )
-                removed <- orphans$file_key %in% result$file_key
-                deleted <- result$deleted_local[match(
-                    orphans$file_key,
-                    result$file_key
-                )] %in%
-                    TRUE
-            }
-            data.table::data.table(
-                scope = "orphan_records",
-                action = if (isTRUE(dry_run)) {
-                    "remove_record"
-                } else {
-                    "removed_record"
-                },
-                path = orphans$local_file,
-                relative_path = orphans$local_path,
-                file_key = orphans$file_key,
-                artifact_id = orphans$local_artifact_id,
-                size = suppressWarnings(as.numeric(
-                    file.info(orphans$local_file, extra_cols = FALSE)$size
-                )),
-                deleted = deleted,
-                record_removed = removed,
-                dry_run = isTRUE(dry_run)
-            )
-        },
-        # }}}
-
-        # cleanup_missing_records {{{
-        cleanup_missing_records = function(records, dry_run = TRUE) {
-            records <- data.table::as.data.table(records)
-            if (!nrow(records)) {
-                return(private$cleanup_empty())
-            }
-            removed <- rep(FALSE, nrow(records))
-            if (!isTRUE(dry_run)) {
-                private$clear_missing_download_records(records)
-                removed <- rep(TRUE, nrow(records))
-            }
-            data.table::data.table(
-                scope = "missing_records",
-                action = if (isTRUE(dry_run)) {
-                    "clear_record"
-                } else {
-                    "cleared_record"
-                },
-                path = records$path,
-                relative_path = records$relative_path,
-                file_key = records$file_key,
-                artifact_id = records$artifact_id,
-                size = records$size,
-                deleted = FALSE,
-                record_removed = removed,
-                dry_run = isTRUE(dry_run)
-            )
-        },
-        # }}}
-
-        # clear_missing_download_records {{{
-        clear_missing_download_records = function(records) {
-            records <- data.table::as.data.table(records)
-            artifact_ids <- unique(records$artifact_id[
-                records$source == "artifact" &
-                    !is.na(records$artifact_id) &
-                    nzchar(records$artifact_id)
-            ])
-            if (length(artifact_ids)) {
-                private$delete_by_key("artifact", "artifact_id", artifact_ids)
-            }
-            file_keys <- unique(records$file_key[
-                records$source == "catalog" &
-                    !is.na(records$file_key) &
-                    nzchar(records$file_key)
-            ])
-            if (length(file_keys)) {
-                for (table in c("file_catalog", "esg_file")) {
-                    rows <- private$read_table(table)
-                    rows <- rows[rows[["file_key"]] %in% file_keys]
-                    if (nrow(rows)) {
-                        rows$local_path <- NA_character_
-                        rows$local_artifact_id <- NA_character_
-                        private$replace_rows(
-                            table,
-                            as.data.frame(rows),
-                            "file_key"
-                        )
-                    }
-                }
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # cleanup_empty {{{
-        cleanup_empty = function() {
-            data.table::data.table(
-                scope = character(),
-                action = character(),
-                path = character(),
-                relative_path = character(),
-                file_key = character(),
-                artifact_id = character(),
-                size = numeric(),
-                deleted = logical(),
-                record_removed = logical(),
-                dry_run = logical()
-            )
-        },
-        # }}}
-        # orphaned_files
-        # orphaned_files {{{
-        orphaned_files = function() {
-            empty <- data.table::data.table(
-                file_key = character(),
-                local_path = character(),
-                local_artifact_id = character(),
-                local_file = character(),
-                local_exists = logical()
-            )
-            files <- private$read_table("esg_file")
-            if (!nrow(files)) {
-                return(empty)
-            }
-            links <- private$read_table("esg_query_file")
-            linked <- unique(links$file_key)
-            orphans <- files[!files[["file_key"]] %in% linked]
-            if (!nrow(orphans)) {
-                return(empty)
-            }
-
-            catalog <- private$read_table("file_catalog")
-            artifacts <- private$read_table("artifact")
-            catalog <- catalog[catalog[["file_key"]] %in% orphans$file_key]
-            artifacts <- artifacts[
-                artifacts[["file_key"]] %in%
-                    orphans$file_key &
-                    artifacts[["kind"]] == "netcdf"
-            ]
-            artifacts <- artifacts[!duplicated(artifacts$file_key)]
-
-            out <- merge(
-                orphans,
-                catalog[, .(
-                    file_key,
-                    catalog_local_path = local_path,
-                    catalog_artifact_id = local_artifact_id
-                )],
-                by = "file_key",
-                all.x = TRUE,
-                sort = FALSE
-            )
-            out <- merge(
-                out,
-                artifacts[, .(
-                    file_key,
-                    artifact_id = artifact_id,
-                    artifact_path = relative_path
-                )],
-                by = "file_key",
-                all.x = TRUE,
-                sort = FALSE
-            )
-            out[, orphan_local_path := local_path]
-            out[
-                is.na(orphan_local_path) | !nzchar(orphan_local_path),
-                orphan_local_path := catalog_local_path
-            ]
-            out[
-                is.na(orphan_local_path) | !nzchar(orphan_local_path),
-                orphan_local_path := artifact_path
-            ]
-            out[, orphan_artifact_id := local_artifact_id]
-            out[
-                is.na(orphan_artifact_id) | !nzchar(orphan_artifact_id),
-                orphan_artifact_id := catalog_artifact_id
-            ]
-            out[
-                is.na(orphan_artifact_id) | !nzchar(orphan_artifact_id),
-                orphan_artifact_id := artifact_id
-            ]
-            out[,
-                local_file := vapply(
-                    orphan_local_path,
-                    function(path) {
-                        if (is.na(path) || !nzchar(path)) {
-                            return(NA_character_)
-                        }
-                        store_abs_path(path, root = private$store_path)
-                    },
-                    character(1L)
-                )
-            ]
-            out[, local_exists := !is.na(local_file) & file.exists(local_file)]
-            out[, .(
-                file_key,
-                local_path = orphan_local_path,
-                local_artifact_id = orphan_artifact_id,
-                local_file,
-                local_exists
-            )]
-        },
-        # }}}
-        # remove_file_records
-        # remove_file_records {{{
-        remove_file_records = function(
-            file_key,
-            delete_local = FALSE,
-            force = FALSE
-        ) {
-            keys <- unique(file_key)
-            files <- private$read_table("esg_file")
-            rows <- files[files[["file_key"]] %in% keys]
-            missing <- setdiff(keys, rows$file_key)
-            if (length(missing)) {
-                cli::cli_abort("ESGF file key(s) not found: {.val {missing}}.")
-            }
-
-            links <- private$read_table("esg_query_file")
-            linked <- links[links[["file_key"]] %in% keys]
-            if (nrow(linked) && !isTRUE(force)) {
-                cli::cli_abort(
-                    "Cannot remove file(s) still linked to stored queries. Use {.code force = TRUE} to remove links first."
-                )
-            }
-
-            catalog <- private$read_table("file_catalog")
-            catalog <- catalog[catalog[["file_key"]] %in% keys]
-            artifacts <- private$read_table("artifact")
-            artifacts <- artifacts[
-                artifacts[["file_key"]] %in%
-                    keys &
-                    artifacts[["kind"]] == "netcdf"
-            ]
-
-            local_path <- stats::setNames(rows$local_path, rows$file_key)
-            if (nrow(catalog)) {
-                missing_path <- is.na(local_path[catalog$file_key]) |
-                    !nzchar(local_path[catalog$file_key])
-                local_path[catalog$file_key[
-                    missing_path
-                ]] <- catalog$local_path[missing_path]
-            }
-            if (nrow(artifacts)) {
-                missing_path <- is.na(local_path[artifacts$file_key]) |
-                    !nzchar(local_path[artifacts$file_key])
-                local_path[artifacts$file_key[
-                    missing_path
-                ]] <- artifacts$relative_path[missing_path]
-            }
-
-            local_file <- vapply(
-                local_path[keys],
-                function(path) {
-                    if (is.na(path) || !nzchar(path)) {
-                        return(NA_character_)
-                    }
-                    store_abs_path(path, root = private$store_path)
-                },
-                character(1L)
-            )
-            deleted_local <- rep(FALSE, length(keys))
-            if (isTRUE(delete_local)) {
-                exists <- !is.na(local_file) & file.exists(local_file)
-                deleted_local[exists] <- unlink(
-                    local_file[exists],
-                    recursive = FALSE,
-                    force = TRUE
-                ) ==
-                    0L
-            }
-
-            if (nrow(linked) && isTRUE(force)) {
-                private$delete_by_key("esg_query_file", "file_key", keys)
-            }
-            if (nrow(artifacts)) {
-                private$delete_by_key(
-                    "artifact",
-                    "artifact_id",
-                    artifacts$artifact_id
-                )
-            }
-            private$delete_by_key("file_catalog", "file_key", keys)
-            private$delete_by_key("esg_file", "file_key", keys)
-
-            data.table::data.table(
-                file_key = keys,
-                local_file = unname(local_file),
-                deleted_local = deleted_local,
-                removed_links = vapply(
-                    keys,
-                    function(key) sum(linked$file_key == key),
-                    integer(1L)
-                )
-            )
-        },
-        # }}}
-        # replace_rows
         # replace_rows {{{
         replace_rows = function(table, rows, key) {
             checkmate::assert_string(table)
@@ -8571,7 +1854,6 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # append_rows
         # append_rows {{{
         append_rows = function(table, rows) {
             checkmate::assert_string(table)
@@ -8582,7 +1864,6 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # append_new_rows
         # append_new_rows {{{
         append_new_rows = function(table, rows, key) {
             checkmate::assert_string(table)
@@ -8632,7 +1913,6 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # delete_by_key
         # delete_by_key {{{
         delete_by_key = function(table, key, values) {
             checkmate::assert_string(table)
@@ -8661,34 +1941,52 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
-        # extract_one
-        # resume_extract_plan {{{
-        resume_extract_plan = function(plan) {
-            if (!identical(plan$status[[1L]], "done")) {
-                return(NULL)
-            }
-            results <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "extraction_result"
-            ))
-            target_plan_id <- plan$plan_id[[1L]]
-            results <- results[results[["plan_id"]] == target_plan_id]
-            if (!nrow(results)) {
-                return(NULL)
-            }
-            paths <- vapply(
-                results$output_path,
-                store_abs_path,
-                character(1L),
-                root = private$store_path
+
+        # Private delegates retained for sibling modules and test hooks
+        # update_query_files {{{
+        update_query_files = function(
+            query_id,
+            files,
+            fields = "*",
+            all = TRUE,
+            limit = FALSE
+        ) {
+            store_catalog__update_query_files(
+                self,
+                private,
+                query_id = query_id,
+                files = files,
+                fields = fields,
+                all = all,
+                limit = limit
             )
-            if (!all(file.exists(paths))) {
-                return(NULL)
-            }
-            plan
         },
         # }}}
-
+        # catalog_download_plan {{{
+        catalog_download_plan = function(query_id = NULL) {
+            store_download__catalog_plan(self, private, query_id = query_id)
+        },
+        # }}}
+        # decorate_download_plan {{{
+        decorate_download_plan = function(plan, file_rows) {
+            store_download__decorate_plan(self, private, plan, file_rows)
+        },
+        # }}}
+        # sync_tracked_file_download {{{
+        sync_tracked_file_download = function(
+            file_key,
+            local_path,
+            artifact_id
+        ) {
+            store_download__sync_tracked_file(
+                self,
+                private,
+                file_key = file_key,
+                local_path = local_path,
+                artifact_id = artifact_id
+            )
+        },
+        # }}}
         # extract_one {{{
         extract_one = function(
             plan,
@@ -8698,112 +1996,18 @@ EsgStore <- R6::R6Class(
             reporter = NULL,
             resolved = NULL
         ) {
-            if (is.null(resolved) || inherits(resolved, "error")) {
-                source <- new.env(parent = emptyenv())
-                source$opened <- NULL
-                source$target <- store__chr1(file$url_opendap)
-                source$service <- "OPeNDAP"
-                source$remote_error <- resolved
-                local <- store__chr1(file$local_path)
-                if (!is.na(local) && nzchar(local)) {
-                    local <- store_abs_path(local, root = private$store_path)
-                    if (file.exists(local)) {
-                        source$target <- local
-                        source$service <- "local"
-                    }
-                }
-                on.exit(
-                    if (!is.null(source$opened)) source$opened$dataset$close(),
-                    add = TRUE
-                )
-                # Keep the Store-owned downloader and reporter in the owner;
-                # the shared reader only decides when this recovery is needed.
-                download <- if (identical(fallback, "auto")) {
-                    function() {
-                        list(
-                            path = private$download_plan_file(
-                                file,
-                                overwrite = overwrite,
-                                reporter = reporter
-                            )
-                        )
-                    }
-                }
-                resolved <- store__read_source(
-                    plan,
-                    file,
-                    source,
-                    download = download,
-                    reporter = reporter
-                )
-                if (!is.null(source$opened)) {
-                    source$opened$dataset$close()
-                    source$opened <- NULL
-                }
-            }
-            payload <- resolved$payload
-            opened <- resolved$opened
-            recovery_error <- resolved$recovery_error
-
-            persist_started <- proc.time()[["elapsed"]]
-            tryCatch(
-                # Hold the manifest lock before starting the transaction;
-                # artifact registration reuses this same reentrant lock.
-                private$with_store_lock(private$persist_extract_payload(
-                    payload,
-                    plan,
-                    file,
-                    opened,
-                    overwrite = overwrite
-                )),
-                error = function(error) {
-                    if (
-                        inherits(
-                            error,
-                            c(
-                                "epwshiftr_store_access_error",
-                                "epwshiftr_store_extract_conflict"
-                            )
-                        )
-                    ) {
-                        stop(error)
-                    }
-                    classified <- store__access_error(
-                        error,
-                        phase = "persist",
-                        service = opened$access_method,
-                        target = opened$target,
-                        started_at = persist_started
-                    )
-                    store__report_access_failure(
-                        reporter,
-                        file,
-                        classified,
-                        attempt = if (
-                            identical(opened$access_method, "HTTPServer") &&
-                                !is.null(recovery_error)
-                        ) {
-                            2L
-                        } else {
-                            1L
-                        },
-                        outcome = "failed"
-                    )
-                    if (!is.null(recovery_error)) {
-                        stop(store__fallback_error(
-                            recovery_error,
-                            classified
-                        ))
-                    }
-                    stop(classified)
-                }
+            store_extract__one(
+                self,
+                private,
+                plan = plan,
+                file = file,
+                fallback = fallback,
+                overwrite = overwrite,
+                reporter = reporter,
+                resolved = resolved
             )
         },
         # }}}
-        # persist_extract_payload
-        # Commit one successfully read payload exactly once. Keeping this after
-        # the recovery boundary prevents a failed OPeNDAP attempt from creating
-        # duplicate Parquet partitions or time-coverage updates.
         # persist_extract_payload {{{
         persist_extract_payload = function(
             payload,
@@ -8812,52 +2016,17 @@ EsgStore <- R6::R6Class(
             opened,
             overwrite = FALSE
         ) {
-            # A payload restored from the shared RDS cache is guaranteed to be
-            # a data frame, but it need not retain data.table's by-reference
-            # class. Materialize a private data.table copy before attaching
-            # store-specific plan, query, and site identities.
-            dt <- data.table::as.data.table(data.table::copy(payload$data))
-            has_data <- nrow(dt) > 0L
-            result <- private$publish_extract(
-                plan,
-                status = if (has_data) "done" else "empty",
-                available_time_count = payload$available_time_count,
-                replace_results = has_data,
-                prepare = {
-                    private$update_file_actual_time(
-                        file,
-                        payload$actual_start,
-                        payload$actual_end
-                    )
-                    if (has_data) {
-                        private$decorate_extract(dt, plan, file)
-                        # Keep Parquet on disk after rollback for the existing
-                        # explicit overwrite/conflict recovery path.
-                        results <- private$write_extract_partitions(
-                            dt,
-                            plan,
-                            file,
-                            overwrite = overwrite
-                        )
-                        list(
-                            results = results,
-                            grid_sources = private$decorate_extract_grid_sources(
-                                payload$grid_sources,
-                                plan
-                            )
-                        )
-                    } else {
-                        list()
-                    }
-                }
-            )[[1L]]
-            attr(result, "access_method") <- opened$access_method
-            result
+            store_extract__persist_payload(
+                self,
+                private,
+                payload = payload,
+                plan = plan,
+                file = file,
+                opened = opened,
+                overwrite = overwrite
+            )
         },
-        # }}}}
-        # With the caller holding the Store lock, prepare and register artifacts
-        # in the same transaction as result rows, grid lineage and plan state.
-        # Each outcome is aligned to its local plan so retry history stays local.
+        # }}}
         # publish_extract {{{
         publish_extract = function(
             plans,
@@ -8866,565 +2035,64 @@ EsgStore <- R6::R6Class(
             prepare,
             replace_results = FALSE
         ) {
-            ddb_exec(private$conn, "BEGIN TRANSACTION")
-            committed <- FALSE
-            on.exit(
-                {
-                    if (!committed) {
-                        ddb_exec(private$conn, "ROLLBACK")
-                    }
-                },
-                add = TRUE
+            store_extract__publish(
+                self,
+                private,
+                plans = plans,
+                status = status,
+                available_time_count = available_time_count,
+                prepare = prepare,
+                replace_results = replace_results
             )
-            prepared <- force(prepare)
-            if (replace_results) {
-                private$delete_by_key(
-                    "extraction_result",
-                    "plan_id",
-                    plans$plan_id
-                )
-                private$delete_by_key(
-                    "extraction_grid_source",
-                    "plan_id",
-                    plans$plan_id
-                )
-            }
-            if (NROW(prepared$results)) {
-                ddb_append_table(
-                    private$conn,
-                    "extraction_result",
-                    prepared$results
-                )
-            }
-            if (NROW(prepared$grid_sources)) {
-                ddb_append_table(
-                    private$conn,
-                    "extraction_grid_source",
-                    prepared$grid_sources
-                )
-            }
-
-            updated <- lapply(seq_len(nrow(plans)), function(i) {
-                private$mark_plan_status(
-                    plans[i],
-                    status = status[[i]],
-                    available_time_count = available_time_count[[i]],
-                    last_error = NA_character_
-                )
-            })
-            ddb_exec(private$conn, "COMMIT")
-            committed <- TRUE
-            updated
         },
         # }}}
-        # download_plan_file
         # download_plan_file {{{
         download_plan_file = function(
             file,
             overwrite = FALSE,
             reporter = NULL
         ) {
-            download <- store__chr1(file$url_download)
-            if (is.na(download) || !nzchar(download)) {
-                stop(
-                    "HTTPServer download URL is not available for this file record.",
-                    call. = FALSE
-                )
-            }
-
-            checksum <- store__chr1(file$checksum)
-            checksum_type <- tolower(store__chr1(file$checksum_type))
-            if (
-                is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")
-            ) {
-                checksum <- NULL
-                checksum_type <- "sha256"
-            }
-            if (is.null(checksum) || is.na(checksum)) {
-                checksum <- NULL
-            }
-
-            downloader <- self$downloader(n_workers = 0L)
-            filename <- store__chr1(file$filename[[1L]])
-            if (is.na(filename)) {
-                filename <- basename(sub("\\?.*$", "", download))
-            }
-            logical_parts <- c(
-                store__chr1(file$tracking_id[[1L]]),
-                if (is.null(checksum)) NA_character_ else checksum,
-                filename,
-                store__chr1(file$file_key[[1L]])
+            store_extract__download_plan_file(
+                self,
+                private,
+                file = file,
+                overwrite = overwrite,
+                reporter = reporter
             )
-            logical_parts <- logical_parts[
-                !is.na(logical_parts) & nzchar(logical_parts)
-            ]
-            logical_file_id <- paste(logical_parts, collapse = ":")
-            if (!nzchar(logical_file_id)) {
-                logical_file_id <- file$file_key[[1L]]
-            }
-            plan <- data.table::data.table(
-                logical_file_id = logical_file_id,
-                file_key = file$file_key[[1L]],
-                esgf_id = file$esgf_id[[1L]],
-                dataset_id = file$dataset_id[[1L]],
-                filename = filename,
-                subdir = NA_character_,
-                checksum = if (is.null(checksum)) NA_character_ else checksum,
-                checksum_type = checksum_type,
-                size = suppressWarnings(as.numeric(file$size[[1L]])),
-                url = download,
-                service = "HTTPServer",
-                # The selected HTTP service can come from a different replica
-                # than the catalog's OPeNDAP record.
-                data_node = shift_stage__coalesce(
-                    query_result__url_host(download),
-                    file$data_node[[1L]]
-                ),
-                priority = 1L,
-                probe_latency = NA_real_,
-                probe_throughput = NA_real_
-            )
-            plan <- private$apply_download_layout(plan, file)
-            session_id <- downloader$enqueue(
-                plan,
-                session_label = sprintf("extract:%s", file$file_key[[1L]])
-            )
-            unbind <- if (
-                !is.null(reporter) &&
-                    exists(
-                        "shift_run__download_reporter_bind",
-                        mode = "function"
-                    )
-            ) {
-                shift_run__download_reporter_bind(
-                    downloader,
-                    reporter,
-                    role = "HTTP fallback",
-                    variables = 1L,
-                    nested = TRUE
-                )
-            } else {
-                NULL
-            }
-            if (!is.null(unbind)) {
-                on.exit(unbind(), add = TRUE)
-            }
-            tasks <- downloader$run(
-                session_id = session_id,
-                # A workflow reporter is the sole Console owner. Native bars are
-                # retained only for standalone low-level extraction calls.
-                progress = is.null(reporter),
-                overwrite = overwrite
-            )
-            failed <- tasks[
-                !tasks[["status"]] %in% c("done", "skipped"),
-                ,
-                drop = FALSE
-            ]
-            if (nrow(failed)) {
-                stop(
-                    "HTTPServer download failed for this file record.",
-                    call. = FALSE
-                )
-            }
-            self$sync_downloads(downloader)
-            tasks$target_path[[1L]]
         },
         # }}}
-        # decorate_extract
-        # decorate_extract {{{
-        decorate_extract = function(dt, plan, file) {
-            calendar_columns <- intersect(CF_TIME_COORDINATE_COLUMNS, names(dt))
-            dt[, `:=`(
-                plan_id = plan$plan_id[[1L]],
-                file_key = plan$file_key[[1L]],
-                query_id = plan$query_id[[1L]],
-                site_id = plan$site_id[[1L]],
-                source_id = file$source_id[[1L]],
-                experiment_id = file$experiment_id[[1L]],
-                variant_label = file$variant_label[[1L]],
-                frequency = file$frequency[[1L]],
-                table_id = file$table_id[[1L]],
-                variable_id = plan$variable_id[[1L]],
-                method = plan$method[[1L]],
-                grid_label = file$grid_label[[1L]]
-            )]
-            data.table::setcolorder(
-                dt,
-                c(
-                    "plan_id",
-                    "file_key",
-                    "query_id",
-                    "site_id",
-                    "source_id",
-                    "experiment_id",
-                    "variant_label",
-                    "frequency",
-                    "table_id",
-                    "variable_id",
-                    "variable",
-                    "grid_label",
-                    "time",
-                    calendar_columns,
-                    "lon",
-                    "lat",
-                    "method",
-                    "value",
-                    setdiff(
-                        names(dt),
-                        c(
-                            "plan_id",
-                            "file_key",
-                            "query_id",
-                            "site_id",
-                            "source_id",
-                            "experiment_id",
-                            "variant_label",
-                            "frequency",
-                            "table_id",
-                            "variable_id",
-                            "variable",
-                            "grid_label",
-                            "time",
-                            calendar_columns,
-                            "lon",
-                            "lat",
-                            "method",
-                            "value"
-                        )
-                    )
-                )
-            )
-            invisible(dt)
-        },
-        # }}}
-        # decorate_extract_grid_sources
-        # Persists one static set of method-specific source grid cells per plan.
-        # decorate_extract_grid_sources {{{
-        decorate_extract_grid_sources = function(sources, plan) {
-            if (is.null(sources)) {
-                return(data.table::data.table())
-            }
-            sources <- data.table::as.data.table(data.table::copy(sources))
-            if (!nrow(sources)) {
-                return(sources)
-            }
-            if (!"grid_elevation_m" %in% names(sources)) {
-                sources[, grid_elevation_m := NA_real_]
-            }
-            now <- store__now()
-            sources[, `:=`(
-                plan_id = plan$plan_id[[1L]],
-                file_key = plan$file_key[[1L]],
-                query_id = plan$query_id[[1L]],
-                variable_id = plan$variable_id[[1L]],
-                method = plan$method[[1L]],
-                created_at = now
-            )]
-            sources[,
-                source_row_id := vapply(
-                    seq_len(.N),
-                    function(i) {
-                        store__hash(
-                            plan_id[[i]],
-                            file_key[[i]],
-                            variable_id[[i]],
-                            method[[i]],
-                            source_index[[i]]
-                        )
-                    },
-                    character(1L)
-                )
-            ]
-            data.table::setcolorder(
-                sources,
-                c(
-                    "source_row_id",
-                    "plan_id",
-                    "file_key",
-                    "query_id",
-                    "variable_id",
-                    "method",
-                    "source_index",
-                    "role",
-                    "grid_lon",
-                    "grid_lat",
-                    "grid_elevation_m",
-                    "grid_dist_km",
-                    "weight",
-                    "created_at"
-                )
-            )
-            sources[,
-                c(
-                    "source_row_id",
-                    "plan_id",
-                    "file_key",
-                    "query_id",
-                    "variable_id",
-                    "method",
-                    "source_index",
-                    "role",
-                    "grid_lon",
-                    "grid_lat",
-                    "grid_elevation_m",
-                    "grid_dist_km",
-                    "weight",
-                    "created_at"
-                ),
-                with = FALSE
-            ]
-        },
-        # }}}
-        # write_extract_partitions
         # write_extract_partitions {{{
         write_extract_partitions = function(
             dt,
             plan,
             file,
             overwrite = FALSE,
-            project = "CMIP6"
+            project = "CMIP6",
+            source_lineage = NULL
         ) {
-            # The same durable extraction representation is shared by ESGF
-            # projections and provider-normalized reanalysis observations.
-            checkmate::assert_string(project, min.chars = 1L)
-            # Preserve the historical `year` column while making it agree with
-            # the source CF calendar for new extraction artifacts.
-            partition_year <- if ("cf_year" %in% names(dt)) {
-                as.integer(dt$cf_year)
-            } else {
-                as.integer(format(dt$time, "%Y", tz = "UTC"))
-            }
-            dt[, year := partition_year]
-            years <- sort(unique(dt$year))
-            results <- vector("list", length(years))
-            for (i in seq_along(years)) {
-                target_year <- years[[i]]
-                # Use a non-column variable name so data.table does not resolve
-                # both sides of the predicate to `dt$year`.
-                chunk <- dt[dt[["year"]] == target_year]
-                output_path <- private$output_path(
-                    plan,
-                    file,
-                    target_year,
-                    project = project
-                )
-                private$write_parquet(chunk, output_path, overwrite = overwrite)
-                artifact_id <- self$register_artifact(
-                    kind = "extract",
-                    path = output_path,
-                    role = "derived",
-                    project = project,
-                    query_id = plan$query_id[[1L]],
-                    file_key = plan$file_key[[1L]],
-                    metadata = list(
-                        plan_id = plan$plan_id[[1L]],
-                        year = as.integer(target_year),
-                        # Derived-variable rows carry their scientific lineage
-                        # in both the Parquet data and artifact manifest. Raw
-                        # extraction chunks simply record null provenance.
-                        derived_from = if ("derived_from" %in% names(chunk)) {
-                            unique(as.character(chunk$derived_from))
-                        } else {
-                            NULL
-                        },
-                        derivation = if ("derivation" %in% names(chunk)) {
-                            unique(as.character(chunk$derivation))
-                        } else {
-                            NULL
-                        },
-                        source_plan_ids = if (
-                            "source_plan_ids" %in% names(chunk)
-                        ) {
-                            unique(as.character(chunk$source_plan_ids))
-                        } else {
-                            NULL
-                        }
-                    )
-                )
-                results[[i]] <- private$extract_result_row(
-                    plan,
-                    chunk,
-                    output_path,
-                    target_year,
-                    artifact_id
-                )
-            }
-
-            data.table::rbindlist(results, use.names = TRUE, fill = TRUE)
-        },
-        # }}}
-        # output_path
-        # output_path {{{
-        output_path = function(plan, file, year, project = "CMIP6") {
-            checkmate::assert_string(project, min.chars = 1L)
-            parts <- c(
+            store_extract__write_partitions(
+                self,
+                private,
+                dt = dt,
+                plan = plan,
+                file = file,
+                overwrite = overwrite,
                 project = project,
-                source_id = file$source_id[[1L]],
-                experiment_id = file$experiment_id[[1L]],
-                variant_label = file$variant_label[[1L]],
-                frequency = file$frequency[[1L]],
-                variable_id = plan$variable_id[[1L]],
-                year = year
-            )
-            dirs <- paste0(
-                names(parts),
-                "=",
-                vapply(parts, store__partition, character(1L))
-            )
-            store__extract_output_path(
-                private$extract_dir,
-                dirs,
-                plan$plan_id[[1L]],
-                year
+                source_lineage = source_lineage
             )
         },
         # }}}
-        # write_parquet
         # write_parquet {{{
         write_parquet = function(dt, path, overwrite = FALSE) {
-            if (file.exists(path) && !isTRUE(overwrite)) {
-                cli::cli_abort(
-                    "Parquet output already exists without a complete reusable extraction manifest row: {.path {path}}.",
-                    class = "epwshiftr_store_extract_conflict"
-                )
-            }
-            dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-            tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
-            tmp_table <- sprintf(
-                "tmp_extract_%s",
-                substr(store__hash(path, Sys.time(), runif(1L)), 1L, 16L)
-            )
-            on.exit(
-                {
-                    try(
-                        duckdb::duckdb_unregister(private$conn, tmp_table),
-                        silent = TRUE
-                    )
-                    if (file.exists(tmp_file)) {
-                        unlink(tmp_file)
-                    }
-                },
-                add = TRUE
-            )
-
-            # Scan the existing R columns directly instead of first inserting
-            # every site's weather rows into a temporary DuckDB table.
-            duckdb::duckdb_register(private$conn, tmp_table, dt)
-            ddb_exec(
-                private$conn,
-                sprintf(
-                    "COPY %s TO %s (FORMAT PARQUET, COMPRESSION ZSTD)",
-                    ddb_ident(private$conn, tmp_table),
-                    ddb_literal(private$conn, tmp_file)
-                )
-            )
-            if (file.exists(path) && isTRUE(overwrite)) {
-                unlink(path)
-            }
-            ok <- file.rename(tmp_file, path)
-            if (!isTRUE(ok)) {
-                stop(
-                    sprintf(
-                        "Failed to move Parquet output into place: %s.",
-                        path
-                    ),
-                    call. = FALSE
-                )
-            }
-
-            invisible(path)
-        },
-        # }}}
-        # extract_result_row
-        # extract_result_row {{{
-        extract_result_row = function(
-            plan,
-            dt,
-            output_path,
-            year,
-            artifact_id
-        ) {
-            data.frame(
-                result_id = store__hash(plan$plan_id[[1L]], year, output_path),
-                plan_id = plan$plan_id[[1L]],
-                file_key = plan$file_key[[1L]],
-                query_id = plan$query_id[[1L]],
-                artifact_id = artifact_id,
-                output_path = store_rel_path(output_path, private$store_path),
-                year = as.integer(year),
-                row_count = nrow(dt),
-                unique_time_count = data.table::uniqueN(dt$time),
-                time_min = min(dt$time),
-                time_max = max(dt$time),
-                lon_actual = dt$lon[[1L]],
-                lat_actual = dt$lat[[1L]],
-                completed_at = store__now(),
-                stringsAsFactors = FALSE
+            store_extract__write_parquet(
+                self,
+                private,
+                dt = dt,
+                path = path,
+                overwrite = overwrite
             )
         },
         # }}}
-        # update_file_actual_time
-        # update_file_actual_time {{{
-        update_file_actual_time = function(file, start, end) {
-            # All sites of a file share this native range. Avoid rewriting the
-            # catalog row for each site, and preserve unrelated catalog fields.
-            values <- ddb_literal(private$conn, c(start, end))
-            ddb_exec(
-                private$conn,
-                sprintf(
-                    paste(
-                        "UPDATE file_catalog SET actual_time_start = %s,",
-                        "actual_time_end = %s WHERE file_key = %s AND",
-                        "(actual_time_start IS DISTINCT FROM %s OR",
-                        "actual_time_end IS DISTINCT FROM %s)"
-                    ),
-                    values[[1L]],
-                    values[[2L]],
-                    ddb_literal(private$conn, file$file_key[[1L]]),
-                    values[[1L]],
-                    values[[2L]]
-                )
-            )
-            invisible(NULL)
-        },
-        # }}}
-        # mark_plan_failed
-        # mark_plan_failed {{{
-        mark_plan_failed = function(plan, message) {
-            private$mark_plan_status(
-                plan,
-                status = "failed",
-                available_time_count = plan$available_time_count[[1L]],
-                last_error = message,
-                increment_attempt = TRUE
-            )
-        },
-        # }}}
-        # mark_plan_status
-        # mark_plan_status {{{
-        mark_plan_status = function(
-            plan,
-            status,
-            available_time_count = NULL,
-            last_error = NA_character_,
-            increment_attempt = FALSE
-        ) {
-            plan <- as.data.frame(plan)
-            plan$status <- status
-            if (!is.null(available_time_count)) {
-                plan$available_time_count <- as.integer(available_time_count)
-            }
-            if (isTRUE(increment_attempt)) {
-                plan$attempt_count <- as.integer(plan$attempt_count) + 1L
-            }
-            plan$last_error <- store__chr1(last_error)
-            plan$updated_at <- store__now()
-            private$replace_rows("extraction_plan", plan, "plan_id")
-            data.table::as.data.table(plan)
-        },
-        # }}}
-        # finalize
         # finalize {{{
         finalize = function() {
             private$disconnect()
@@ -9433,7 +2101,9 @@ EsgStore <- R6::R6Class(
     )
 )
 # }}}
-# store helpers
+
+# Core shared store helpers
+
 # store__result_type {{{
 store__result_type <- function(files) {
     if (inherits(files, "EsgResultFile")) {
@@ -9554,7 +2224,7 @@ store__time <- function(x) {
 store__time_range <- function(time) {
     checkmate::assert_atomic_vector(time, len = 2L, any.missing = FALSE)
     parsed <- store__time(time)
-    if (any(is.na(parsed))) {
+    if (anyNA(parsed)) {
         cli::cli_abort("`time` must be a length-2 parseable datetime range.")
     }
     if (parsed[[2L]] < parsed[[1L]]) {
@@ -9690,10 +2360,10 @@ store__file_table <- function(files) {
         )
     )
     for (name in columns) {
-        out[[name]] <- store__col(dt, name, n)
+        data.table::set(out, j = name, value = store__col(dt, name, n))
     }
     if (n && all(is.na(out$filename)) && any(!is.na(out$title))) {
-        out$filename <- basename(out$title)
+        data.table::set(out, j = "filename", value = basename(out$title))
     }
 
     out[]
@@ -9831,254 +2501,18 @@ store__logical_file_id <- function(catalog) {
 }
 # }}}
 
-# Construct the shared base schema for operational and validation download plans.
-# store__download_plan_rows {{{
-store__download_plan_rows <- function(catalog) {
-    catalog <- data.table::as.data.table(catalog)
-    download_node <- query_result__url_host(catalog$url_download)
-    use_catalog_node <- is.na(download_node) | !nzchar(download_node)
-    download_node[use_catalog_node] <- catalog$data_node[use_catalog_node]
-    data.table::data.table(
-        logical_file_id = store__logical_file_id(catalog),
-        file_key = catalog$file_key,
-        esgf_id = catalog$esgf_id,
-        dataset_id = catalog$dataset_id,
-        filename = catalog$filename,
-        subdir = NA_character_,
-        checksum = catalog$checksum,
-        checksum_type = catalog$checksum_type,
-        size = suppressWarnings(as.numeric(catalog$size)),
-        url = catalog$url_download,
-        service = "HTTPServer",
-        data_node = download_node,
-        priority = seq_len(nrow(catalog)),
-        probe_latency = NA_real_,
-        probe_throughput = NA_real_
+# store__empty_table {{{
+store__empty_table <- function(spec) {
+    proto <- list(c = character(), l = logical(), n = numeric())
+    parts <- strsplit(
+        trimws(strsplit(spec, ",", fixed = TRUE)[[1L]]),
+        ":",
+        fixed = TRUE
     )
-}
-# }}}
-
-# store__partition {{{
-store__partition <- function(x) {
-    x <- store__chr1(x)
-    if (is.na(x) || !nzchar(x)) {
-        return("__missing__")
-    }
-
-    x <- gsub("[/\\\\:]+", "_", x)
-    x <- gsub("[^A-Za-z0-9_.=-]+", "_", x)
-    x <- gsub("_+", "_", x)
-    x <- sub("^_+", "", sub("_+$", "", x))
-    if (!nzchar(x)) {
-        return("__missing__")
-    }
-
-    x
-}
-# }}}
-
-# store__summary_cols {{{
-store__summary_cols <- function() {
-    c(
-        query_id = "p.query_id",
-        plan_id = "p.plan_id",
-        file_key = "p.file_key",
-        site_id = "p.site_id",
-        source_id = "f.source_id",
-        experiment_id = "f.experiment_id",
-        variant_label = "f.variant_label",
-        frequency = "f.frequency",
-        table_id = "f.table_id",
-        variable_id = "p.variable_id",
-        grid_label = "f.grid_label",
-        data_node = "f.data_node",
-        year = "r.year",
-        status = "p.status"
-    )
-}
-# }}}
-
-# Synchronize a completed download through the package adapter, keeping the
-# copyable Downloader independent of EsgStore and its scientific manifest.
-# store__sync_download_job {{{
-store__sync_download_job <- function(path, downloader) {
-    store <- EsgStore$new(path = path)
-    on.exit(store$close(), add = TRUE)
-    store$sync_downloads(downloader)
-    invisible(NULL)
-}
-# }}}
-
-# Resolve a bounded requested plan set against its normalized catalog rows.
-# The source reader's key function is the single authority for physical identity;
-# neither access URL nor logical model/field grouping becomes a new lock key.
-# store__plan_source_rows {{{
-store__plan_source_rows <- function(conn, plan_id) {
-    if (!length(plan_id)) {
-        return(data.table::data.table(
-            plan_id = character(),
-            file_key = character(),
-            source_key = character()
-        ))
-    }
-    plans <- ddb_query(
-        conn,
-        paste0(
-            "SELECT plan_id,file_key FROM extraction_plan WHERE plan_id IN (",
-            paste(ddb_literal(conn, plan_id), collapse = ","),
-            ")"
-        )
-    )
-    missing <- setdiff(plan_id, plans$plan_id)
-    if (length(missing)) {
-        cli::cli_abort(
-            "Extraction plan ID(s) {.val {missing}} were not found in the store manifest."
-        )
-    }
-    plans <- plans[match(plan_id, plans$plan_id), , drop = FALSE]
-    file_keys <- unique(plans$file_key)
-    catalog <- data.table::as.data.table(ddb_query(
-        conn,
-        paste0(
-            "SELECT * FROM file_catalog WHERE file_key IN (",
-            paste(ddb_literal(conn, file_keys), collapse = ","),
-            ")"
-        )
+    data.table::as.data.table(stats::setNames(
+        lapply(parts, function(p) proto[[p[[2L]]]]),
+        vapply(parts, `[[`, character(1L), 1L)
     ))
-    if (
-        anyNA(file_keys) ||
-            anyDuplicated(catalog$file_key) ||
-            !all(file_keys %in% catalog$file_key)
-    ) {
-        cli::cli_abort(
-            "An extraction plan has no unambiguous file catalog record."
-        )
-    }
-    # Multiple sites and years can reference one file. Hash each distinct
-    # selected catalog record once, then restore the caller's exact plan order.
-    physical_keys <- vapply(
-        seq_len(nrow(catalog)),
-        function(i) source__physical_key(catalog[i]),
-        character(1L)
-    )
-    data.table::data.table(
-        plan_id = plans$plan_id,
-        file_key = plans$file_key,
-        source_key = physical_keys[match(plans$file_key, catalog$file_key)]
-    )
-}
-# }}}
-
-# Construct the same scalar plan identities for every site/file pair. The
-# per-row hash is intentional: IDs are part of the persisted public protocol.
-# Preallocated site batches avoid repeated table growth and retain site order.
-# store__region_plan_rows {{{
-store__region_plan_rows <- function(plan, query_id, sites, time_range, method) {
-    now <- store__now()
-    rows <- lapply(seq_len(nrow(sites)), function(site) {
-        site_id <- sites$site_id[[site]]
-        lon <- sites$lon[[site]]
-        lat <- sites$lat[[site]]
-        data.frame(
-            plan_id = vapply(
-                seq_len(nrow(plan)),
-                function(i) {
-                    store__hash(
-                        query_id,
-                        plan$file_key[[i]],
-                        site_id,
-                        plan$variable_id[[i]],
-                        lon,
-                        lat,
-                        method,
-                        time_range$start,
-                        time_range$stop
-                    )
-                },
-                character(1L)
-            ),
-            query_id = query_id,
-            file_key = plan$file_key,
-            site_id = site_id,
-            variable_id = plan$variable_id,
-            lon = lon,
-            lat = lat,
-            method = method,
-            time_start = time_range$start,
-            time_stop = time_range$stop,
-            status = "pending",
-            available_time_count = NA_integer_,
-            attempt_count = 0L,
-            last_error = NA_character_,
-            created_at = now,
-            updated_at = now,
-            stringsAsFactors = FALSE
-        )
-    })
-    unique(data.table::rbindlist(rows, use.names = TRUE))
-}
-# }}}
-
-# Keep the readable partition layout where supported. Windows paths that exceed
-# the conservative file-creation limit use the immutable plan identity instead;
-# source/site/year columns and the manifest preserve the same scientific keys.
-# store__extract_output_path {{{
-store__extract_output_path <- function(
-    extract_dir,
-    partitions,
-    plan_id,
-    year,
-    windows = identical(.Platform$OS.type, "windows")
-) {
-    path <- file.path(
-        extract_dir,
-        do.call(file.path, as.list(partitions)),
-        sprintf("part-%s.parquet", plan_id)
-    )
-    if (isTRUE(windows) && nchar(path, type = "chars") > 240L) {
-        # Plans include their file, site, method and time identity in their hash.
-        # The year also keeps multi-year partitions of one plan distinct.
-        path <- file.path(
-            extract_dir,
-            "by-plan",
-            sprintf("part-%s-%d.parquet", plan_id, year)
-        )
-    }
-    path
-}
-# }}}
-
-# Read one explicitly requested artifact set with a single manifest query.
-# NULL preserves the complete-table behavior; an empty selection still keeps
-# the manifest schema, and missing IDs fail before any artifact file is read.
-# store__artifact_rows {{{
-store__artifact_rows <- function(conn, artifact_id = NULL) {
-    if (is.null(artifact_id)) {
-        return(ddb_read_table(conn, "artifact"))
-    }
-    checkmate::assert_character(
-        artifact_id,
-        any.missing = FALSE,
-        min.chars = 1L
-    )
-    ids <- unique(artifact_id)
-    predicate <- if (length(ids)) {
-        paste0(
-            "artifact_id IN (",
-            paste(ddb_literal(conn, ids), collapse = ","),
-            ")"
-        )
-    } else {
-        "FALSE"
-    }
-    rows <- ddb_query(conn, paste0("SELECT * FROM artifact WHERE ", predicate))
-    missing <- setdiff(ids, rows$artifact_id)
-    if (length(missing)) {
-        cli::cli_abort(
-            "Artifact ID(s) {.val {missing}} were not found in the store manifest."
-        )
-    }
-    rows[match(ids, rows$artifact_id), , drop = FALSE]
 }
 # }}}
 

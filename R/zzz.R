@@ -33,8 +33,9 @@
         getOption("epwshiftr.verbose", FALSE)
     }
     DOWNLOADER_RUNTIME$sync_store <- store__sync_download_job
-    # Register standalone scientific components at load time so downstream
-    # pipelines can resolve them without constructing a complete EPW recipe.
+    # Register standalone scientific and reusable pipeline components at load
+    # time so downstream pipelines can resolve them without constructing a
+    # complete EPW recipe.
     bias__register_linear_scaling_component()
     bias__register_delta_change_component()
     qm__register_component()
@@ -52,6 +53,10 @@
     hourmap__register_component()
     direct_epw__register_component()
     sequence__register_epw_output_component()
+    daily__register_temperature_components()
+    btws__register_hourly_component()
+    daily_adjustment__register_components()
+    hourly_kqdm__register_components()
 
     # set package options
     .opts <- list(

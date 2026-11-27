@@ -1,84 +1,41 @@
-test_that("vmsg() respects epwshiftr.verbose", {
-    withr::with_options(
-        list("epwshiftr.verbose" = FALSE),
-        expect_silent(vmsg("a"))
-    )
-    withr::with_options(
-        list("epwshiftr.verbose" = TRUE),
-        expect_message(vmsg("a"), "a")
-    )
-})
-
 test_that("now()", {
     expect_s3_class(now(), "POSIXct")
     expect_equal(attr(now(), "tzone"), "UTC")
 })
 
-test_that("checkmate_result()", {
+test_that("checkmate_* S7 property validators support rules, unions, priority, and NULL branches", {
     expect_null(checkmate_result(TRUE))
-    expect_identical(
-        checkmate_result("Must be >= 0"),
-        "Must be >= 0"
-    )
+    expect_identical(checkmate_result("Must be >= 0"), "Must be >= 0")
     expect_identical(
         checkmate_result("Must be >= 0", label = "value"),
         "`value` validation failed: Must be >= 0"
     )
-})
 
-test_that("checkmate_validator()", {
-    validator <- checkmate_validator(
+    v_int <- checkmate_validator(
         checkmate::check_integer,
         lower = 1L,
         upper = 3L,
         len = 1L
     )
-
-    expect_null(validator(2L))
-    expect_match(validator(0L), ">= 1")
-
-    labeled <- checkmate_validator(
+    expect_null(v_int(2L))
+    expect_match(v_int(0L), ">= 1")
+    v_str <- checkmate_validator(
         checkmate::check_string,
         min.chars = 1L,
         label = "value"
     )
+    expect_match(v_str(""), "`value` validation failed:.*at least 1 characters")
 
-    expect_match(labeled(""), "`value` validation failed:")
-    expect_match(labeled(""), "at least 1 characters")
-})
-
-test_that("checkmate_property()", {
-    CountHolderForTest <- S7::new_class(
-        "CountHolderForTest",
-        properties = list(
-            n = checkmate_property(
-                S7::class_integer,
-                checkmate::check_int,
-                lower = 0L,
-                upper = 10L,
-                default = 1L
-            )
-        )
-    )
-
-    expect_identical(CountHolderForTest()@n, 1L)
-    expect_identical(CountHolderForTest(5L)@n, 5L)
-    expect_error(CountHolderForTest(-1L), ">= 0")
-})
-
-test_that("checkmate_rule() validates rule inputs", {
     rule <- checkmate_rule(
         S7::class_integer,
         checkmate::check_integer,
         lower = 0L,
         branch = "int"
     )
-
     expect_s3_class(rule, "CheckmateRule")
     expect_identical(rule$class, S7::class_integer)
     expect_identical(rule$args$lower, 0L)
     expect_identical(rule$branch, "int")
-
     expect_error(
         checkmate_rule(
             S7::class_integer | S7::class_character,
@@ -86,217 +43,140 @@ test_that("checkmate_rule() validates rule inputs", {
         ),
         "S7_union"
     )
-})
 
-test_that("checkmate_any() builds a union spec", {
     spec <- checkmate_any(
-        checkmate_rule(S7::class_integer, checkmate::check_integer),
-        checkmate_rule(S7::class_character, checkmate::check_character)
+        rule,
+        checkmate_rule(
+            S7::class_character,
+            checkmate::check_string,
+            min.chars = 1L,
+            branch = "chr"
+        )
     )
-
-    expect_s3_class(spec, "CheckmateSpec")
-    expect_s3_class(spec, "CheckmateSpecAny")
+    expect_s3_class(spec, c("CheckmateSpecAny", "CheckmateSpec"))
     expect_true(inherits(spec$class, "S7_union"))
-    expect_length(spec$rules, 2)
+    expect_length(spec$rules, 2L)
+    expect_error(checkmate_any(rule, 1), "CheckmateRule")
 
-    expect_error(
-        checkmate_any(
-            checkmate_rule(S7::class_integer, checkmate::check_integer),
-            1
-        ),
-        "CheckmateRule"
-    )
-})
-
-test_that("checkmate_class_match() handles S7 base classes", {
-    expect_true(checkmate_class_match(90, S7::class_double))
-    expect_true(checkmate_class_match(1L, S7::class_integer))
-    expect_true(checkmate_class_match(TRUE, S7::class_logical))
-    expect_true(checkmate_class_match(1 + 2i, S7::class_complex))
-    expect_true(checkmate_class_match("x", S7::class_character))
-    expect_true(checkmate_class_match(as.raw(1), S7::class_raw))
-    expect_true(checkmate_class_match(list(1), S7::class_list))
-    expect_true(checkmate_class_match(expression(x), S7::class_expression))
-    expect_true(checkmate_class_match(as.name("x"), S7::class_name))
-    expect_true(checkmate_class_match(quote(f(x)), S7::class_call))
-    expect_true(checkmate_class_match(function() NULL, S7::class_function))
-    expect_true(checkmate_class_match(sum, S7::class_function))
-    expect_true(checkmate_class_match(`if`, S7::class_function))
-    expect_true(checkmate_class_match(new.env(), S7::class_environment))
-
-    expect_false(checkmate_class_match(90, S7::class_integer))
-    expect_false(checkmate_class_match(1L, S7::class_double))
-})
-
-test_that("checkmate_class_match() handles S7 union classes", {
-    expect_true(checkmate_class_match(90, S7::class_numeric))
-    expect_true(checkmate_class_match(1L, S7::class_numeric))
-
-    expect_true(checkmate_class_match(TRUE, S7::class_atomic))
-    expect_true(checkmate_class_match(1L, S7::class_atomic))
-    expect_true(checkmate_class_match(1, S7::class_atomic))
-    expect_true(checkmate_class_match(1 + 2i, S7::class_atomic))
-    expect_true(checkmate_class_match("x", S7::class_atomic))
-    expect_true(checkmate_class_match(as.raw(1), S7::class_atomic))
-    expect_false(checkmate_class_match(list(1), S7::class_atomic))
-
-    expect_true(checkmate_class_match(TRUE, S7::class_vector))
-    expect_true(checkmate_class_match(list(1), S7::class_vector))
-    expect_true(checkmate_class_match(expression(x), S7::class_vector))
-    expect_false(checkmate_class_match(new.env(), S7::class_vector))
-
-    expect_true(checkmate_class_match(as.name("x"), S7::class_language))
-    expect_true(checkmate_class_match(quote(f(x)), S7::class_language))
-    expect_false(checkmate_class_match("x", S7::class_language))
-})
-
-test_that("checkmate_class_match() handles S3 and S4 class boundaries", {
     CheckmateS4ForTest <- methods::setClass(
         "CheckmateS4ForTest",
         slots = c(value = "numeric")
     )
+    s4_val <- CheckmateS4ForTest(value = 1)
+    s4_cls <- methods::getClass("CheckmateS4ForTest")
+    expect_cls <- function(cls, yes, no = list()) {
+        for (x in yes) {
+            expect_true(checkmate_class_match(x, cls))
+        }
+        for (x in no) {
+            expect_false(checkmate_class_match(x, cls))
+        }
+    }
+    expect_cls(S7::class_double, list(90), list(1L))
+    expect_cls(S7::class_integer, list(1L), list(90))
+    expect_cls(S7::class_logical, list(TRUE))
+    expect_cls(S7::class_complex, list(1 + 2i))
+    expect_cls(S7::class_character, list("x"))
+    expect_cls(S7::class_raw, list(as.raw(1)))
+    expect_cls(S7::class_list, list(list(1)))
+    expect_cls(S7::class_expression, list(expression(x)))
+    expect_cls(S7::class_name, list(as.name("x")))
+    expect_cls(S7::class_call, list(quote(f(x))))
+    expect_cls(S7::class_function, list(function() NULL, sum, `if`))
+    expect_cls(S7::class_environment, list(new.env()))
+    expect_cls(S7::class_numeric, list(90, 1L))
+    expect_cls(
+        S7::class_atomic,
+        list(TRUE, 1L, 1, 1 + 2i, "x", as.raw(1)),
+        list(list(1))
+    )
+    expect_cls(
+        S7::class_vector,
+        list(TRUE, list(1), expression(x)),
+        list(new.env())
+    )
+    expect_cls(S7::class_language, list(as.name("x"), quote(f(x))), list("x"))
+    expect_cls(S7::class_Date, list(Sys.Date()), list(1, s4_val))
+    expect_cls(s4_cls, list(s4_val), list(list(value = 1)))
 
-    expect_true(checkmate_class_match(Sys.Date(), S7::class_Date))
-    expect_false(checkmate_class_match(1, S7::class_Date))
-    expect_false(checkmate_class_match(
-        CheckmateS4ForTest(value = 1),
-        S7::class_Date
-    ))
+    holder <- function(nm, prop) {
+        S7::new_class(nm, properties = list(value = prop))
+    }
 
-    expect_true(checkmate_class_match(
-        CheckmateS4ForTest(value = 1),
-        methods::getClass("CheckmateS4ForTest")
-    ))
-    expect_false(checkmate_class_match(
-        list(value = 1),
-        methods::getClass("CheckmateS4ForTest")
-    ))
-})
+    CountH <- holder(
+        "CountHolderForTest",
+        checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 0L,
+            upper = 10L,
+            default = 1L
+        )
+    )
+    expect_identical(CountH()@value, 1L)
+    expect_identical(CountH(5L)@value, 5L)
+    expect_error(CountH(-1L), ">= 0")
 
-test_that("checkmate_property() supports union specs", {
-    UnionHolderForTest <- S7::new_class(
+    UnionH <- holder(
         "UnionHolderForTest",
-        properties = list(
-            value = checkmate_property(
-                checkmate_any(
-                    checkmate_rule(
-                        S7::class_integer,
-                        checkmate::check_integer,
-                        lower = 0L,
-                        branch = "int"
-                    ),
-                    checkmate_rule(
-                        S7::class_character,
-                        checkmate::check_string,
-                        min.chars = 1L,
-                        branch = "chr"
-                    )
-                ),
-                default = 1L
-            )
-        )
+        checkmate_property(spec, default = 1L)
     )
+    expect_identical(UnionH()@value, 1L)
+    expect_identical(UnionH(2L)@value, 2L)
+    expect_identical(UnionH("x")@value, "x")
+    expect_error(UnionH(-1L), "\\[int\\].*>= 0")
+    expect_error(UnionH(""), "\\[chr\\]")
+    expect_error(UnionH(1.5), "must be <integer> or <character>")
 
-    expect_identical(UnionHolderForTest()@value, 1L)
-    expect_identical(UnionHolderForTest(2L)@value, 2L)
-    expect_identical(UnionHolderForTest("x")@value, "x")
-    expect_error(UnionHolderForTest(-1L), "\\[int\\]")
-    expect_error(UnionHolderForTest(-1L), ">= 0")
-    expect_error(UnionHolderForTest(""), "\\[chr\\]")
-    expect_error(UnionHolderForTest(1.5), "must be <integer> or <character>")
-})
-
-test_that("checkmate_property() union spec accepts double branches", {
-    NumericHolderForTest <- S7::new_class(
+    NumH <- holder(
         "NumericHolderForTest",
-        properties = list(
-            value = checkmate_property(
-                checkmate_any(
-                    checkmate_rule(
-                        S7::class_integer,
-                        checkmate::check_integer,
-                        branch = "int"
-                    ),
-                    checkmate_rule(
-                        S7::class_double,
-                        checkmate::check_double,
-                        branch = "dbl"
-                    )
-                )
+        checkmate_property(checkmate_any(
+            checkmate_rule(
+                S7::class_integer,
+                checkmate::check_integer,
+                branch = "int"
+            ),
+            checkmate_rule(
+                S7::class_double,
+                checkmate::check_double,
+                branch = "dbl"
             )
-        )
+        ))
     )
+    expect_identical(NumH(2L)@value, 2L)
+    expect_identical(NumH(2)@value, 2)
+    expect_error(NumH("2"), "must be <integer> or <double>")
 
-    expect_identical(NumericHolderForTest(2L)@value, 2L)
-    expect_identical(NumericHolderForTest(2)@value, 2)
-    expect_error(NumericHolderForTest("2"), "must be <integer> or <double>")
-})
-
-test_that("checkmate_property() union spec uses first matching branch", {
-    PriorityParentForTest <- S7::new_class("PriorityParentForTest")
-    PriorityChildForTest <- S7::new_class(
-        "PriorityChildForTest",
-        parent = PriorityParentForTest
-    )
-
-    PriorityHolderForTest <- S7::new_class(
+    ParentC <- S7::new_class("PriorityParentForTest")
+    ChildC <- S7::new_class("PriorityChildForTest", parent = ParentC)
+    PrioH <- holder(
         "PriorityHolderForTest",
-        properties = list(
-            value = checkmate_property(
-                checkmate_any(
-                    checkmate_rule(
-                        PriorityChildForTest,
-                        function(x) "child branch failed",
-                        branch = "child"
-                    ),
-                    checkmate_rule(
-                        PriorityParentForTest,
-                        function(x) TRUE,
-                        branch = "parent"
-                    )
-                )
-            )
-        )
+        checkmate_property(checkmate_any(
+            checkmate_rule(
+                ChildC,
+                function(x) "child branch failed",
+                branch = "child"
+            ),
+            checkmate_rule(ParentC, function(x) TRUE, branch = "parent")
+        ))
     )
+    expect_error(PrioH(ChildC()), "\\[child\\].*child branch failed")
+    expect_s3_class(PrioH(ParentC())@value, "S7_object")
 
-    expect_error(PriorityHolderForTest(PriorityChildForTest()), "\\[child\\]")
-    expect_error(
-        PriorityHolderForTest(PriorityChildForTest()),
-        "child branch failed"
-    )
-    expect_s3_class(
-        PriorityHolderForTest(PriorityParentForTest())@value,
-        "S7_object"
-    )
-})
-
-test_that("checkmate_property() union spec supports NULL branches", {
-    OptionalHolderForTest <- S7::new_class(
+    OptH <- holder(
         "OptionalHolderForTest",
-        properties = list(
-            value = checkmate_property(
-                checkmate_any(
-                    checkmate_rule(
-                        NULL,
-                        checkmate::check_null,
-                        branch = "null"
-                    ),
-                    checkmate_rule(
-                        S7::class_integer,
-                        checkmate::check_integer,
-                        lower = 0L,
-                        branch = "int"
-                    )
-                ),
-                default = NULL
-            )
+        checkmate_property(
+            checkmate_any(
+                checkmate_rule(NULL, checkmate::check_null, branch = "null"),
+                rule
+            ),
+            default = NULL
         )
     )
-
-    expect_null(OptionalHolderForTest()@value)
-    expect_null(OptionalHolderForTest(NULL)@value)
-    expect_identical(OptionalHolderForTest(3L)@value, 3L)
-    expect_error(OptionalHolderForTest(-1L), "\\[int\\]")
+    expect_null(OptH()@value)
+    expect_null(OptH(NULL)@value)
+    expect_identical(OptH(3L)@value, 3L)
+    expect_error(OptH(-1L), "\\[int\\]")
 })
 
 test_that("set_size_units()", {
@@ -386,11 +266,16 @@ test_that(".onLoad() preserves explicit directory options", {
     expect_false(dir.exists(cache))
 })
 
-test_that("store_cmip6_index_path() / store_rel_path() / store_abs_path() keep paths inside the store", {
+test_that("store_rel_path() / store_abs_path() keep paths inside the store", {
     root <- tempfile("epwshiftr-store-")
     withr::local_options(list(epwshiftr.dir_store = root))
 
-    path <- store_cmip6_index_path(strrep("a", 64L))
+    path <- store_path(
+        "queries",
+        "cmip6-index",
+        sprintf("%s.csv", strrep("a", 64L)),
+        root = store_dir(init = TRUE)
+    )
     expect_identical(
         store_rel_path(path),
         sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))
@@ -438,6 +323,82 @@ test_that("ddb_connect() opens persisted databases read-only after closing write
         ddb_exec(conn, "INSERT INTO lifecycle VALUES (2)"),
         "[Rr]ead.only"
     )
+})
+
+# Pool lifecycle checks retain real concurrent execution and exercise shutdown
+# immediately after cancellation or timeout, where native IPC waits occurred.
+test_that("owned mirai pools preserve concurrency and survive interrupted tasks", {
+    skip_on_cran()
+    profile <- paste0("epwshiftr-lifecycle-", Sys.getpid())
+    on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
+    mirai__start_pool(2L, .compute = profile)
+    jobs <- lapply(seq_len(8L), function(i) {
+        mirai::mirai(
+            {
+                Sys.sleep(0.03)
+                Sys.getpid()
+            },
+            .compute = profile
+        )
+    })
+    expect_length(unique(vapply(jobs, mirai::collect_mirai, integer(1L))), 2L)
+    mirai::daemons(0L, .compute = profile)
+
+    for (iteration in seq_len(20L)) {
+        mirai__start_pool(1L, .compute = profile)
+        job <- if (iteration %% 2L) {
+            mirai::mirai(Sys.sleep(5), .timeout = 25, .compute = profile)
+        } else {
+            job <- mirai::mirai(Sys.sleep(5), .compute = profile)
+            mirai::stop_mirai(job)
+            job
+        }
+        expect_true(mirai::is_error_value(mirai::collect_mirai(job)))
+        mirai::daemons(0L, .compute = profile)
+        expect_identical(mirai::status(.compute = profile)$connections, 0L)
+    }
+})
+
+# A persistent session retains its healthy slot when a different owned reader times out.
+test_that("subset sessions reject busy reuse and replace only timed out readers", {
+    skip_on_cran()
+    session <- opendap__session(2L, .15)
+    on.exit(session$close(), add = TRUE)
+    pool <- session$acquire(2L, .15)
+    identities <- vapply(pool$status(), function(s) s$pid, integer(1L))
+    timed_out <- 0L
+    # Keep the reader closure isolated from test environments during IPC serialization.
+    read <- function(job) {
+        Sys.sleep(job$delay)
+        Sys.getpid()
+    }
+    environment(read) <- baseenv()
+    ticket <- pool$submit(
+        list(
+            list(source_key = "slow", delay = 3),
+            list(source_key = "fast", delay = 0)
+        ),
+        read = read,
+        collect = function(job, value) NULL,
+        on_error = function(job, error) {
+            stopifnot(inherits(error, "epwshiftr_source_timeout"))
+            timed_out <<- timed_out + 1L
+        }
+    )
+    expect_error(session$acquire(2L, .15))
+    deadline <- proc.time()[["elapsed"]] + 10
+    while (ticket$status == "pending") {
+        stopifnot(proc.time()[["elapsed"]] < deadline)
+        pool$poll()
+        Sys.sleep(.01)
+    }
+    expect_identical(timed_out, 1L)
+    expect_identical(ticket$status, "done")
+    expect_true(pool$idle())
+    after <- vapply(pool$status(), function(s) s$pid, integer(1L))
+    expect_false(identical(identities[[1L]], after[[1L]]))
+    expect_identical(identities[[2L]], after[[2L]])
+    expect_identical(session$acquire(2L, .15), pool)
 })
 
 # vim: fdm=marker :
