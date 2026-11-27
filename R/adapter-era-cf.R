@@ -1,4 +1,4 @@
-#' @include shift-stage.R source-era5.R source-cds.R
+#' @include shift-stage.R source-reanalysis.R
 NULL
 
 # ERA reanalysis to CF weather input
