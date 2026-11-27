@@ -2985,6 +2985,8 @@ test_that("plan source mapping groups replicas by physical identity", {
         "table_id",
         "variable_id",
         "title",
+        "filename",
+        "frequency",
         "version",
         "tracking_id",
         "checksum_type",
@@ -3505,7 +3507,7 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     expect_length(references, 1L)
     expect_match(
         basename(references[[1L]]),
-        "^pool-download-[a-f0-9]{64}[.]json$"
+        "^pool-download-[a-f0-9]{64}-[a-f0-9]{64}[.]json$"
     )
     reference <- jsonlite::read_json(references[[1L]])
     expect_true(reference$checksum_verified_by_reader)
@@ -3566,6 +3568,243 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     expect_identical(repeated$gets, counts$gets)
     expect_identical(repeated$dods, counts$dods)
     expect_error(source_pool(1L, download_dir = TRUE), "download_dir")
+})
+
+# Run the same public extraction in either mode, using the existing pool waiter.
+store_test__recover <- function(store, plan, pool = NULL, overwrite = FALSE) {
+    result <- store$extract(
+        plan_id = plan$plan_id,
+        pool = pool,
+        overwrite = overwrite
+    )
+    if (!is.null(pool)) {
+        store_test__drain_fallback(pool, list(result))
+        result <- result$value
+    }
+    result
+}
+
+# Read published values in CF time order for comparison with raw NetCDF values.
+store_test__recovered_values <- function(store, plan) {
+    output <- store$query(sprintf(
+        "SELECT output_path FROM extraction_result WHERE plan_id = '%s'",
+        plan$plan_id
+    ))$output_path
+    store$query(paste0(
+        "SELECT value FROM read_parquet(",
+        ddb_literal(priv(store)$conn, file.path(store$path, output)),
+        ") ORDER BY cf_year,cf_month,cf_day,cf_second_of_day"
+    ))$value
+}
+
+# Equal catalogue identity and byte length cannot authorize another endpoint's
+# bytes. Keep this regression in both adapters, including their shared cache.
+test_that("Store recovery isolates same-record sources in both extraction modes", {
+    withr::local_options(epwshiftr.progress = FALSE, epwshiftr.cache = TRUE)
+    root <- withr::local_tempdir()
+    paths <- file.path(root, c("source.nc", "different.nc"))
+    write_local_cmip6_netcdf_fixture(paths[[1L]], 2060L, calendar = "360_day")
+    file.copy(paths[[1L]], paths[[2L]])
+    nc <- RNetCDF::open.nc(paths[[2L]], write = TRUE)
+    original <- RNetCDF::var.get.nc(nc, "tas")
+    RNetCDF::var.put.nc(nc, "tas", original + 7)
+    RNetCDF::close.nc(nc)
+    servers <- lapply(paths, function(path) {
+        webfakes::new_app_process(store_test__fallback_app(
+            readBin(path, "raw", n = file.info(path)$size)
+        ))
+    })
+    withr::defer(lapply(servers, function(server) server$stop()))
+    pool <- source_pool(
+        1L,
+        timeout = 15,
+        download_dir = file.path(root, "shared")
+    )
+    withr::defer(pool$close(force = TRUE))
+    for (mode in c("ordinary", "pooled")) {
+        withr::local_options(epwshiftr.dir_cache = tempfile("recovery-cache-"))
+        receipts <- vector("list", 2L)
+        keys <- character(2L)
+        for (index in 1:2) {
+            store <- EsgStore$new(file.path(root, paste0(mode, index)))
+            withr::defer(store$close())
+            query <- store$add_files(store_test__fallback_files(
+                paths[[1L]],
+                servers[[index]],
+                NA_character_
+            ))
+            keys[[index]] <- store$query(
+                "SELECT file_key FROM file_catalog"
+            )$file_key
+            plan <- store$plan_region(
+                query,
+                104,
+                1.37,
+                c("2060-01-01", "2060-01-03 23:59:59")
+            )
+            active_pool <- if (mode == "pooled") pool
+            result <- store_test__recover(store, plan, active_pool)
+            expect_identical(result$status, "done", info = result$last_error)
+            expect_equal(
+                store_test__recovered_values(store, plan),
+                as.double(original[2L, 1L, 1:3] + 7 * (index - 1L))
+            )
+            references <- list.files(
+                file.path(store$path, "sources"),
+                "^pool-download-.*[.]json$",
+                full.names = TRUE
+            )
+            expect_length(references, 1L)
+            receipts[[index]] <- jsonlite::read_json(references[[1L]])
+            expect_false(receipts[[index]]$checksum_verified_by_reader)
+            expect_identical(
+                receipts[[index]]$source_url,
+                servers[[index]]$url("/files/source.nc")
+            )
+            expect_identical(
+                receipts[[index]]$local_sha256,
+                checksum_file(paths[[index]])
+            )
+        }
+        expect_identical(keys[[1L]], keys[[2L]])
+        expect_false(identical(receipts[[1L]]$task_id, receipts[[2L]]$task_id))
+        expect_false(identical(
+            receipts[[1L]]$cache_path,
+            receipts[[2L]]$cache_path
+        ))
+        # A later publisher expectation must also reject completed B output.
+        output <- file.path(
+            store$path,
+            store$query(
+                "SELECT output_path FROM extraction_result"
+            )$output_path
+        )
+        retained <- checksum_file(output)
+        store$add_files(store_test__fallback_files(
+            paths[[1L]],
+            servers[[2L]],
+            checksum_file(paths[[1L]])
+        ))
+        conflict <- store_test__recover(store, plan, active_pool)
+        expect_identical(conflict$status, "failed")
+        expect_match(conflict$last_error, "source conflict")
+        expect_identical(checksum_file(output), retained)
+    }
+})
+
+# A rejected shared native file must survive repeated default retries. Explicit
+# replacement gets an independent target and leaves the original producer proof.
+test_that("Store recovery preserves rejected native generations until replacement", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    root <- withr::local_tempdir()
+    path <- file.path(root, "source.nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    source_hash <- checksum_file(path)
+    nc <- RNetCDF::open.nc(path)
+    expected <- as.double(RNetCDF::var.get.nc(nc, "tas")[2L, 1L, 1:2])
+    RNetCDF::close.nc(nc)
+    server <- webfakes::new_app_process(store_test__fallback_app(
+        readBin(path, "raw", n = file.info(path)$size)
+    ))
+    withr::defer(server$stop())
+    for (publisher in c(FALSE, TRUE)) {
+        directory <- file.path(root, as.character(publisher))
+        store <- EsgStore$new(file.path(directory, "store"))
+        withr::defer(store$close())
+        pool <- source_pool(
+            1L,
+            timeout = 15,
+            download_dir = file.path(directory, "shared")
+        )
+        withr::defer(pool$close(force = TRUE))
+        query <- store$add_files(store_test__fallback_files(
+            path,
+            server,
+            if (publisher) source_hash else NA_character_
+        ))
+        plan <- store$plan_region(
+            query,
+            104,
+            1.37,
+            c("2060-01-01", "2060-01-03")
+        )
+        result <- store_test__recover(store, plan, pool)
+        expect_identical(result$status, "done", info = result$last_error)
+        reference_path <- list.files(
+            file.path(store$path, "sources"),
+            "^pool-download-.*[.]json$",
+            full.names = TRUE
+        )
+        reference <- jsonlite::read_json(reference_path[[1L]])
+        inspect <- Downloader$new(
+            manifest = reference$cache_manifest,
+            n_workers = 0L
+        )
+        proof <- file.path(
+            inspect$config$temp,
+            paste0(reference$task_id, ".transfer.json")
+        )
+        priv(inspect)$disconnect_manifest()
+        # Alter valid native data so an accidental reuse remains readable.
+        nc <- RNetCDF::open.nc(reference$cache_path, write = TRUE)
+        RNetCDF::var.put.nc(nc, "tas", RNetCDF::var.get.nc(nc, "tas") + 7)
+        RNetCDF::close.nc(nc)
+        retained_files <- c(reference$cache_path, proof, reference_path)
+        retained_hashes <- vapply(retained_files, checksum_file, character(1L))
+        gets <- function() {
+            jsonlite::fromJSON(rawToChar(
+                curl::curl_fetch_memory(server$url("/counts"))$content
+            ))$gets
+        }
+        before <- gets()
+        next_plan <- store$plan_region(
+            query,
+            104.01,
+            1.37,
+            c("2060-01-01", "2060-01-03")
+        )
+        for (attempt in 1:2) {
+            rejected <- store_test__recover(store, next_plan, pool)
+            expect_identical(rejected$status, "failed")
+            expect_match(
+                rejected$last_error,
+                "source_changed|checksum|integrity"
+            )
+            expect_identical(
+                vapply(retained_files, checksum_file, character(1L)),
+                retained_hashes
+            )
+            expect_identical(gets(), before)
+        }
+        replaced <- store_test__recover(
+            store,
+            next_plan,
+            pool,
+            overwrite = TRUE
+        )
+        expect_identical(replaced$status, "done", info = replaced$last_error)
+        replacement_path <- setdiff(
+            list.files(
+                file.path(store$path, "sources"),
+                "^pool-download-.*[.]json$",
+                full.names = TRUE
+            ),
+            reference_path
+        )
+        expect_length(replacement_path, 1L)
+        replacement <- jsonlite::read_json(replacement_path[[1L]])
+        expect_false(identical(replacement$cache_path, reference$cache_path))
+        expect_false(identical(replacement$task_id, reference$task_id))
+        expect_identical(checksum_file(replacement$cache_path), source_hash)
+        expect_identical(replacement$checksum_verified_by_reader, publisher)
+        expect_equal(store_test__recovered_values(store, next_plan), expected)
+        expect_identical(
+            vapply(retained_files, checksum_file, character(1L)),
+            retained_hashes
+        )
+        expect_equal(gets(), before + 1L)
+        pool$close()
+    }
 })
 
 # append_new_rows() {{{

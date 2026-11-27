@@ -84,7 +84,14 @@ store__schema_executor <- function(conn, tables) {
 # Wrap one access failure with the exact service, phase, target, duration, and
 # original condition needed by workflow diagnostics and final plan errors.
 # store__access_error {{{
-store__access_error <- function(error, phase, service, target, started_at) {
+store__access_error <- function(
+    error,
+    phase,
+    service,
+    target,
+    started_at,
+    source_url = NULL
+) {
     elapsed <- proc.time()[["elapsed"]] - started_at
     message <- sprintf(
         "%s %s failed for %s after %.3f seconds: %s",
@@ -94,11 +101,18 @@ store__access_error <- function(error, phase, service, target, started_at) {
         elapsed,
         conditionMessage(error)
     )
+    # Replica selection can make the byte producer differ from the catalogue
+    # endpoint. Keep that actual URL alongside the unchanged local read target.
+    source_url <- store__chr1(source_url)
+    if (!is.na(source_url)) {
+        message <- paste(message, sprintf("HTTP producer: %s", source_url))
+    }
     structure(
         list(
             message = message,
             call = NULL,
             parent = error,
+            source_url = source_url,
             phase = phase,
             service = service,
             target = target,
@@ -186,40 +200,11 @@ store__report_access_failure <- function(
 # store__extract_cache_path {{{
 store__extract_cache_path <- function(plan, file) {
     file <- data.table::as.data.table(file)
-    source_fields <- intersect(
-        c(
-            "checksum",
-            "checksum_type",
-            "size",
-            "version",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "frequency",
-            "table_id",
-            "variable_id",
-            "grid_label"
-        ),
-        names(file)
-    )
-    source <- as.list(file[1L, source_fields, with = FALSE])
-    checksum <- store__chr1(file[["checksum"]])
-    version <- store__chr1(file[["version"]])
-    if (
-        (is.na(checksum) || !nzchar(checksum)) &&
-            (is.na(version) || !nzchar(version))
-    ) {
-        # Generic records without immutable content/version metadata retain
-        # service URLs in the key so a provider replacement cannot reuse stale
-        # bytes under a weak logical identity.
-        source$service_urls <- c(
-            store__chr1(file[["url_opendap"]]),
-            store__chr1(file[["url_download"]])
-        )
-    }
+    # Cache ownership follows the same descriptor as reader exclusion and HTTP
+    # recovery. A version label without publisher proof cannot merge endpoints.
+    source <- source_recovery__key(source_recovery__describe(file))
     key <- store__hash(
-        "site-extraction-v1",
-        store__logical_file_id(file)[[1L]],
+        "site-extraction-v2",
         source,
         list(
             variable_id = plan$variable_id[[1L]],
@@ -306,8 +291,15 @@ store__extract_cache_write <- function(path, payload) {
         cli::cli_abort("Could not publish the shared extraction cache entry.")
     }
     store_write_json_atomic(
-        list(sha256 = checksum_file(path)),
-        paste0(path, ".json")
+        list(
+            sha256 = checksum_file(path),
+            source_lineage = payload$source_lineage
+        ),
+        paste0(path, ".json"),
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
     )
     invisible(path)
 }
@@ -317,10 +309,15 @@ store__extract_cache_write <- function(path, payload) {
 # all remote/local fallback behavior; this wrapper stores only successful,
 # fully-read payloads and identifies reuse without copying store-specific IDs.
 # store__extract_cache_resolve {{{
-store__extract_cache_resolve <- function(plan, file, generate) {
+store__extract_cache_resolve <- function(
+    plan,
+    file,
+    generate,
+    overwrite = FALSE
+) {
     checkmate::assert_function(generate)
     if (identical(cache__mode(), "off")) {
-        value <- generate()
+        value <- source_recovery__attach(generate(), file)
         value$cache_reused <- FALSE
         return(value)
     }
@@ -329,7 +326,7 @@ store__extract_cache_resolve <- function(plan, file, generate) {
     manifest_with_lock(
         path,
         {
-            payload <- store__extract_cache_read(path)
+            payload <- source_recovery__cache_read(path, file, overwrite)
             if (!is.null(payload)) {
                 return(list(
                     payload = payload,
@@ -346,7 +343,7 @@ store__extract_cache_resolve <- function(plan, file, generate) {
                     "Shared extraction cache is missing in offline mode."
                 )
             }
-            value <- generate()
+            value <- source_recovery__attach(generate(), file)
             store__extract_cache_write(path, value$payload)
             value$cache_reused <- FALSE
             value
@@ -3045,6 +3042,8 @@ EsgStore <- R6::R6Class(
                     if (is.na(checksum)) {
                         checksum <- NULL
                     }
+                    # Preserve the exact transport locator for later offline
+                    # adoption of its saved producer checkpoint.
                     artifact_id <- self$register_artifact(
                         kind = "netcdf",
                         path = local_path,
@@ -3056,7 +3055,12 @@ EsgStore <- R6::R6Class(
                         file_key = file_key,
                         source_url = store__chr1(task$selected_url[[1L]]),
                         metadata = list(
-                            filename = store__chr1(task$filename[[1L]])
+                            filename = store__chr1(task$filename[[1L]]),
+                            download_manifest = store_normalize_path(
+                                downloader$manifest
+                            ),
+                            download_session_id = store__chr1(task$session_id),
+                            download_task_id = store__chr1(task$task_id)
                         )
                     )
                     row$local_path <- store_rel_path(
@@ -3260,6 +3264,15 @@ EsgStore <- R6::R6Class(
         #' at a time to bound memory. Complete ordinary extraction caches are
         #' consumed directly without starting workers. Speedup depends on the
         #' number of independent tasks and the remote service.
+        #'
+        #' Ordinary and pooled extraction share source ownership and recovery checks.
+        #' Complete outputs and extraction caches require matching saved acquisition
+        #' lineage and local integrity evidence, which can support offline reuse.
+        #' Missing evidence, source conflicts, and changed bytes identify the affected
+        #' result without replacing its original source receipt. After checking the
+        #' requested source, use `overwrite = TRUE` to recompute rejected results.
+        #' Download byte continuation is qualified separately from output `resume`;
+        #' saved transfer settings and existing pool limits are preserved.
         #'
         #' @param plan_id Optional plan IDs to run.
         #' @param status Plan statuses to run when `plan_id` is `NULL`.
@@ -3488,11 +3501,20 @@ EsgStore <- R6::R6Class(
                 plan <- plans[i]
                 resumed_outputs[i] <- list(
                     if (!overwrite && resume) {
-                        private$resume_extract_plan(plan)
+                        tryCatch(
+                            private$resume_extract_plan(plan),
+                            error = identity
+                        )
                     } else {
                         NULL
                     }
                 )
+                if (inherits(resumed_outputs[[i]], "error")) {
+                    error <- resumed_outputs[[i]]
+                    resumed_outputs[i] <- list(NULL)
+                    process(i, error)
+                    next
+                }
                 if (!is.null(resumed_outputs[[i]]) || is.na(file_rows[[i]])) {
                     process(i)
                     next
@@ -3506,26 +3528,21 @@ EsgStore <- R6::R6Class(
                         local,
                         root = private$store_path
                     ))
-                if (!is.null(pool) && has_local) {
-                    file <- data.table::copy(file)
-                    data.table::set(
-                        file,
-                        j = "url_opendap",
-                        value = store_abs_path(
-                            local,
-                            root = private$store_path
-                        )
-                    )
-                }
                 cached <- if (!identical(cache__mode(), "off")) {
-                    store__extract_cache_read(store__extract_cache_path(
-                        plan,
-                        file
-                    ))
+                    tryCatch(
+                        source_recovery__cache_read(
+                            store__extract_cache_path(plan, file),
+                            file,
+                            overwrite
+                        ),
+                        error = identity
+                    )
                 } else {
                     NULL
                 }
-                if (!is.null(cached)) {
+                if (inherits(cached, "error")) {
+                    process(i, cached)
+                } else if (!is.null(cached)) {
                     process(
                         i,
                         list(
@@ -3539,10 +3556,10 @@ EsgStore <- R6::R6Class(
                         )
                     )
                 } else if (
-                    (is.null(pool) &&
-                        (has_local ||
-                            is.na(endpoint) ||
-                            !grepl("^https?://", endpoint))) ||
+                    has_local ||
+                        (is.null(pool) &&
+                            (is.na(endpoint) ||
+                                !grepl("^https?://", endpoint))) ||
                         identical(cache__mode(), "offline")
                 ) {
                     process(i)
@@ -3592,7 +3609,9 @@ EsgStore <- R6::R6Class(
                             jobs[rows],
                             function(job) job$plan
                         )),
-                        file = jobs[[rows[[1L]]]]$file
+                        files = lapply(jobs[rows], function(job) job$file),
+                        file = jobs[[rows[[1L]]]]$file,
+                        overwrite = overwrite
                     )
                 })
             }
@@ -3600,11 +3619,28 @@ EsgStore <- R6::R6Class(
                 # Register verified native downloads only in the manifest owner;
                 # readers never receive or write this store's DuckDB connection.
                 if (!is.null(value$download_manifest)) {
-                    stopifnot(identical(
-                        value$download_manifest,
-                        job$http$manifest
-                    ))
-                    store__sync_pool_download(self, value$download_manifest)
+                    # One verified native read may serve distinct replica
+                    # catalogue rows; register only those exact requests.
+                    files <- job$files
+                    if (is.null(files)) {
+                        files <- list(job$file)
+                    }
+                    keys <- vapply(
+                        files,
+                        function(file) store__chr1(file$file_key),
+                        character(1L)
+                    )
+                    for (file in files[!duplicated(keys)]) {
+                        store__sync_pool_download(
+                            self,
+                            value$download_manifest,
+                            source_recovery__receipt_for(
+                                file,
+                                value$download_receipt
+                            ),
+                            file
+                        )
+                    }
                 }
                 for (index in seq_along(job$indices)) {
                     row <- job$indices[[index]]
@@ -3613,8 +3649,9 @@ EsgStore <- R6::R6Class(
                         failures[[row]] <<- resolved
                     } else {
                         if (!is.null(resolved$cache_path)) {
-                            resolved$payload <- store__extract_cache_read(
-                                resolved$cache_path
+                            resolved$payload <- source_recovery__cache_read(
+                                resolved$cache_path,
+                                job$files[[index]]
                             )
                             if (is.null(resolved$payload)) {
                                 cli::cli_abort(
@@ -8135,6 +8172,68 @@ EsgStore <- R6::R6Class(
             if (!all(file.exists(paths))) {
                 return(NULL)
             }
+            # Check only this requested plan, using the artifact snapshot that
+            # committed with its result rather than current catalogue labels.
+            artifacts <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "artifact"
+            ))
+            files <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "file_catalog"
+            ))
+            file <- files[files[["file_key"]] == plan$file_key[[1L]]]
+            context <- paste(
+                "plan",
+                target_plan_id,
+                "file",
+                plan$file_key[[1L]]
+            )
+            if (nrow(file) != 1L) {
+                source_recovery__error(
+                    "insufficient catalogue lineage",
+                    context
+                )
+            }
+            for (index in seq_len(nrow(results))) {
+                artifact <- artifacts[
+                    artifacts[["artifact_id"]] == results$artifact_id[[index]]
+                ]
+                location <- paste(
+                    context,
+                    "artifact",
+                    results$artifact_id[[index]],
+                    paths[[index]]
+                )
+                source_recovery__artifact_check(
+                    artifact,
+                    paths[[index]],
+                    location
+                )
+                if (
+                    !identical(artifact$file_key[[1L]], plan$file_key[[1L]]) ||
+                        !identical(
+                            store_abs_path(
+                                artifact$relative_path[[1L]],
+                                private$store_path
+                            ),
+                            paths[[index]]
+                        )
+                ) {
+                    source_recovery__error(
+                        "source conflict in artifact association",
+                        location
+                    )
+                }
+                metadata <- tryCatch(
+                    jsonlite::fromJSON(
+                        artifact$metadata_json[[1L]],
+                        simplifyVector = FALSE
+                    ),
+                    error = function(e) NULL
+                )
+                source_recovery__check(metadata$source_lineage, file, location)
+            }
             plan
         },
         # }}}
@@ -8160,6 +8259,9 @@ EsgStore <- R6::R6Class(
                     if (file.exists(local)) {
                         source$target <- local
                         source$service <- "local"
+                        source$open_local <- function(target) {
+                            source_recovery__local_open(self, file, target)
+                        }
                     }
                 }
                 on.exit(
@@ -8170,12 +8272,15 @@ EsgStore <- R6::R6Class(
                 # the shared reader only decides when this recovery is needed.
                 download <- if (identical(fallback, "auto")) {
                     function() {
+                        path <- private$download_plan_file(
+                            file,
+                            overwrite = overwrite,
+                            reporter = reporter
+                        )
                         list(
-                            path = private$download_plan_file(
-                                file,
-                                overwrite = overwrite,
-                                reporter = reporter
-                            )
+                            path = path,
+                            manifest = NULL,
+                            receipt = attr(path, "source_receipt")
                         )
                     }
                 }
@@ -8184,7 +8289,8 @@ EsgStore <- R6::R6Class(
                     file,
                     source,
                     download = download,
-                    reporter = reporter
+                    reporter = reporter,
+                    overwrite = overwrite
                 )
                 if (!is.null(source$opened)) {
                     source$opened$dataset$close()
@@ -8262,6 +8368,11 @@ EsgStore <- R6::R6Class(
             opened,
             overwrite = FALSE
         ) {
+            source_recovery__check(
+                payload$source_lineage,
+                file,
+                paste("plan", plan$plan_id[[1L]])
+            )
             # A payload restored from the shared RDS cache is guaranteed to be
             # a data frame, but it need not retain data.table's by-reference
             # class. Materialize a private data.table copy before attaching
@@ -8287,7 +8398,8 @@ EsgStore <- R6::R6Class(
                             dt,
                             plan,
                             file,
-                            overwrite = overwrite
+                            overwrite = overwrite,
+                            source_lineage = payload$source_lineage
                         )
                         list(
                             results = results,
@@ -8374,111 +8486,28 @@ EsgStore <- R6::R6Class(
             overwrite = FALSE,
             reporter = NULL
         ) {
-            download <- store__chr1(file$url_download)
-            if (is.na(download) || !nzchar(download)) {
-                stop(
-                    "HTTPServer download URL is not available for this file record.",
-                    call. = FALSE
-                )
-            }
-
-            checksum <- store__chr1(file$checksum)
-            checksum_type <- tolower(store__chr1(file$checksum_type))
-            if (
-                is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")
-            ) {
-                checksum <- NULL
-                checksum_type <- "sha256"
-            }
-            if (is.null(checksum) || is.na(checksum)) {
-                checksum <- NULL
-            }
-
-            downloader <- self$downloader(n_workers = 0L)
-            filename <- store__chr1(file$filename[[1L]])
-            if (is.na(filename)) {
-                filename <- basename(sub("\\?.*$", "", download))
-            }
-            logical_parts <- c(
-                store__chr1(file$tracking_id[[1L]]),
-                if (is.null(checksum)) NA_character_ else checksum,
-                filename,
-                store__chr1(file$file_key[[1L]])
-            )
-            logical_parts <- logical_parts[
-                !is.na(logical_parts) & nzchar(logical_parts)
-            ]
-            logical_file_id <- paste(logical_parts, collapse = ":")
-            if (!nzchar(logical_file_id)) {
-                logical_file_id <- file$file_key[[1L]]
-            }
-            plan <- data.table::data.table(
-                logical_file_id = logical_file_id,
-                file_key = file$file_key[[1L]],
-                esgf_id = file$esgf_id[[1L]],
-                dataset_id = file$dataset_id[[1L]],
-                filename = filename,
-                subdir = NA_character_,
-                checksum = if (is.null(checksum)) NA_character_ else checksum,
-                checksum_type = checksum_type,
-                size = suppressWarnings(as.numeric(file$size[[1L]])),
-                url = download,
-                service = "HTTPServer",
-                # The selected HTTP service can come from a different replica
-                # than the catalog's OPeNDAP record.
-                data_node = shift_stage__coalesce(
-                    query_result__url_host(download),
-                    file$data_node[[1L]]
+            config <- list(
+                dest = private$download_dir,
+                temp = private$tmp_download_dir,
+                manifest = file.path(
+                    private$download_dir,
+                    "_downloader",
+                    "manifest.duckdb"
                 ),
-                priority = 1L,
-                probe_latency = NA_real_,
-                probe_throughput = NA_real_
+                n_workers = 0L,
+                cleanup = FALSE
             )
-            plan <- private$apply_download_layout(plan, file)
-            session_id <- downloader$enqueue(
-                plan,
-                session_label = sprintf("extract:%s", file$file_key[[1L]])
+            attr(config, "progress") <- TRUE
+            recovered <- source_recovery__download(
+                file,
+                config,
+                overwrite = overwrite,
+                reporter = reporter
             )
-            unbind <- if (
-                !is.null(reporter) &&
-                    exists(
-                        "shift_run__download_reporter_bind",
-                        mode = "function"
-                    )
-            ) {
-                shift_run__download_reporter_bind(
-                    downloader,
-                    reporter,
-                    role = "HTTP fallback",
-                    variables = 1L,
-                    nested = TRUE
-                )
-            } else {
-                NULL
-            }
-            if (!is.null(unbind)) {
-                on.exit(unbind(), add = TRUE)
-            }
-            tasks <- downloader$run(
-                session_id = session_id,
-                # A workflow reporter is the sole Console owner. Native bars are
-                # retained only for standalone low-level extraction calls.
-                progress = is.null(reporter),
-                overwrite = overwrite
-            )
-            failed <- tasks[
-                !tasks[["status"]] %in% c("done", "skipped"),
-                ,
-                drop = FALSE
-            ]
-            if (nrow(failed)) {
-                stop(
-                    "HTTPServer download failed for this file record.",
-                    call. = FALSE
-                )
-            }
-            self$sync_downloads(downloader)
-            tasks$target_path[[1L]]
+            source_recovery__register(self, file, recovered$receipt)
+            path <- recovered$path
+            attr(path, "source_receipt") <- recovered$receipt
+            path
         },
         # }}}
         # decorate_extract
@@ -8633,7 +8662,8 @@ EsgStore <- R6::R6Class(
             plan,
             file,
             overwrite = FALSE,
-            project = "CMIP6"
+            project = "CMIP6",
+            source_lineage = NULL
         ) {
             # The same durable extraction representation is shared by ESGF
             # projections and provider-normalized reanalysis observations.
@@ -8670,6 +8700,7 @@ EsgStore <- R6::R6Class(
                     metadata = list(
                         plan_id = plan$plan_id[[1L]],
                         year = as.integer(target_year),
+                        source_lineage = source_lineage,
                         # Derived-variable rows carry their scientific lineage
                         # in both the Parquet data and artifact manifest. Raw
                         # extraction chunks simply record null provenance.

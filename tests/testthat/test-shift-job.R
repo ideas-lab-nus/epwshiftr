@@ -532,7 +532,8 @@ test_that("saved staged requests restore vectors before public validation", {
 })
 
 # Kill only the fixture-owned R process tree after a real GET has written its
-# prefix. The new process must request a Range for the retained file's length.
+# uncheckpointed prefix. Restart keeps its IDs and history, then obtains a
+# complete representation from zero rather than certifying the hard-kill tail.
 test_that("shift_resume reopens a stopped process's original download session", {
     skip_on_cran()
     skip_if_not_installed("webfakes")
@@ -541,7 +542,14 @@ test_that("shift_resume reopens a stopped process's original download session", 
     app <- webfakes::new_app()
     app$locals$bytes <- bytes
     app$locals$offset <- NULL
-    app$get("/offset", function(req, res, locals) res$send_json(locals$offset))
+    app$locals$gets <- 0L
+    app$locals$requests <- character()
+    app$get("/offset", function(req, res, locals) {
+        res$send_json(locals$offset, null = "null", auto_unbox = TRUE)
+    })
+    app$get("/requests", function(req, res, locals) {
+        res$send_json(locals$requests)
+    })
     app$head("/source.bin", function(req, res, locals) {
         start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
         end <- length(locals$bytes) - 1L
@@ -552,10 +560,20 @@ test_that("shift_resume reopens a stopped process's original download session", 
     })
     app$get("/source.bin", function(req, res, locals) {
         range <- req$get_header("Range")
+        locals$gets <- locals$gets + 1L
+        locals$requests <- c(
+            locals$requests,
+            if (is.null(range)) "full" else range
+        )
         if (is.null(range)) {
-            res$send_chunk(locals$bytes[1:8192])
-            Sys.sleep(4)
-            return(invisible(NULL))
+            if (locals$gets == 1L) {
+                res$send_chunk(locals$bytes[1:8192])
+                Sys.sleep(4)
+                return(invisible(NULL))
+            }
+            return(res$set_header("Content-Length", length(locals$bytes))$send(
+                locals$bytes
+            ))
         }
         start <- as.numeric(gsub("[^0-9]", "", range))
         end <- length(locals$bytes) - 1L
@@ -634,7 +652,8 @@ test_that("shift_resume reopens a stopped process's original download session", 
     size <- file.info(partial)$size
     expect_gt(size, 0L)
     expect_lt(size, length(bytes))
-    expect_identical(readBin(partial, "raw", n = size), head(bytes, size))
+    prefix <- readBin(partial, "raw", n = size)
+    expect_identical(prefix, head(bytes, size))
     store <- EsgStore$new(store_path)
     on.exit(store$close(), add = TRUE)
     downloader <- store$downloader(n_workers = 0L)
@@ -658,7 +677,7 @@ test_that("shift_resume reopens a stopped process's original download session", 
     expect_identical(downloader$sessions()$session_id, sessions$session_id)
     actual <- downloader$tasks(session_id = sessions$session_id)
     expect_identical(actual$task_id, tasks$task_id)
-    expect_identical(actual$status, "done")
+    expect_identical(actual$status, "done", info = actual$last_error)
     expect_equal(
         nrow(store$query("SELECT * FROM artifact WHERE role='download'")),
         1L
@@ -669,8 +688,15 @@ test_that("shift_resume reopens a stopped process's original download session", 
         checksum_bytes(bytes, "sha256")
     )
     expect_false(file.exists(partial))
+    retained <- list.files(temp, "[.]part[.]retained-", full.names = TRUE)
+    expect_length(retained, 1L)
+    expect_identical(readBin(retained, "raw", n = size), prefix)
     offset <- curl::curl_fetch_memory(server$url("/offset"))$content
-    expect_equal(jsonlite::fromJSON(rawToChar(offset)), size)
+    expect_null(jsonlite::fromJSON(rawToChar(offset)))
+    requests <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(server$url("/requests"))$content
+    ))
+    expect_identical(requests, c("full", "full"))
 })
 
 # A stale checkpoint must not silently create a replacement session.
